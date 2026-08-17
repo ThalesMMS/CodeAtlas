@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+
+fail() {
+  printf 'Error: %s\n' "$1" >&2
+  exit 1
+}
+
+version_at_least() {
+  local major="$1" minor="$2" patch="$3"
+  local required_major="$4" required_minor="$5" required_patch="$6"
+  ((major > required_major)) ||
+    ((major == required_major && minor > required_minor)) ||
+    ((major == required_major && minor == required_minor && patch >= required_patch))
+}
+
+load_dotenv() {
+  local file="$1" line='' key='' value='' line_number=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    ((line_number += 1))
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    if [[ ! "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      fail "Invalid .env entry on line $line_number. Expected KEY=VALUE."
+    fi
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$file"
+}
+
+command -v go >/dev/null 2>&1 || fail 'Go 1.23 or newer is required.'
+command -v node >/dev/null 2>&1 || fail 'Node.js 26 or newer is required.'
+command -v npm >/dev/null 2>&1 || fail 'npm >=11.16.0 and <12 is required.'
+
+go_version_output="$(go version)"
+[[ "$go_version_output" =~ go([0-9]+)\.([0-9]+)(\.([0-9]+))? ]] || fail "Could not parse the installed Go version: $go_version_output"
+go_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[4]:-0}"
+version_at_least "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[4]:-0}" 1 23 0 || fail "Go 1.23 or newer is required. Found $go_version."
+
+node_version_output="$(node --version)"
+[[ "$node_version_output" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]] || fail "Could not parse the installed Node.js version: $node_version_output"
+node_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+version_at_least "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" 26 0 0 || fail "Node.js 26 or newer is required. Found $node_version."
+
+npm_version_output="$(npm --version)"
+[[ "$npm_version_output" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]] || fail "Could not parse the installed npm version: $npm_version_output"
+npm_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+if ! version_at_least "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" 11 16 0 || ((BASH_REMATCH[1] >= 12)); then
+  fail "npm >=11.16.0 and <12 is required. Found $npm_version."
+fi
+
+if [[ -n "${CC:-}" ]]; then
+  command -v "$CC" >/dev/null 2>&1 || fail "The configured C compiler was not found: $CC"
+else
+  for compiler in cc clang gcc; do
+    if command -v "$compiler" >/dev/null 2>&1; then
+      export CC="$compiler"
+      break
+    fi
+  done
+  [[ -n "${CC:-}" ]] || fail 'A C compiler is required. On macOS, install the Xcode Command Line Tools with: xcode-select --install'
+fi
+
+cd "$ROOT"
+
+if [[ -f .env ]]; then
+  load_dotenv .env
+fi
+
+if [[ -z "${CODEATLAS_WORKSPACE:-}" ]]; then
+  export CODEATLAS_WORKSPACE="$ROOT/examples/tinycommerce"
+fi
+
+printf '[1/3] Installing locked frontend dependencies...\n'
+(
+  cd frontend
+  npm ci
+)
+
+printf '[2/3] Building the embedded frontend...\n'
+(
+  cd frontend
+  npm run build
+)
+
+printf '[3/3] Building the native executable...\n'
+mkdir -p dist
+(
+  cd backend
+  CGO_ENABLED=1 go build -tags fts5 -trimpath -o "$ROOT/dist/codeatlas" ./cmd/codeatlas
+)
+
+printf 'Built %s\n' "$ROOT/dist/codeatlas"
+printf 'Starting CodeAtlas...\n'
+exec "$ROOT/dist/codeatlas" "$@"

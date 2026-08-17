@@ -30,7 +30,7 @@ CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship gr
 ## Requirements
 
 - Go 1.23 or newer.
-- Node.js 26 or newer and npm 11.16.x.
+- Node.js 26 or newer and npm 11.16.0 or newer, below npm 12.
 - GNU Make and a POSIX-compatible shell for the provided `Makefile`.
 - A C compiler available to cgo, such as Clang or GCC.
 - An OpenAI-compatible `/chat/completions` endpoint.
@@ -67,6 +67,43 @@ make run WORKSPACE=/absolute/path/to/your/repository
 ```
 
 The server listens on `127.0.0.1:8080` by default. Override it with `LISTEN=host:port` or `CODEATLAS_LISTEN`.
+
+### Build a native executable
+
+The packaging scripts build the frontend, embed it in the Go server, create a
+native executable for the current operating system, and run it in the
+foreground. They are native builds rather than cross-compilers, installers, or
+macOS application bundles.
+
+On macOS, install the Xcode Command Line Tools if a C compiler is not already
+available, then run:
+
+```bash
+xcode-select --install
+bash ./build_package_and_run.sh
+```
+
+On Windows, install GCC or Clang for cgo, then run from Command Prompt or
+PowerShell:
+
+```powershell
+.\build_package_and_run.cmd
+```
+
+Both scripts load unquoted `KEY=VALUE` assignments from `.env`, use
+`examples/tinycommerce` when `CODEATLAS_WORKSPACE` is unset, and forward extra
+arguments to CodeAtlas. For example:
+
+```bash
+bash ./build_package_and_run.sh -workspace /absolute/path/to/project -listen 127.0.0.1:9090
+```
+
+```powershell
+.\build_package_and_run.cmd -workspace "C:\Code\project" -listen 127.0.0.1:9090
+```
+
+The resulting executable is `dist/codeatlas` on macOS and
+`dist/codeatlas.exe` on Windows. Stop the foreground server with `Ctrl+C`.
 
 ## Configuration
 
