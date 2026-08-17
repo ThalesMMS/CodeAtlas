@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -14,11 +13,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/ai"
@@ -53,36 +50,18 @@ func main() {
 	os.Exit(run())
 }
 
-// run is the composition root. It constructs the concrete dependencies and hands
-// the lifecycle to app.Run, owning only the process exit code so internal
-// packages never call os.Exit.
-func run() int {
-	if len(os.Args) > 1 && os.Args[1] == "store" {
-		return runStoreCommand(os.Args[2:])
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+// runComposition constructs the concrete runtime after mode selection and
+// configuration resolution. The caller owns signals, the native UI thread, and
+// the final process exit code.
+func runComposition(ctx context.Context, cfg config.Config, onListening func(net.Addr), logger *slog.Logger) error {
 	settingsPath, err := settings.DefaultPath()
 	if err != nil {
 		logger.Error("could not resolve per-user settings path", "error", err)
-		return 1
+		return fmt.Errorf("resolve per-user settings path: %w", err)
 	}
 	settingsStore := settings.NewFileStore(settingsPath)
 	credentialStore := settings.NewKeyringCredentialStore()
 	settingsEnvironment := settings.EnvironmentFromLookup(os.LookupEnv)
-	_, startupResolved, err := settings.LoadStartup(context.Background(), settingsEnvironment, settingsStore, credentialStore)
-	if err != nil {
-		logger.Error("could not load per-user settings", "error", err)
-		return 1
-	}
-	cfg, err := config.LoadWithSettings(startupResolved.Values)
-	if err != nil {
-		logger.Error("invalid configuration", "error", err)
-		return 1
-	}
-
-	rootContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	journalDir := filepath.Join(filepath.Dir(cfg.DatabasePath), "transactions")
 	legacyJSONPath := filepath.Join(filepath.Dir(cfg.DatabasePath), "index.json")
@@ -112,11 +91,11 @@ func run() int {
 	coordinator.SetEventDropObserver(metrics.SSEEventDropped)
 	registry := capabilities.NewRegistry()
 	sourceExtensions, sourceScanErr := workspaceSourceExtensions(cfg.Workspace)
-	goplsManager, goplsProvider := startGopls(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".go"), sourceScanErr)
-	typeScriptManager, typeScriptProvider := startTypeScriptLSP(rootContext, cfg, workspace, registry, logger, hasAnySourceExtension(sourceExtensions, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"), sourceScanErr)
-	swiftManager, swiftProvider := startSwiftLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".swift"), sourceScanErr)
-	pythonManager, pythonProvider := startPythonLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".py"), sourceScanErr)
-	rustManager, rustProvider := startRustLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".rs"), sourceScanErr)
+	goplsManager, goplsProvider := startGopls(ctx, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".go"), sourceScanErr)
+	typeScriptManager, typeScriptProvider := startTypeScriptLSP(ctx, cfg, workspace, registry, logger, hasAnySourceExtension(sourceExtensions, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"), sourceScanErr)
+	swiftManager, swiftProvider := startSwiftLSP(ctx, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".swift"), sourceScanErr)
+	pythonManager, pythonProvider := startPythonLSP(ctx, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".py"), sourceScanErr)
+	rustManager, rustProvider := startRustLSP(ctx, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".rs"), sourceScanErr)
 	semanticRouter := semantic.NewPathRouter(map[string]semantic.SemanticProvider{
 		".go":    goplsProvider,
 		".js":    typeScriptProvider,
@@ -166,17 +145,17 @@ func run() int {
 		StructuredProbeSchema: aiout.ExplanationSchema(),
 		OnProviderActivated:   coordinator.SignalConfigurationRetry,
 	})
-	settingsManager, err := settings.NewManagerWithRunningValues(rootContext, settingsEnvironment, settingsStore, credentialStore, settingsRuntime, settings.Values{
+	settingsManager, err := settings.NewManagerWithRunningValues(ctx, settingsEnvironment, settingsStore, credentialStore, settingsRuntime, settings.Values{
 		Workspace: cfg.Workspace, ListenAddress: cfg.ListenAddress, MaxFileBytes: cfg.MaxFileBytes,
 	})
 	if err != nil {
 		logger.Error("could not initialize runtime settings", "error", err)
-		return 1
+		return fmt.Errorf("initialize runtime settings: %w", err)
 	}
 	settingsToken, err := newSettingsToken()
 	if err != nil {
 		logger.Error("could not initialize settings access token")
-		return 1
+		return fmt.Errorf("initialize settings access token: %w", err)
 	}
 	internalMutations := mutation.NewMemoryRegistry(mutation.RegistryConfig{})
 	defer internalMutations.Close()
@@ -193,7 +172,7 @@ func run() int {
 	})
 	if err != nil {
 		logger.Error("invalid scheduler", "error", err)
-		return 1
+		return fmt.Errorf("initialize scheduler: %w", err)
 	}
 	explainer := service.NewExplainer(storeRef, workspace, provider)
 	semanticCollector := semevidence.NewCollector(semanticProvider, 4*time.Second, 24)
@@ -231,7 +210,7 @@ func run() int {
 	var providerProbe ai.CapabilityProbe = providerRuntime
 
 	logger.Info("CodeAtlas starting", "address", "http://"+cfg.ListenAddress, "workspace", cfg.Workspace, "provider", provider.Name())
-	err = app.Run(rootContext, app.RuntimeDeps{
+	err = app.Run(ctx, app.RuntimeDeps{
 		Logger:           logger,
 		Coordinator:      coordinator,
 		Registry:         registry,
@@ -262,13 +241,14 @@ func run() int {
 		ReconcileEmbeddings: reconcileEmbeddings(retriever, storeRef, registry, cfg),
 		Server:              httpServer,
 		Listen:              func() (net.Listener, error) { return net.Listen("tcp", cfg.ListenAddress) },
+		OnListening:         onListening,
 		Persist:             nil,
 	})
 	if err != nil {
 		logger.Error("runtime stopped with an error", "error", err)
-		return 1
+		return err
 	}
-	return 0
+	return nil
 }
 
 func newSettingsToken() (string, error) {
@@ -333,12 +313,6 @@ func loadStartupSettings(ctx context.Context, cfg config.Config, environment set
 	cfg.EmbeddingBaseURL = values.EmbeddingBaseURL
 	cfg.EmbeddingsAPIKey = values.EmbeddingsAPIKey
 	return startupSettings{Config: cfg, Document: document, Resolved: resolved}, nil
-}
-
-func explicitlySetFlags() map[string]bool {
-	result := make(map[string]bool)
-	flag.CommandLine.Visit(func(current *flag.Flag) { result[current.Name] = true })
-	return result
 }
 
 func newLSPRuntimeFactories(root string, workspace *service.Workspace, sourceExtensions map[string]struct{}) lspruntime.Factories {

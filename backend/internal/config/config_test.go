@@ -129,6 +129,30 @@ func TestLoadWithSettingsAppliesTypedOverridesBeforeMalformedEnvironment(t *test
 	}
 }
 
+func TestLoadArgsWithSettingsUsesExplicitArgumentsOverSavedValues(t *testing.T) {
+	resetFlags(t)
+	llmEnv(t)
+	savedWorkspace := t.TempDir()
+	operatorWorkspace := t.TempDir()
+	os.Args = []string{"codeatlas", "-workspace", filepath.Join(t.TempDir(), "missing")}
+
+	cfg, err := LoadArgsWithSettings([]string{"-workspace", operatorWorkspace, "-listen", "127.0.0.1:0"}, settings.Values{
+		Workspace: savedWorkspace, ListenAddress: "127.0.0.1:9000", MaxFileBytes: 2048,
+		LLMBaseURL: "https://saved.test/v1", LLMModel: "saved-model", LLMTimeout: time.Minute,
+		GoplsMode: "auto", GoplsPath: "gopls",
+		TypeScriptLSPMode: "auto", TypeScriptLSPPath: "typescript-language-server",
+		SwiftLSPMode: "auto", SwiftLSPPath: "sourcekit-lsp",
+		PythonLSPMode: "auto", PythonLSPPath: "pyright-langserver",
+		RustLSPMode: "auto", RustLSPPath: "rust-analyzer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Workspace != filepath.Clean(operatorWorkspace) || cfg.ListenAddress != "127.0.0.1:0" {
+		t.Fatalf("LoadArgsWithSettings() = workspace %q listen %q", cfg.Workspace, cfg.ListenAddress)
+	}
+}
+
 func TestLoadAcceptsConfiguredOpenAICompatibleEndpoint(t *testing.T) {
 	resetFlags(t)
 	workspace := t.TempDir()

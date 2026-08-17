@@ -65,7 +65,11 @@ func LoadArgs(args []string) (Config, error) {
 // remaining environment-only configuration. Explicit CLI flags still override
 // workspace/listen values because they are parsed after these defaults.
 func LoadWithSettings(values settings.Values) (Config, error) {
-	return load(os.Args[1:], &values)
+	return LoadArgsWithSettings(os.Args[1:], values)
+}
+
+func LoadArgsWithSettings(args []string, values settings.Values) (Config, error) {
+	return load(args, &values)
 }
 
 func load(args []string, saved *settings.Values) (Config, error) {
