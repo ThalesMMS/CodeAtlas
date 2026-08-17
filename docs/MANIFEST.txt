@@ -9,4 +9,5 @@ superpowers/plans/2026-08-16-windows-e2e-lsp-launcher.md
 superpowers/plans/2026-08-16-windows-go-portability.md
 superpowers/plans/2026-08-17-runtime-settings.md
 superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md
+superpowers/specs/2026-08-17-desktop-webview-packaging-design.md
 superpowers/specs/2026-08-17-runtime-settings-design.md

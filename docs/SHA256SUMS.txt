@@ -1,4 +1,4 @@
-6e99fbcae4fee077f1c82ea935dc524736f810e5cd73c79bed79bf06c3db8c00  ./MANIFEST.txt
+5bdf5215746e78cc44b84a319b3e726a2b47e5362f9c820a93c7e60cdbb532d6  ./MANIFEST.txt
 e9505814ae79ce657bebd2b93ae808c25bbf71fe5f27cbcaae53a1c7a2142f85  ./assets/codeatlas-overview.png
 2e2a01f2461cc67c06e5af4cd08a79259c16e49e536dec00cf8fa388943dc8e9  ./schemas/context-pack-v1.schema.json
 7f4c8dddb92ce2ab4b58ad0535092c33400494e0f0be15735a904c5ea6f05dc9  ./superpowers/plans/2026-08-16-deepwiki-planner-reliability.md
@@ -8,4 +8,5 @@ cf5af642c06e0619050cc913aa9a6889ea3f336dc4a773619f4dff6d13ed1a6c  ./superpowers/
 87e5950ea567f5ca68fcea9d8b193ed9e30cd9634a247615aaae776ca963d64b  ./superpowers/plans/2026-08-16-windows-go-portability.md
 edc21248832c46f6d33f4fc90d55a515b1d675269ec528a21e6c3b5667f7064b  ./superpowers/plans/2026-08-17-runtime-settings.md
 ad831b90e62a0d1d97ba9536e3cb5f1fcfb84ca53b5d73f76a8875d95faf4cf3  ./superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md
+b58be347047ce2a4b2e83d81fdf375d9305604e9b81220ab6c8b7f25026eb442  ./superpowers/specs/2026-08-17-desktop-webview-packaging-design.md
 7a836e2aade0ffae890dbb0e688bf1158e2c62c2769688d77764d93fd7485aef  ./superpowers/specs/2026-08-17-runtime-settings-design.md
