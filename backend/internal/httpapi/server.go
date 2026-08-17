@@ -31,33 +31,36 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/scheduler"
 	"github.com/ThalesMMS/CodeAtlas/internal/semantic"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 	"github.com/ThalesMMS/CodeAtlas/internal/webui"
 )
 
 type Server struct {
-	workspace      *service.Workspace
-	store          repository.Store
-	indexer        *indexer.Indexer
-	scheduler      scheduler.ManualReconciler
-	mutations      mutation.Registry
-	retriever      *retrieval.Hybrid
-	explainer      *service.Explainer
-	navigation     *service.NavigationService
-	semanticSync   semantic.DocumentSemanticSync
-	semanticEditor *service.SemanticEditorService
-	codemaps       *service.CodemapService
-	deepWiki       *service.DeepWikiService
-	saver          *service.WorkspaceCommitCoordinator
-	overlays       *overlay.Store
-	parseSessions  *parsesession.Manager
-	overlayParses  *overlayParseCache
-	provider       ai.Provider
-	jobs           *job.Manager
-	readiness      ReadinessReader
-	capabilities   CapabilityReader
-	logger         *slog.Logger
-	metrics        *observability.Metrics
-	events         *sseBroker
+	workspace       *service.Workspace
+	store           repository.Store
+	indexer         *indexer.Indexer
+	scheduler       scheduler.ManualReconciler
+	mutations       mutation.Registry
+	retriever       *retrieval.Hybrid
+	explainer       *service.Explainer
+	navigation      *service.NavigationService
+	semanticSync    semantic.DocumentSemanticSync
+	semanticEditor  *service.SemanticEditorService
+	codemaps        *service.CodemapService
+	deepWiki        *service.DeepWikiService
+	saver           *service.WorkspaceCommitCoordinator
+	overlays        *overlay.Store
+	parseSessions   *parsesession.Manager
+	overlayParses   *overlayParseCache
+	provider        ai.Provider
+	jobs            *job.Manager
+	readiness       ReadinessReader
+	capabilities    CapabilityReader
+	logger          *slog.Logger
+	metrics         *observability.Metrics
+	events          *sseBroker
+	settingsManager *settings.Manager
+	settingsToken   string
 }
 
 const documentLeaseTTL = 30 * time.Minute
@@ -78,6 +81,13 @@ func (s *Server) SetMetrics(metrics *observability.Metrics) {
 
 func (s *Server) SetScheduler(reconciler scheduler.ManualReconciler) {
 	s.scheduler = reconciler
+}
+
+// SetSettingsManager enables the process-local settings API. The token is
+// generated once by the composition root and is injected only into HTML.
+func (s *Server) SetSettingsManager(manager *settings.Manager, token string) {
+	s.settingsManager = manager
+	s.settingsToken = token
 }
 
 // ScheduleEmbeddingRebuild submits the same coalescing job used by the public
@@ -168,6 +178,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/health/ready", s.handleReady)
 	mux.HandleFunc("GET /api/capabilities", s.handleCapabilities)
 	mux.HandleFunc("GET /api/stats", s.handleStats)
+	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	mux.HandleFunc("DELETE /api/settings/overrides", s.handleResetSettings)
 	mux.HandleFunc("GET /api/tree", s.handleTree)
 	mux.HandleFunc("GET /api/file", s.handleGetFile)
 	mux.HandleFunc("PUT /api/file", s.handlePutFile)
@@ -197,7 +210,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/reindex", s.handleReindex)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("/api/", s.handleMissingAPI)
-	mux.Handle("/", webui.HandlerWithCSP(frontendCSP))
+	frontend := webui.HandlerWithCSP(frontendCSP)
+	if s.settingsToken != "" {
+		frontend = webui.HandlerWithCSPAndSettingsToken(frontendCSP, s.settingsToken)
+	}
+	mux.Handle("/", frontend)
 	return s.middleware(s.readinessGate(mux))
 }
 

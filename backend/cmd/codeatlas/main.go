@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -171,7 +173,11 @@ func run() int {
 		logger.Error("could not initialize runtime settings", "error", err)
 		return 1
 	}
-	_ = settingsManager
+	settingsToken, err := newSettingsToken()
+	if err != nil {
+		logger.Error("could not initialize settings access token")
+		return 1
+	}
 	internalMutations := mutation.NewMemoryRegistry(mutation.RegistryConfig{})
 	defer internalMutations.Close()
 	backgroundIndexer := indexer.New(cfg.Workspace, cfg.MaxFileBytes, parserEngine, storeRef, retriever)
@@ -205,6 +211,7 @@ func run() int {
 	api.SetMetrics(metrics)
 	api.SetScheduler(indexScheduler)
 	api.SetMutationRegistry(internalMutations)
+	api.SetSettingsManager(settingsManager, settingsToken)
 	settingsRuntime.SetEmbeddingScheduler(api.ScheduleEmbeddingRebuild)
 	httpServer := &http.Server{
 		Handler:           api.Handler(),
@@ -262,6 +269,14 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+func newSettingsToken() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 type startupSettings struct {

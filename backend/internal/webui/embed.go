@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -21,8 +22,9 @@ import (
 var assets embed.FS
 
 const (
-	manifestName        = "codeatlas-manifest.json"
-	cspNoncePlaceholder = "__CODEATLAS_CSP_NONCE__"
+	manifestName             = "codeatlas-manifest.json"
+	cspNoncePlaceholder      = "__CODEATLAS_CSP_NONCE__"
+	settingsTokenPlaceholder = "__CODEATLAS_SETTINGS_TOKEN__"
 )
 
 var (
@@ -64,18 +66,32 @@ func Handler() http.Handler {
 // keeps the security policy owned by the HTTP API while this package injects
 // the same nonce into the otherwise immutable embedded index.
 func HandlerWithCSP(policy func(string) string) http.Handler {
-	return handlerWithAssets(Assets(), policy)
+	return handlerWithAssets(Assets(), policy, "", false)
+}
+
+// HandlerWithCSPAndSettingsToken injects a process-local settings token only
+// into uncached HTML responses. Static assets remain immutable and never carry
+// the token.
+func HandlerWithCSPAndSettingsToken(policy func(string) string, token string) http.Handler {
+	return handlerWithAssets(Assets(), policy, token, true)
 }
 
 func HandlerWithAssets(subtree fs.FS) http.Handler {
-	return handlerWithAssets(subtree, nil)
+	return handlerWithAssets(subtree, nil, "", false)
 }
 
-func handlerWithAssets(subtree fs.FS, cspPolicy func(string) string) http.Handler {
+func handlerWithAssets(subtree fs.FS, cspPolicy func(string) string, settingsToken string, injectSettingsToken bool) http.Handler {
 	validationErr := ValidateAssets(subtree)
 	index, indexErr := fs.ReadFile(subtree, "index.html")
 	if validationErr == nil && cspPolicy != nil && bytes.Count(index, []byte(cspNoncePlaceholder)) != 1 {
 		validationErr = fmt.Errorf("index.html must contain exactly one CSP nonce placeholder")
+	}
+	settingsPlaceholderCount := bytes.Count(index, []byte(settingsTokenPlaceholder))
+	if validationErr == nil && injectSettingsToken && settingsPlaceholderCount != 1 {
+		validationErr = fmt.Errorf("index.html must contain exactly one settings token placeholder")
+	}
+	if !injectSettingsToken && settingsPlaceholderCount == 1 {
+		index = bytes.Replace(index, []byte(settingsTokenPlaceholder), nil, 1)
 	}
 	indexETag := ""
 	if indexErr == nil {
@@ -94,7 +110,7 @@ func handlerWithAssets(subtree fs.FS, cspPolicy func(string) string) http.Handle
 			}
 			response.Header().Set("Content-Security-Policy", cspPolicy(nonce))
 		}
-		serveIndex(response, request, index, indexErr, indexETag, nonce)
+		serveIndex(response, request, index, indexErr, indexETag, nonce, settingsToken, injectSettingsToken)
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if validationErr != nil {
@@ -158,15 +174,20 @@ func ValidateAssets(subtree fs.FS) error {
 	return nil
 }
 
-func serveIndex(response http.ResponseWriter, request *http.Request, data []byte, err error, etag, nonce string) {
+func serveIndex(response http.ResponseWriter, request *http.Request, data []byte, err error, etag, nonce, settingsToken string, injectSettingsToken bool) {
 	if err != nil {
 		http.Error(response, "frontend not built", http.StatusServiceUnavailable)
 		return
 	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if nonce != "" {
+	if nonce != "" || injectSettingsToken {
 		response.Header().Set("Cache-Control", "no-store")
-		data = bytes.Replace(data, []byte(cspNoncePlaceholder), []byte(nonce), 1)
+		if nonce != "" {
+			data = bytes.Replace(data, []byte(cspNoncePlaceholder), []byte(nonce), 1)
+		}
+		if injectSettingsToken {
+			data = bytes.Replace(data, []byte(settingsTokenPlaceholder), []byte(html.EscapeString(settingsToken)), 1)
+		}
 		_, _ = response.Write(data)
 		return
 	}

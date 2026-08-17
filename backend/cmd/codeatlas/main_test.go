@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,6 +23,27 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/swiftlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/typescriptlsp"
 )
+
+func TestNewSettingsTokenUsesThirtyTwoRandomBytes(t *testing.T) {
+	first, err := newSettingsToken()
+	if err != nil {
+		t.Fatalf("newSettingsToken() error = %v", err)
+	}
+	second, err := newSettingsToken()
+	if err != nil {
+		t.Fatalf("newSettingsToken() second error = %v", err)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(first)
+	if err != nil {
+		t.Fatalf("DecodeString() error = %v", err)
+	}
+	if len(decoded) != 32 {
+		t.Fatalf("decoded token length = %d, want 32", len(decoded))
+	}
+	if first == second {
+		t.Fatal("newSettingsToken() returned the same token twice")
+	}
+}
 
 type startupDocumentStore struct{ document settings.Document }
 

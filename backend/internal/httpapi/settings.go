@@ -1,0 +1,163 @@
+package httpapi
+
+import (
+	"crypto/subtle"
+	"errors"
+	"mime"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
+)
+
+const (
+	settingsTokenHeader = "X-CodeAtlas-Settings-Token"
+	settingsBodyLimit   = int64(64 << 10)
+)
+
+type resetSettingsRequest struct {
+	Revision uint64 `json:"revision"`
+}
+
+func (s *Server) handleGetSettings(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	if !s.authorizeSettings(response, request, false) {
+		return
+	}
+	writeJSON(response, http.StatusOK, s.settingsManager.Snapshot())
+}
+
+func (s *Server) handlePutSettings(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	if !s.authorizeSettings(response, request, true) || !s.requireSettingsJSON(response, request) {
+		return
+	}
+	var payload settings.UpdateRequest
+	if err := decodeJSON(response, request, &payload, settingsBodyLimit); err != nil {
+		s.writeAppError(response, request, err)
+		return
+	}
+	result, err := s.settingsManager.Update(request.Context(), payload)
+	if err != nil {
+		s.writeSettingsManagerError(response, request, err, result.Snapshot)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+func (s *Server) handleResetSettings(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	if !s.authorizeSettings(response, request, true) || !s.requireSettingsJSON(response, request) {
+		return
+	}
+	var payload resetSettingsRequest
+	if err := decodeJSON(response, request, &payload, settingsBodyLimit); err != nil {
+		s.writeAppError(response, request, err)
+		return
+	}
+	result, err := s.settingsManager.Reset(request.Context(), payload.Revision)
+	if err != nil {
+		s.writeSettingsManagerError(response, request, err, result.Snapshot)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+func (s *Server) authorizeSettings(response http.ResponseWriter, request *http.Request, mutation bool) bool {
+	if s.settingsManager == nil || s.settingsToken == "" {
+		writeErrorEnvelope(response, http.StatusServiceUnavailable, "SETTINGS_UNAVAILABLE", "Settings are unavailable.", true, nil, requestIDFrom(request.Context()))
+		return false
+	}
+	provided := request.Header.Get(settingsTokenHeader)
+	if subtle.ConstantTimeCompare([]byte(provided), []byte(s.settingsToken)) != 1 ||
+		!isLoopbackPeer(request.RemoteAddr) || !isLoopbackHost(request.Host) ||
+		!validSettingsOrigin(request, mutation) {
+		writeErrorEnvelope(response, http.StatusForbidden, "SETTINGS_ACCESS_DENIED", "Settings access was denied.", false, nil, requestIDFrom(request.Context()))
+		return false
+	}
+	return true
+}
+
+func isLoopbackPeer(remoteAddress string) bool {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddress))
+	if err != nil {
+		host = strings.Trim(strings.TrimSpace(remoteAddress), "[]")
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func isLoopbackHost(rawHost string) bool {
+	host := strings.TrimSpace(rawHost)
+	if parsed, _, err := net.SplitHostPort(host); err == nil {
+		host = parsed
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validSettingsOrigin(request *http.Request, required bool) bool {
+	rawOrigin := strings.TrimSpace(request.Header.Get("Origin"))
+	if rawOrigin == "" {
+		return !required
+	}
+	origin, err := url.Parse(rawOrigin)
+	if err != nil || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || origin.Path != "" {
+		return false
+	}
+	expectedScheme := "http"
+	if request.TLS != nil {
+		expectedScheme = "https"
+	}
+	return strings.EqualFold(origin.Scheme, expectedScheme) && strings.EqualFold(origin.Host, request.Host)
+}
+
+func (s *Server) requireSettingsJSON(response http.ResponseWriter, request *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || !strings.EqualFold(mediaType, "application/json") {
+		writeErrorEnvelope(response, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type application/json is required.", false, nil, requestIDFrom(request.Context()))
+		return false
+	}
+	return true
+}
+
+func (s *Server) writeSettingsManagerError(response http.ResponseWriter, request *http.Request, err error, fallback settings.SanitizedSnapshot) {
+	var managerError *settings.ManagerError
+	if !errors.As(err, &managerError) {
+		s.writeAppError(response, request, err)
+		return
+	}
+	snapshot := managerError.Snapshot
+	if snapshot.Groups == nil {
+		snapshot = fallback
+	}
+	details := map[string]any{"snapshot": snapshot}
+	status := http.StatusServiceUnavailable
+	message := "Settings could not be applied."
+	switch managerError.Code {
+	case settings.SettingsRevisionConflict:
+		status = http.StatusConflict
+		message = "Settings changed since they were loaded."
+	case settings.SettingsValidationFailed:
+		status = http.StatusBadRequest
+		message = "Some settings are invalid."
+		details["fields"] = managerError.Fields
+	case settings.SettingsVaultFailed:
+		message = "Credentials could not be stored."
+	case settings.SettingsPrepareFailed:
+		message = "The runtime rejected these settings."
+		if len(managerError.Fields) > 0 {
+			details["fields"] = managerError.Fields
+		}
+	case settings.SettingsSaveFailed:
+		message = "Settings could not be saved."
+	}
+	s.logError(request, status, managerError.Code, managerError, requestIDFrom(request.Context()))
+	writeErrorEnvelope(response, status, managerError.Code, message, status >= 500, details, requestIDFrom(request.Context()))
+}

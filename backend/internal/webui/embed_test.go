@@ -158,6 +158,43 @@ func TestHandlerWithAssetsUsesFallbackMIMEForCompressedSourceMap(t *testing.T) {
 	}
 }
 
+func TestHandlerInjectsFreshNonceAndSettingsTokenOnlyIntoHTML(t *testing.T) {
+	t.Parallel()
+	const token = "settings-token-sentinel"
+	handler := webui.HandlerWithCSPAndSettingsToken(func(nonce string) string {
+		return "style-src 'nonce-" + nonce + "'"
+	}, token)
+
+	first := httptest.NewRecorder()
+	handler.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/", nil))
+	if first.Code != http.StatusOK {
+		t.Fatalf("index status = %d body=%s", first.Code, first.Body.String())
+	}
+	if got := first.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("index Cache-Control = %q, want no-store", got)
+	}
+	body := first.Body.String()
+	if strings.Count(body, token) != 1 || strings.Contains(body, "__CODEATLAS_SETTINGS_TOKEN__") || strings.Contains(body, "__CODEATLAS_CSP_NONCE__") {
+		t.Fatalf("index token/nonce substitution is invalid")
+	}
+
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/", nil))
+	if first.Header().Get("Content-Security-Policy") == second.Header().Get("Content-Security-Policy") {
+		t.Fatal("HTML responses reused a CSP nonce")
+	}
+
+	manifest, err := webui.Manifest(webui.Assets())
+	if err != nil {
+		t.Fatalf("Manifest() error = %v", err)
+	}
+	asset := httptest.NewRecorder()
+	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/"+manifest.Assets.Entrypoints[0], nil))
+	if strings.Contains(asset.Body.String(), token) {
+		t.Fatal("hashed asset response contains settings token")
+	}
+}
+
 func viteAssets() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html":                       {Data: []byte(`<!doctype html><html><head><script type="module" crossorigin src="/assets/main-Abc12345.js"></script><link rel="stylesheet" crossorigin href="/assets/main-Abc12345.css"></head><body></body></html>`)},
