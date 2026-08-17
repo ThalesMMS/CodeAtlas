@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ThalesMMS/CodeAtlas/blob/main/docs/schemas/context-pack-v1.schema.json",
+  "title": "CodeAtlas ContextPack v1",
+  "description": "Canonical evidence bundle sent to an AI provider by CodeAtlas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "hash",
+    "snapshot",
+    "feature",
+    "task",
+    "evidence",
+    "graph",
+    "omissions",
+    "budget",
+    "policyVersion",
+    "generatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "context-pack/v1"},
+    "id": {"type": "string"},
+    "hash": {"type": "string"},
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "revision", "createdAt", "schema", "identityAlgorithm"],
+      "properties": {
+        "snapshotId": {"type": "string"},
+        "revision": {"type": "integer", "minimum": 0},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "schema": {"type": "integer", "minimum": 0},
+        "identityAlgorithm": {"type": "string"}
+      }
+    },
+    "feature": {"enum": ["hover", "see_more", "codemap", "deepwiki"]},
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": {"type": "string"},
+        "instruction": {"type": "string"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "symbolId": {"type": "string"},
+        "occurrenceId": {"type": "string"},
+        "path": {"type": "string"},
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end"],
+          "properties": {
+            "start": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["line", "column"],
+              "properties": {
+                "line": {"type": "integer", "minimum": 0},
+                "column": {"type": "integer", "minimum": 0},
+                "encoding": {"type": "string"}
+              }
+            },
+            "end": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["line", "column"],
+              "properties": {
+                "line": {"type": "integer", "minimum": 0},
+                "column": {"type": "integer", "minimum": 0},
+                "encoding": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "path", "range", "contentHash", "title", "content", "relevance", "confidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"enum": ["ast_observation", "lsp_fact", "comment", "test", "config", "retrieved_inference"]},
+          "symbolId": {"type": "string"},
+          "occurrenceId": {"type": "string"},
+          "path": {"type": "string"},
+          "range": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end"],
+            "properties": {
+              "start": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["line", "column"],
+                "properties": {
+                  "line": {"type": "integer", "minimum": 0},
+                  "column": {"type": "integer", "minimum": 0},
+                  "encoding": {"type": "string"}
+                }
+              },
+              "end": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["line", "column"],
+                "properties": {
+                  "line": {"type": "integer", "minimum": 0},
+                  "column": {"type": "integer", "minimum": 0},
+                  "encoding": {"type": "string"}
+                }
+              }
+            }
+          },
+          "contentHash": {"type": "string"},
+          "title": {"type": "string"},
+          "content": {"type": "string"},
+          "relation": {"type": "string"},
+          "relevance": {"type": "number", "minimum": 0, "maximum": 1},
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source"],
+              "properties": {
+                "source": {"type": "string"},
+                "detail": {"type": "string"}
+              }
+            }
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["evidenceId"],
+            "properties": {
+              "evidenceId": {"type": "string"},
+              "symbolId": {"type": "string"},
+              "label": {"type": "string"}
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to", "type"],
+            "properties": {
+              "from": {"type": "string"},
+              "to": {"type": "string"},
+              "type": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason"],
+        "properties": {
+          "reason": {"enum": ["budget", "low_relevance", "duplicate", "unsupported", "stale", "source_unavailable"]},
+          "ref": {"type": "string"},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestedBytes", "usedBytes", "estimatedTokens"],
+      "properties": {
+        "requestedBytes": {"type": "integer", "minimum": 0},
+        "usedBytes": {"type": "integer", "minimum": 0},
+        "estimatedTokens": {"type": "integer", "minimum": 0}
+      }
+    },
+    "policyVersion": {"type": "string"},
+    "generatedAt": {"type": "string", "format": "date-time"}
+  }
+}
