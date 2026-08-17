@@ -51,26 +51,77 @@ if errorlevel 1 (
   echo Error: npm ^>=11.16.0 and ^<12 is required. Found %NPM_VERSION%.>&2
   exit /b 1
 )
-if defined CC (
-  where "%CC%" >nul 2>&1
-  if not errorlevel 1 goto compiler_found
+if defined CC goto configured_cc
+if defined CXX goto configured_cxx
+where gcc >nul 2>&1
+if errorlevel 1 goto try_clang_pair
+where g++ >nul 2>&1
+if errorlevel 1 goto try_clang_pair
+set "CC=gcc"
+set "CXX=g++"
+goto compiler_pair_found
+
+:try_clang_pair
+where clang >nul 2>&1
+if errorlevel 1 goto compiler_pair_missing
+where clang++ >nul 2>&1
+if errorlevel 1 goto compiler_pair_missing
+set "CC=clang"
+set "CXX=clang++"
+goto compiler_pair_found
+
+:configured_cc
+where "%CC%" >nul 2>&1
+if errorlevel 1 (
   echo Error: The configured C compiler was not found: %CC%>&2
   exit /b 1
 )
-where gcc >nul 2>&1
-if not errorlevel 1 (
-  set "CC=gcc"
-  goto compiler_found
+if defined CXX goto validate_cxx
+for %%I in ("%CC%") do set "CC_NAME=%%~nI"
+if /i "%CC_NAME%"=="gcc" set "CXX=g++"
+if /i "%CC_NAME%"=="clang" set "CXX=clang++"
+if not defined CXX (
+  echo Error: Set CXX to the C++ compiler matching the configured C compiler: %CC%>&2
+  exit /b 1
 )
-where clang >nul 2>&1
-if not errorlevel 1 (
-  set "CC=clang"
-  goto compiler_found
+goto validate_cxx
+
+:configured_cxx
+where "%CXX%" >nul 2>&1
+if errorlevel 1 (
+  echo Error: The configured C++ compiler was not found: %CXX%>&2
+  exit /b 1
 )
-echo Error: A GCC or Clang C compiler available to cgo is required.>&2
+for %%I in ("%CXX%") do set "CXX_NAME=%%~nI"
+if /i "%CXX_NAME%"=="g++" set "CC=gcc"
+if /i "%CXX_NAME%"=="clang++" set "CC=clang"
+if not defined CC (
+  echo Error: Set CC to the C compiler matching the configured C++ compiler: %CXX%>&2
+  exit /b 1
+)
+goto validate_cc
+
+:validate_cxx
+where "%CXX%" >nul 2>&1
+if errorlevel 1 (
+  echo Error: The configured C++ compiler was not found: %CXX%>&2
+  exit /b 1
+)
+goto compiler_pair_found
+
+:validate_cc
+where "%CC%" >nul 2>&1
+if errorlevel 1 (
+  echo Error: The configured C compiler was not found: %CC%>&2
+  exit /b 1
+)
+goto compiler_pair_found
+
+:compiler_pair_missing
+echo Error: A matching C and C++ compiler pair is required ^(gcc/g++ or clang/clang++^).>&2
 exit /b 1
 
-:compiler_found
+:compiler_pair_found
 pushd "%ROOT%" >nul
 if errorlevel 1 (
   echo Error: Could not enter the CodeAtlas repository directory.>&2
@@ -95,13 +146,15 @@ echo [3/3] Building the native executable...
 if not exist "%ROOT%dist" mkdir "%ROOT%dist"
 cd /d "%ROOT%backend"
 set "CGO_ENABLED=1"
-call go build -tags fts5 -trimpath -o "%ROOT%dist\codeatlas.exe" .\cmd\codeatlas
+call go build -tags "fts5 desktop" -trimpath -ldflags "-H=windowsgui" -o "%ROOT%dist\codeatlas.exe" .\cmd\codeatlas
+if errorlevel 1 goto build_failed
+copy /y "%ROOT%packaging\windows\codeatlas-server.cmd" "%ROOT%dist\codeatlas-server.cmd" >nul
 if errorlevel 1 goto build_failed
 
 cd /d "%ROOT%"
 echo Built %ROOT%dist\codeatlas.exe
 echo Starting CodeAtlas...
-"%ROOT%dist\codeatlas.exe" %*
+start "" /wait "%ROOT%dist\codeatlas.exe" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 popd >nul
 exit /b %EXIT_CODE%

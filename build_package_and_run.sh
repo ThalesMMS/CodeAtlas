@@ -55,15 +55,39 @@ fi
 
 if [[ -n "${CC:-}" ]]; then
   command -v "$CC" >/dev/null 2>&1 || fail "The configured C compiler was not found: $CC"
+  if [[ -z "${CXX:-}" ]]; then
+    case "$(basename -- "$CC")" in
+      cc) CXX='c++' ;;
+      clang) CXX='clang++' ;;
+      gcc) CXX='g++' ;;
+      *) fail "Set CXX to the C++ compiler matching the configured C compiler: $CC" ;;
+    esac
+  fi
+elif [[ -n "${CXX:-}" ]]; then
+  command -v "$CXX" >/dev/null 2>&1 || fail "The configured C++ compiler was not found: $CXX"
+  case "$(basename -- "$CXX")" in
+    c++) CC='cc' ;;
+    clang++) CC='clang' ;;
+    g++) CC='gcc' ;;
+    *) fail "Set CC to the C compiler matching the configured C++ compiler: $CXX" ;;
+  esac
 else
-  for compiler in cc clang gcc; do
-    if command -v "$compiler" >/dev/null 2>&1; then
-      export CC="$compiler"
+  for pair in 'cc:c++' 'clang:clang++' 'gcc:g++'; do
+    compiler="${pair%%:*}"
+    cxx_compiler="${pair#*:}"
+    if command -v "$compiler" >/dev/null 2>&1 && command -v "$cxx_compiler" >/dev/null 2>&1; then
+      CC="$compiler"
+      CXX="$cxx_compiler"
       break
     fi
   done
-  [[ -n "${CC:-}" ]] || fail 'A C compiler is required. On macOS, install the Xcode Command Line Tools with: xcode-select --install'
 fi
+
+[[ -n "${CC:-}" ]] || fail 'A C and C++ compiler pair is required. On macOS, install the Xcode Command Line Tools with: xcode-select --install'
+[[ -n "${CXX:-}" ]] || fail "A C++ compiler matching $CC is required."
+command -v "$CC" >/dev/null 2>&1 || fail "The configured C compiler was not found: $CC"
+command -v "$CXX" >/dev/null 2>&1 || fail "The configured C++ compiler was not found: $CXX"
+export CC CXX
 
 cd "$ROOT"
 
@@ -87,13 +111,17 @@ printf '[2/3] Building the embedded frontend...\n'
   npm run build
 )
 
-printf '[3/3] Building the native executable...\n'
-mkdir -p dist
+printf '[3/3] Building the native application...\n'
+mkdir -p dist/CodeAtlas.app/Contents/MacOS dist/CodeAtlas.app/Contents/Resources
+cp packaging/macos/CodeAtlas.Info.plist dist/CodeAtlas.app/Contents/Info.plist
 (
   cd backend
-  CGO_ENABLED=1 go build -tags fts5 -trimpath -o "$ROOT/dist/codeatlas" ./cmd/codeatlas
+  CGO_ENABLED=1 CC="$CC" CXX="$CXX" go build -tags 'fts5 desktop' -trimpath \
+    -o "$ROOT/dist/CodeAtlas.app/Contents/MacOS/codeatlas" ./cmd/codeatlas
 )
+cp packaging/macos/codeatlas-server dist/codeatlas-server
+chmod +x dist/CodeAtlas.app/Contents/MacOS/codeatlas dist/codeatlas-server
 
-printf 'Built %s\n' "$ROOT/dist/codeatlas"
+printf 'Built %s\n' "$ROOT/dist/CodeAtlas.app"
 printf 'Starting CodeAtlas...\n'
-exec "$ROOT/dist/codeatlas" "$@"
+open -W "$ROOT/dist/CodeAtlas.app" --args "$@"

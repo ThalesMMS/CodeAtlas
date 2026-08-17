@@ -28,6 +28,18 @@ function fixture(t, scriptName) {
   fs.copyFileSync(source, target);
   fs.chmodSync(target, 0o755);
 
+  const templates = scriptName.endsWith('.cmd')
+    ? [path.join('packaging', 'windows', 'codeatlas-server.cmd')]
+    : [path.join('packaging', 'macos', 'CodeAtlas.Info.plist'), path.join('packaging', 'macos', 'codeatlas-server')];
+  for (const relative of templates) {
+    const templateSource = path.join(repoRoot, relative);
+    assert.ok(fs.existsSync(templateSource), `${relative} must be source controlled`);
+    const templateTarget = path.join(root, relative);
+    fs.mkdirSync(path.dirname(templateTarget), { recursive: true });
+    fs.copyFileSync(templateSource, templateTarget);
+    fs.chmodSync(templateTarget, 0o755);
+  }
+
   return {
     root,
     outside,
@@ -78,7 +90,7 @@ exit /b 0
 `);
   fs.writeFileSync(path.join(f.bin, 'go.cmd'), String.raw`@echo off
 if "%~1"=="version" echo go version go1.26.4 windows/amd64& exit /b 0
->>"%CODEATLAS_TEST_LOG%" echo go^|cwd=%CD%^|cgo=%CGO_ENABLED%^|cc=%CC%^|args=%*
+>>"%CODEATLAS_TEST_LOG%" echo go^|cwd=%CD%^|cgo=%CGO_ENABLED%^|cc=%CC%^|cxx=%CXX%^|args=%*
 set "OUTPUT="
 :parse
 if "%~1"=="" goto done
@@ -93,6 +105,7 @@ if defined OUTPUT copy /y "%CODEATLAS_TEST_HELPER%" "%OUTPUT%" >nul
 exit /b 0
 `);
   fs.writeFileSync(path.join(f.bin, 'gcc.cmd'), '@echo off\r\nexit /b 0\r\n');
+  fs.writeFileSync(path.join(f.bin, 'g++.cmd'), '@echo off\r\nexit /b 0\r\n');
 
   const result = spawnSync('cmd.exe', ['/d', '/c', f.script, '-listen', '127.0.0.1:19090'], {
     cwd: f.outside,
@@ -111,11 +124,25 @@ exit /b 0
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Starting CodeAtlas\.\.\./);
   assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas.exe')));
+  assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas-server.cmd')));
+  const serverResult = spawnSync('cmd.exe', ['/d', '/c', path.join(f.root, 'dist', 'codeatlas-server.cmd'), '-listen', '127.0.0.1:19091'], {
+    cwd: f.outside,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: prependPath(f.bin),
+      CODEATLAS_TEST_LOG: f.log,
+      CODEATLAS_TEST_ENV: '',
+      CODEATLAS_WORKSPACE: '',
+    },
+  });
+  assert.equal(serverResult.status, 0, `${serverResult.stdout}\n${serverResult.stderr}`);
   const log = readLog(f.log);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=ci/);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=run build/);
-  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=gcc\|args=build -tags fts5 -trimpath -o "?.*\/dist\/codeatlas\.exe"? \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=gcc\|cxx=g\+\+\|args=build -tags "?fts5 desktop"? -trimpath -ldflags "?-H=windowsgui"? -o "?.*\/dist\/codeatlas\.exe"? \.\/cmd\/codeatlas/);
   assert.match(log, /run\|cwd=.*codeatlas-package-[^/]+\|dotenv=loaded-from-dotenv\|workspace=.*\/examples\/tinycommerce\|args=-listen 127\.0\.0\.1:19090/);
+  assert.match(log, /run\|cwd=.*codeatlas-cwd-[^/]+\|dotenv=\|workspace=\|args=-desktop=false -listen 127\.0\.0\.1:19091/);
 });
 
 test('Windows script rejects unsupported build-tool versions before installation', { skip: process.platform !== 'win32' }, async (t) => {
@@ -149,6 +176,24 @@ test('Windows script rejects unsupported build-tool versions before installation
   }
 });
 
+test('Windows script requires a matching C++ compiler before installation', { skip: process.platform !== 'win32' }, (t) => {
+  const f = fixture(t, 'build_package_and_run.cmd');
+  fs.mkdirSync(f.bin);
+  fs.writeFileSync(path.join(f.bin, 'go.cmd'), '@echo off\r\nif "%~1"=="version" echo go version go1.26.4 windows/amd64\r\nexit /b 0\r\n');
+  fs.writeFileSync(path.join(f.bin, 'node.cmd'), '@echo off\r\nif "%~1"=="--version" echo v26.7.0\r\nexit /b 0\r\n');
+  fs.writeFileSync(path.join(f.bin, 'npm.cmd'), '@echo off\r\nif "%~1"=="--version" echo 11.16.0& exit /b 0\r\n>>"%CODEATLAS_TEST_LOG%" echo npm-started\r\nexit /b 0\r\n');
+  fs.writeFileSync(path.join(f.bin, 'gcc.cmd'), '@echo off\r\nexit /b 0\r\n');
+  const system32 = path.join(process.env.SystemRoot, 'System32');
+  const result = spawnSync('cmd.exe', ['/d', '/c', f.script], {
+    cwd: f.outside,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${f.bin}${path.delimiter}${system32}`, CODEATLAS_TEST_LOG: f.log },
+  });
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /C\+\+ compiler.*g\+\+/i);
+  assert.equal(fs.existsSync(f.log), false, 'npm must not run without a matching C++ compiler');
+});
+
 test('macOS script builds the embedded executable and runs it from the repository root', { skip: process.platform === 'win32' && !findBash() }, (t) => {
   const bash = findBash();
   if (!bash) return t.skip('bash is unavailable');
@@ -171,7 +216,7 @@ fi
 `);
   fs.writeFileSync(path.join(f.bin, 'go'), `#!/usr/bin/env bash
 if [[ "$1" == version ]]; then printf 'go version go1.26.4 darwin/arm64\\n'; exit 0; fi
-printf 'go|cwd=%s|cgo=%s|cc=%s|args=%s\\n' "$PWD" "$CGO_ENABLED" "$CC" "$*" >> "$CODEATLAS_TEST_LOG"
+printf 'go|cwd=%s|cgo=%s|cc=%s|cxx=%s|args=%s\\n' "$PWD" "$CGO_ENABLED" "$CC" "$CXX" "$*" >> "$CODEATLAS_TEST_LOG"
 output=''
 while (($#)); do
   if [[ "$1" == -o ]]; then output="$2"; shift; fi
@@ -180,7 +225,17 @@ done
 if [[ -n "$output" ]]; then cp "$CODEATLAS_TEST_HELPER" "$output"; chmod +x "$output"; fi
 `);
   fs.writeFileSync(path.join(f.bin, 'cc'), '#!/usr/bin/env bash\nexit 0\n');
-  for (const executable of ['npm', 'go', 'cc']) fs.chmodSync(path.join(f.bin, executable), 0o755);
+  fs.writeFileSync(path.join(f.bin, 'c++'), '#!/usr/bin/env bash\nexit 0\n');
+  fs.writeFileSync(path.join(f.bin, 'open'), `#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "$1" == -W ]]
+bundle="$2"
+shift 2
+[[ "$1" == --args ]]
+shift
+exec "$bundle/Contents/MacOS/codeatlas" "$@"
+`);
+  for (const executable of ['npm', 'go', 'cc', 'c++', 'open']) fs.chmodSync(path.join(f.bin, executable), 0o755);
 
   const result = spawnSync(bash, [f.script, '-listen', '127.0.0.1:19090'], {
     cwd: f.outside,
@@ -197,12 +252,24 @@ if [[ -n "$output" ]]; then cp "$CODEATLAS_TEST_HELPER" "$output"; chmod +x "$ou
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Starting CodeAtlas\.\.\./);
   assert.equal(fs.existsSync(dotenvMarker), false, '.env values must never execute shell commands');
-  assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas')));
+  const app = path.join(f.root, 'dist', 'CodeAtlas.app');
+  assert.ok(fs.existsSync(path.join(app, 'Contents', 'MacOS', 'codeatlas')));
+  assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources')));
+  assert.match(fs.readFileSync(path.join(app, 'Contents', 'Info.plist'), 'utf8'), /<string>CodeAtlas<\/string>/);
+  const serverLauncher = path.join(f.root, 'dist', 'codeatlas-server');
+  assert.ok(fs.existsSync(serverLauncher));
+  const serverResult = spawnSync(bash, [serverLauncher, '-listen', '127.0.0.1:19092'], {
+    cwd: f.outside,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: prependPath(f.bin), CODEATLAS_TEST_LOG: f.log, CODEATLAS_TEST_ENV: '', CODEATLAS_WORKSPACE: '' },
+  });
+  assert.equal(serverResult.status, 0, `${serverResult.stdout}\n${serverResult.stderr}`);
   const log = readLog(f.log);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=ci/);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=run build/);
-  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=cc\|args=build -tags fts5 -trimpath -o .*\/dist\/codeatlas \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=cc\|cxx=c\+\+\|args=build -tags fts5 desktop -trimpath -o .*\/dist\/CodeAtlas\.app\/Contents\/MacOS\/codeatlas \.\/cmd\/codeatlas/);
   assert.match(log, /run\|cwd=.*codeatlas-package-[^/]+\|dotenv=\$\(touch "\$CODEATLAS_TEST_MARKER"\)\|workspace=.*\/examples\/tinycommerce\|args=-listen 127\.0\.0\.1:19090/);
+  assert.match(log, /run\|cwd=.*codeatlas-cwd-[^/]+\|dotenv=\|workspace=\|args=-desktop=false -listen 127\.0\.0\.1:19092/);
 });
 
 test('macOS script rejects unsupported build-tool versions before installation', { skip: process.platform === 'win32' && !findBash() }, async (t) => {
@@ -239,6 +306,33 @@ test('macOS script rejects unsupported build-tool versions before installation',
   }
 });
 
+test('macOS script requires a C++ compiler before installation', { skip: process.platform === 'win32' && !findBash() }, (t) => {
+  const bash = findBash();
+  if (!bash) return t.skip('bash is unavailable');
+  const f = fixture(t, 'build_package_and_run.sh');
+  fs.mkdirSync(f.bin);
+  fs.writeFileSync(path.join(f.bin, 'go'), '#!/usr/bin/env bash\nif [[ "$1" == version ]]; then printf "go version go1.26.4 darwin/arm64\\n"; fi\nexit 0\n');
+  fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v26.7.0\\n"; fi\nexit 0\n');
+  fs.writeFileSync(path.join(f.bin, 'npm'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "11.16.0\\n"; else printf installed > "$CODEATLAS_TEST_LOG"; fi\nexit 0\n');
+  fs.writeFileSync(path.join(f.bin, 'cc'), '#!/usr/bin/env bash\nexit 0\n');
+  fs.writeFileSync(path.join(f.bin, 'c++'), '#!/usr/bin/env bash\nexit 0\n');
+  for (const executable of ['go', 'node', 'npm', 'cc', 'c++']) fs.chmodSync(path.join(f.bin, executable), 0o755);
+  const result = spawnSync(bash, [f.script], {
+    cwd: f.outside,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: prependPath(f.bin),
+      CC: 'cc',
+      CXX: 'codeatlas-test-missing-cxx',
+      CODEATLAS_TEST_LOG: f.log,
+    },
+  });
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /C\+\+ compiler.*codeatlas-test-missing-cxx/i);
+  assert.equal(fs.existsSync(f.log), false, 'npm must not run without a C++ compiler');
+});
+
 test('macOS script rejects malformed dotenv entries before installation', { skip: process.platform === 'win32' && !findBash() }, (t) => {
   const bash = findBash();
   if (!bash) return t.skip('bash is unavailable');
@@ -249,7 +343,8 @@ test('macOS script rejects malformed dotenv entries before installation', { skip
   fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v26.7.0\\n"; fi\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'npm'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "11.16.0\\n"; else printf installed > "$CODEATLAS_TEST_LOG"; fi\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'cc'), '#!/usr/bin/env bash\nexit 0\n');
-  for (const executable of ['go', 'node', 'npm', 'cc']) fs.chmodSync(path.join(f.bin, executable), 0o755);
+  fs.writeFileSync(path.join(f.bin, 'c++'), '#!/usr/bin/env bash\nexit 0\n');
+  for (const executable of ['go', 'node', 'npm', 'cc', 'c++']) fs.chmodSync(path.join(f.bin, executable), 0o755);
 
   const result = spawnSync(bash, [f.script], {
     cwd: f.outside,
