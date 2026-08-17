@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -53,27 +54,35 @@ type ValidationIssue struct {
 }
 
 func Load() (Config, error) {
-	return load(nil)
+	return LoadArgs(os.Args[1:])
+}
+
+func LoadArgs(args []string) (Config, error) {
+	return load(args, nil)
 }
 
 // LoadWithSettings applies already-resolved per-user values before parsing the
 // remaining environment-only configuration. Explicit CLI flags still override
 // workspace/listen values because they are parsed after these defaults.
 func LoadWithSettings(values settings.Values) (Config, error) {
-	return load(&values)
+	return load(os.Args[1:], &values)
 }
 
-func load(saved *settings.Values) (Config, error) {
+func load(args []string, saved *settings.Values) (Config, error) {
 	workspaceDefault := envOr("CODEATLAS_WORKSPACE", ".")
 	listenDefault := envOr("CODEATLAS_LISTEN", "127.0.0.1:8080")
 	if saved != nil {
 		workspaceDefault = saved.Workspace
 		listenDefault = saved.ListenAddress
 	}
-	workspaceFlag := flag.String("workspace", workspaceDefault, "workspace directory to index")
-	listenFlag := flag.String("listen", listenDefault, "HTTP listen address")
-	dbFlag := flag.String("db", envOr("CODEATLAS_DB", ""), "SQLite database path")
-	flag.Parse()
+	flags := flag.NewFlagSet("codeatlas", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	workspaceFlag := flags.String("workspace", workspaceDefault, "workspace directory to index")
+	listenFlag := flags.String("listen", listenDefault, "HTTP listen address")
+	dbFlag := flags.String("db", envOr("CODEATLAS_DB", ""), "SQLite database path")
+	if err := flags.Parse(args); err != nil {
+		return Config{}, err
+	}
 
 	workspace, err := filepath.Abs(*workspaceFlag)
 	if err != nil {

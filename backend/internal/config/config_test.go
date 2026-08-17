@@ -1,7 +1,6 @@
 package config
 
 import (
-	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +86,21 @@ func TestLoadAllowsMissingLLMEndpointAndModelForSettingsBootstrap(t *testing.T) 
 	issues := ValidateProvider(cfg)
 	if len(issues) != 2 || issues[0].EnvironmentKey != "CODEATLAS_LLM_BASE_URL" || issues[1].EnvironmentKey != "CODEATLAS_LLM_MODEL" {
 		t.Fatalf("ValidateProvider() = %#v, want missing endpoint/model", issues)
+	}
+}
+
+func TestLoadArgsDoesNotReadProcessArguments(t *testing.T) {
+	resetFlags(t)
+	llmEnv(t)
+	workspace := t.TempDir()
+	os.Args = []string{"codeatlas", "-workspace", filepath.Join(t.TempDir(), "missing")}
+
+	cfg, err := LoadArgs([]string{"-workspace", workspace, "-listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Workspace != filepath.Clean(workspace) || cfg.ListenAddress != "127.0.0.1:0" {
+		t.Fatalf("LoadArgs() = workspace %q listen %q", cfg.Workspace, cfg.ListenAddress)
 	}
 }
 
@@ -569,12 +583,9 @@ func TestLoadRustLSPConfiguration(t *testing.T) {
 
 func resetFlags(t *testing.T) {
 	t.Helper()
-	oldCommandLine := flag.CommandLine
 	oldArgs := os.Args
-	flag.CommandLine = flag.NewFlagSet("codeatlas-test", flag.ContinueOnError)
 	os.Args = []string{"codeatlas"}
 	t.Cleanup(func() {
-		flag.CommandLine = oldCommandLine
 		os.Args = oldArgs
 	})
 }
