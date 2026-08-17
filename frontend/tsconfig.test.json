@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "sourceMap": false,
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["src/mermaid-lite.ts", "src/monaco-editor-contract.ts", "tests/mermaid-lite.test.ts", "tests/monaco-editor-contract.test.ts"],
+  "exclude": [
+    "node_modules",
+    "spikes",
+    ".test-dist",
+    "../backend/internal/webui/dist"
+  ]
+}

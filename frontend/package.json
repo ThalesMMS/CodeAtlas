@@ -1,0 +1,29 @@
+{
+  "name": "@codeatlas/frontend",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=26.0.0",
+    "npm": ">=11.16.0 <12"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "syntax-check": "node --check app.js",
+    "test": "npm run test:ts && node --test app.test.cjs tests/*.test.cjs",
+    "test:ts": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
+    "check": "npm run typecheck && npm run syntax-check && npm test",
+    "audit:high": "npm audit --audit-level=high"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.1",
+    "typescript": "6.0.3",
+    "vite": "8.1.0"
+  },
+  "dependencies": {
+    "monaco-editor": "0.53.0"
+  }
+}

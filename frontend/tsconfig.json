@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/main.ts", "src/mermaid-lite.ts", "src/monaco-editor-adapter.ts", "src/monaco-editor-contract.ts", "src/style.d.ts", "app.js", "vite.config.ts"],
+  "exclude": [
+    "node_modules",
+    "spikes",
+    "../backend/internal/webui/dist"
+  ]
+}

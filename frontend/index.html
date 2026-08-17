@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="codeatlas-style-nonce" content="__CODEATLAS_CSP_NONCE__">
+  <title>CodeAtlas</title>
+</head>
+<body>
+  <div id="bootstrap-overlay" class="bootstrap-overlay" role="alertdialog" aria-live="polite" aria-label="CodeAtlas initialization">
+    <div class="bootstrap-card">
+      <div class="bootstrap-brand">
+        <span class="brand-mark">CA</span>
+        <strong>CodeAtlas</strong>
+      </div>
+      <div class="bootstrap-status">
+        <span id="bootstrap-phase" class="bootstrap-phase">Connecting…</span>
+        <p id="bootstrap-stage" class="bootstrap-stage"></p>
+      </div>
+      <div id="bootstrap-error" class="bootstrap-error hidden"></div>
+      <div id="bootstrap-capabilities" class="bootstrap-capabilities"></div>
+      <p id="bootstrap-instruction" class="bootstrap-instruction"></p>
+      <div class="bootstrap-actions">
+        <button id="bootstrap-retry" class="button primary hidden" type="button">Try again</button>
+      </div>
+      <small id="bootstrap-updated" class="bootstrap-updated"></small>
+    </div>
+  </div>
+
+  <a class="skip-link" href="#editor-mount">Skip to editor</a>
+  <a class="skip-link secondary" href="#file-tree">Skip to file tree</a>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">CA</span>
+        <div>
+          <strong>CodeAtlas</strong>
+          <small id="workspace-label">loading workspace…</small>
+        </div>
+      </div>
+
+      <div class="global-search">
+        <input id="search-input" type="search" autocomplete="off" placeholder="Search for a symbol, flow, or responsibility…" aria-label="Search for a symbol, flow, or responsibility" aria-controls="search-results" aria-expanded="false" aria-autocomplete="list">
+        <kbd>⌘K</kbd>
+        <div id="search-results" class="search-results hidden" role="listbox"></div>
+      </div>
+
+      <div class="topbar-actions">
+        <span id="index-status" class="status-pill">initializing</span>
+        <button id="reindex-button" class="button secondary" type="button">Check for changes</button>
+      </div>
+    </header>
+
+    <main class="workspace-layout" aria-label="Workspace CodeAtlas">
+      <aside class="file-sidebar panel" aria-labelledby="workspace-heading">
+        <div class="panel-header">
+          <div>
+            <span class="eyebrow">Workspace</span>
+            <h2 id="workspace-heading">Files</h2>
+          </div>
+          <button id="refresh-tree-button" class="icon-button" type="button" title="Refresh tree" aria-label="Refresh file tree">↻</button>
+        </div>
+        <div id="file-tree" class="file-tree" role="tree" aria-label="File tree"></div>
+        <div class="sidebar-stats" id="sidebar-stats"></div>
+      </aside>
+
+      <section class="editor-section panel" aria-labelledby="editor-heading">
+        <h2 id="editor-heading" class="sr-only">Editor</h2>
+        <div id="editor-tabs" class="editor-tabs" role="tablist" aria-label="Open files"></div>
+        <div id="empty-editor" class="empty-editor">
+          <div class="empty-symbol">{ }</div>
+          <h1>Local-first editor</h1>
+          <p>Open a file from the tree. Hover over an identifier to get a contextual explanation.</p>
+        </div>
+        <div id="editor-shell" class="editor-shell hidden" role="tabpanel" aria-label="Open file">
+          <div id="editor-mount" class="editor-mount" tabindex="-1" aria-label="Code editor"></div>
+          <div id="hover-card" class="hover-card hidden" role="tooltip" aria-live="polite" aria-labelledby="hover-name" aria-describedby="hover-summary" tabindex="-1" aria-busy="false">
+            <div class="hover-card-head">
+              <span id="hover-kind" class="symbol-kind"></span>
+              <strong id="hover-name"></strong>
+              <button id="hover-pin-button" class="button secondary small" type="button" aria-pressed="false">Pin</button>
+              <button id="hover-close-button" class="icon-button" type="button" title="Close" aria-label="Close quick explanation">×</button>
+            </div>
+            <code id="hover-signature"></code>
+            <p id="hover-summary"></p>
+            <ul id="hover-observations" class="hover-observations"></ul>
+            <div id="hover-error" class="hover-error hidden"></div>
+            <div class="hover-metadata">
+              <span id="hover-freshness"></span>
+              <span id="hover-coverage"></span>
+              <span id="hover-status"></span>
+            </div>
+            <div class="hover-card-actions">
+              <span id="hover-provider" class="provider-label"></span>
+              <button id="see-more-button" class="button primary small" type="button">See more</button>
+            </div>
+          </div>
+        </div>
+        <footer class="editor-statusbar">
+          <span id="file-status">No file open</span>
+          <span id="semantic-status"></span>
+          <span id="diagnostics-status"></span>
+          <span id="cursor-status">Ln 1, Col 1</span>
+          <span id="save-status"></span>
+        </footer>
+      </section>
+
+      <aside class="inspector panel" aria-labelledby="inspector-heading">
+        <h2 id="inspector-heading" class="sr-only">Inspector</h2>
+        <div class="inspector-tabs" role="tablist" aria-label="Inspector panels">
+          <button id="tab-deepwiki" class="inspector-tab active" data-panel="deepwiki" type="button" role="tab" aria-selected="true" aria-controls="panel-deepwiki">DeepWiki</button>
+          <button id="tab-codemap" class="inspector-tab" data-panel="codemap" type="button" role="tab" aria-selected="false" aria-controls="panel-codemap" tabindex="-1">Codemap</button>
+          <button id="tab-explain" class="inspector-tab" data-panel="explain" type="button" role="tab" aria-selected="false" aria-controls="panel-explain" tabindex="-1">Explanation</button>
+          <button id="tab-navigation" class="inspector-tab" data-panel="navigation" type="button" role="tab" aria-selected="false" aria-controls="panel-navigation" tabindex="-1">Navigation</button>
+          <button id="tab-problems" class="inspector-tab" data-panel="problems" type="button" role="tab" aria-selected="false" aria-controls="panel-problems" tabindex="-1">Problems</button>
+          <button id="tab-jobs" class="inspector-tab" data-panel="jobs" type="button" role="tab" aria-selected="false" aria-controls="panel-jobs" tabindex="-1">Jobs</button>
+        </div>
+
+        <section id="panel-deepwiki" class="inspector-panel active" role="tabpanel" aria-labelledby="tab-deepwiki">
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Living documentation</span>
+              <h2>DeepWiki</h2>
+            </div>
+            <button id="refresh-wiki-button" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <select id="wiki-page-select" class="select-control" aria-label="DeepWiki page"></select>
+          <div id="wiki-status" class="wiki-status hidden" role="status"></div>
+          <article id="wiki-content" class="markdown-content"></article>
+        </section>
+
+        <section id="panel-codemap" class="inspector-panel" role="tabpanel" aria-labelledby="tab-codemap" hidden>
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Task-specific map</span>
+              <h2>Codemap</h2>
+            </div>
+          </div>
+          <form id="codemap-form" class="codemap-form">
+            <textarea id="codemap-query" rows="3" placeholder="Example: How does Hover find a symbol and assemble its context?" aria-label="Query used to generate a Codemap"></textarea>
+            <button class="button primary" type="submit">Generate map</button>
+          </form>
+          <div id="codemap-result" class="codemap-result empty-state">
+            <p>Describe a flow, bug, or change. The backend retrieves seeds through BM25/embeddings and expands the AST graph.</p>
+          </div>
+        </section>
+
+        <section id="panel-jobs" class="inspector-panel" role="tabpanel" aria-labelledby="tab-jobs" hidden>
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Operations</span>
+              <h2>Jobs</h2>
+            </div>
+            <button id="jobs-refresh-button" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <div id="jobs-summary" class="navigation-summary">No jobs</div>
+          <div id="jobs-list" class="jobs-list"></div>
+        </section>
+
+        <section id="panel-explain" class="inspector-panel" role="tabpanel" aria-labelledby="tab-explain" hidden>
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Expanded context</span>
+              <h2>See more</h2>
+            </div>
+          </div>
+          <article id="explain-content" class="markdown-content empty-state">
+            <p>Hover over a symbol and select “See more”.</p>
+          </article>
+          <div id="evidence-list" class="evidence-list"></div>
+        </section>
+
+        <section id="panel-navigation" class="inspector-panel" role="tabpanel" aria-labelledby="tab-navigation" hidden>
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Factual relationships</span>
+              <h2>Navigation</h2>
+            </div>
+          </div>
+          <div class="navigation-actions" aria-label="Navigation commands">
+            <button id="nav-definition-button" class="button secondary small" type="button" aria-keyshortcuts="F12">Definition</button>
+            <button id="nav-references-button" class="button secondary small" type="button" aria-keyshortcuts="Shift+F12">References</button>
+            <button id="nav-implementation-button" class="button secondary small" type="button">Implementations</button>
+            <button id="nav-incoming-button" class="button secondary small" type="button">Callers</button>
+            <button id="nav-outgoing-button" class="button secondary small" type="button">Calls</button>
+          </div>
+          <div id="navigation-summary" class="navigation-summary" role="status"></div>
+          <div id="navigation-results" class="nav-results-list" role="listbox" aria-label="Navigation results"></div>
+        </section>
+
+        <section id="panel-problems" class="inspector-panel" role="tabpanel" aria-labelledby="tab-problems" hidden>
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">Versioned diagnostics</span>
+              <h2>Problems</h2>
+            </div>
+            <button id="problem-refresh-button" class="button secondary small" type="button">Refresh</button>
+          </div>
+          <div class="problem-filters">
+            <select id="problem-severity-filter" class="select-control" aria-label="Filter by severity">
+              <option value="all">All</option>
+              <option value="error">Errors</option>
+              <option value="warning">Warnings</option>
+              <option value="info">Info</option>
+              <option value="hint">Hints</option>
+            </select>
+            <input id="problem-source-filter" class="text-control" type="search" placeholder="source" aria-label="Filter problems by source">
+            <input id="problem-path-filter" class="text-control" type="search" placeholder="file" aria-label="Filter problems by file">
+          </div>
+          <div id="problems-summary" class="navigation-summary" role="status"></div>
+          <div id="problems-results" class="problems-list" role="listbox" aria-label="Problems"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="a11y-polite" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="a11y-assertive" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
+  <div id="app-dialog" class="dialog-backdrop hidden">
+    <div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-description" tabindex="-1">
+      <h2 id="app-dialog-title"></h2>
+      <p id="app-dialog-description"></p>
+      <div id="app-dialog-actions" class="dialog-actions"></div>
+    </div>
+  </div>
+  <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
