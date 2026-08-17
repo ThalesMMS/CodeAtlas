@@ -1,0 +1,7 @@
+# CodeAtlas-specific index exclusions (NOT git-tracked behavior).
+# Keep the large vendored/generated Tree-sitter tree out of the index; the manual
+# wrapper and tests under internal/treesitter remain indexable.
+backend/internal/treesitter/vendor/
+backend/internal/treesitter/grammars/
+# Bootstrap caches (see make bootstrap-treesitter).
+backend/internal/treesitter/.bootstrap-cache/
