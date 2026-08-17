@@ -1,0 +1,154 @@
+OUR "SEE MORE" OUTPUT (see below for desired/reference output):
+
+"# Symbol Analysis: `example.com/tinycommerce/internal/order`
+
+## 1\. Purpose and Responsibility
+
+The symbol represents the `internal/order` package, which serves as the core domain-logic component for the Order entity in `tinycommerce`.
+
+*   **Primary responsibility:** Encapsulate order creation, validation, and persistence logic.
+*   **Abstraction:** The package exposes a high-level API (`NewService`, `NewHandler`, `NewMemoryRepository`) that clearly separates the presentation layer (HTTP), service layer (business rules), and data layer (repository).
+
+## 2\. Inputs, Outputs, and Side Effects
+
+Based on evidence from `cmd/api/main.go`:
+
+*   **Inputs:**
+*   Receives constructor-injected dependencies: `repository` (a repository implementation) and `service` (service logic).
+*   Exposes HTTP methods: `handler.Create` is registered with `http.ServeMux` for `POST /orders` routes.
+
+*   **Outputs:**
+*   Returns struct instances: `repository` through `NewMemoryRepository`, `service` through `NewService`, and `handler` through `NewHandler`.
+*   These objects are used to assemble the application's execution tree.
+
+*   **Side effects:**
+*   **State initialization:** Calling `order.NewMemoryRepository()` probably initializes in-memory data structures, such as maps or slices, for temporary order storage.
+*   **Handler registration:** By exposing `handler.Create`, the package allows external HTTP requests to modify system state by creating orders.
+
+## 3\. Position in the Larger Flow
+
+The `order` package is a central application component that bridges HTTP infrastructure and domain logic.
+
+*   **Callers:**
+*   `cmd/api/main.go` (lines 10-12): the application entry point instantiates and connects the `order` package components.
+
+*   **Callees and dependencies:**
+*   **Internal to the package:** The package probably contains internal types for `Service`, `Handler`, and `Repository`.
+*   **External:**
+*   `net/http` through `handler.Create`, which should implement `http.Handler` or be adapted to it.
+*   Possible domain packages for order validation, which are not directly visible but are implied by `NewService` logic.
+
+**Data flow:** `HTTP Request` -\> `order.Handler.Create` -\> `order.Service` -\> `order.Repository` -\> `Memory/Storage`.
+
+## 4\. Invariants, Edge Cases, and Change Risks
+
+*   **Implicit invariants:**
+*   `Service` must ensure that only valid orders are persisted by `Repository`.
+*   `Handler` must map the HTTP payload correctly to the order domain.
+
+*   **Edge cases:**
+*   **Concurrency:** Because the repository is a `MemoryRepository`, read and write operations must be concurrency-safe, for example with `sync.Mutex` or `sync.RWMutex`. Without synchronization, race conditions can occur.
+*   **Empty state:** The system must correctly handle the absence of orders before the first order is created.
+
+*   **Change risks:**
+*   **HTTP API coupling:** If `order.Handler` depends heavily on specific `http.Request` or `http.ResponseWriter` types, changing the HTTP input/output structure could break the package.
+*   **In-memory persistence:** `MemoryRepository` suggests a development or test environment. Changing the repository interface to support durable persistence, such as a database, may require changes to the interface exposed by the `order` package.
+
+## 5\. Related Tests or Visible Gaps
+
+*   **Visible tests:**
+*   The provided snippet contains no direct evidence of test files (`*_test.go`). However, `NewMemoryRepository` strongly suggests that the package was designed for testability by allowing a fake or in-memory repository to be injected into unit tests.
+
+*   **Gaps:**
+*   **Integration tests:** There is no evidence of tests covering the complete `HTTP -> Handler -> Service -> Repository` flow.
+*   **Concurrency tests:** The available evidence is incomplete because the `MemoryRepository` implementation is not shown in full.
+
+### Evidence used
+
+**cmd/api/main.go::example.com/tinycommerce/internal/order**cmd/api/main.go:7 · selection**cmd/api/main.go**cmd/api/main.go:1 · incoming imports"
+
+
+
+
+
+
+REFERENCE "SEE MORE" OUTPUT (we want that kind of quality):
+"**order** is a Go package containing the domain logic for order management.
+
+It encapsulates data structures, persistence interfaces, and service components to handle the checkout flow and storage of order data.
+
+**Definition**
+
+The `order` package is imported in the application's entry point to initialize the order processing stack. It defines the core `Order` aggregate and the `Repository` interface for data access.
+
+```go
+6:11:examples/tinycommerce/internal/order/model.go
+// Order is the aggregate accepted by the checkout flow.
+type Order struct {
+	ID         string
+	CustomerID string
+	TotalCents int64
+	CreatedAt  time.Time
+}
+```
+
+```go
+9:12:examples/tinycommerce/internal/order/repository.go
+// Repository isolates the application service from persistence details.
+type Repository interface {
+	Save(ctx context.Context, order Order) error
+	Find(ctx context.Context, id string) (Order, bool)
+}
+```
+
+- **Type**: Go Package
+- **Path**: `example.com/tinycommerce/internal/order`
+- **Key Components**: `Order` struct, `Repository` interface, `MemoryRepository` implementation
+
+In the main application file, the package is used to wire up the dependency injection chain, creating a repository, passing it to a service, and passing that service to an HTTP handler.
+
+```go
+7:13:examples/tinycommerce/cmd/api/main.go
+import (
+	"example.com/tinycommerce/internal/order"
+)
+
+func main() {
+	// Initialize repository, service, and handler from the order package
+	repository := order.NewMemoryRepository()
+	service := order.NewService(repository)
+	handler := order.NewHandler(service)
+
+	// ...register HTTP handler...
+}
+```
+
+### Example Usages
+
+The primary usage of the `order` package is found in the application's main function, where it is bootstrapped to handle HTTP requests.
+
+```go
+10:16:examples/tinycommerce/cmd/api/main.go
+func main() {
+	repository := order.NewMemoryRepository()
+	service := order.NewService(repository)
+	handler := order.NewHandler(service)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /orders", handler.Create)
+	// ...start server...
+}
+```
+
+This code demonstrates the initialization of the order subsystem. The `NewMemoryRepository` creates an in-memory data store, which is then used by `NewService` to create business logic handlers, and finally `NewHandler` creates the HTTP controller capable of processing `POST /orders` requests.
+
+### Notes
+
+- The `Order` struct is explicitly documented as an "aggregate" in the code comments, indicating the use of Domain-Driven Design (DDD) principles where `Order` represents a cluster of domain objects treated as a single unit.
+- The default repository implementation provided by the package is `MemoryRepository`, which stores data in a map. This implies that data is volatile and will be lost if the application restarts.
+
+### See Also
+
+- `Order`: The core data structure representing a sales order.
+- `Repository`: The interface defining the contract for saving and finding orders.
+- `MemoryRepository`: The in-memory implementation of the `Repository` interface."

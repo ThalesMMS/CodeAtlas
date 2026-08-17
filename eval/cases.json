@@ -1,0 +1,266 @@
+[
+  {
+    "id": "hover-go-submit",
+    "feature": "hover",
+    "target": { "path": "internal/order/service.go", "line": 18, "column": 20 },
+    "expected": {
+      "symbol": "Submit",
+      "relevantSymbolKeys": ["validateOrder"],
+      "forbiddenPaths": [".codeatlas/"]
+    }
+  },
+  {
+    "id": "hover-go-order-package",
+    "feature": "hover",
+    "target": { "path": "cmd/api/main.go", "line": 13, "column": 13 },
+    "expected": {
+      "symbol": "order",
+      "relevantSymbolKeys": ["NewHandler", "NewMemoryRepository", "NewService"],
+      "evidenceContentSubstrings": ["order.NewHandler", "order.NewMemoryRepository", "order.NewService"],
+      "forbiddenPaths": [".codeatlas/"]
+    }
+  },
+  {
+    "id": "hover-ts-checkout",
+    "feature": "hover",
+    "target": { "path": "web/src/checkout.ts", "line": 4, "column": 12 },
+    "expected": {
+      "symbol": "completeCheckout",
+      "relevantSymbolKeys": ["submitOrder"],
+      "forbiddenPaths": [".codeatlas/"]
+    }
+  },
+  {
+    "id": "hover-swift-save",
+    "feature": "hover",
+    "target": { "path": "Sources/Commerce/MemoryOrderRepository.swift", "line": 10, "column": 10 },
+    "expected": {
+      "symbol": "save",
+      "forbiddenPaths": [".codeatlas/", "Package.swift"]
+    }
+  },
+  {
+    "id": "hover-python-save",
+    "feature": "hover",
+    "target": { "path": "commerce/repository.py", "line": 24, "column": 15 },
+    "expected": {
+      "symbol": "save",
+      "evidenceContentSubstrings": ["async def save(self, order: Order) -> None:"],
+      "forbiddenPaths": [".codeatlas/", ".venv/"]
+    }
+  },
+  {
+    "id": "hover-rust-save",
+    "feature": "hover",
+    "target": { "path": "src/repository.rs", "line": 25, "column": 8 },
+    "expected": {
+      "symbol": "save",
+      "evidenceContentSubstrings": ["fn save(&mut self, order: Order)"],
+      "forbiddenPaths": [".codeatlas/", "target/"]
+    }
+  },
+  {
+    "id": "seemore-go-submit",
+    "feature": "see_more",
+    "target": { "path": "internal/order/service.go", "line": 18, "column": 20 },
+    "expected": {
+      "symbol": "Submit",
+      "relevantSymbolKeys": ["validateOrder"]
+    }
+  },
+  {
+    "id": "seemore-ts-checkout",
+    "feature": "see_more",
+    "target": { "path": "web/src/checkout.ts", "line": 4, "column": 12 },
+    "expected": {
+      "symbol": "completeCheckout",
+      "relevantSymbolKeys": ["submitOrder", "validateCheckout"],
+      "requiredEvidencePaths": ["web/src/api.ts", "web/src/checkout.ts"]
+    }
+  },
+  {
+    "id": "seemore-go-order-package",
+    "feature": "see_more",
+    "target": { "path": "cmd/api/main.go", "line": 13, "column": 13 },
+    "expected": {
+      "symbol": "order",
+      "relevantSymbolKeys": ["Order", "Repository", "MemoryRepository", "TestServiceSubmitPersistsValidOrder"],
+      "evidenceContentSubstrings": ["Order is the aggregate accepted by the checkout flow.", "Repository isolates the application service from persistence details.", "order.NewHandler"],
+      "requiredEvidencePaths": [
+        "internal/order/http.go",
+        "internal/order/model.go",
+        "internal/order/repository.go",
+        "internal/order/service.go",
+        "internal/order/service_test.go"
+      ]
+    }
+  },
+  {
+    "id": "seemore-swift-save",
+    "feature": "see_more",
+    "target": { "path": "Sources/Commerce/MemoryOrderRepository.swift", "line": 10, "column": 10 },
+    "expected": {
+      "symbol": "save",
+      "requiredEvidencePaths": ["Sources/Commerce/MemoryOrderRepository.swift"]
+    }
+  },
+  {
+    "id": "seemore-python-save",
+    "feature": "see_more",
+    "target": { "path": "commerce/repository.py", "line": 24, "column": 15 },
+    "expected": {
+      "symbol": "save",
+      "requiredEvidencePaths": ["commerce/repository.py"],
+      "evidenceContentSubstrings": ["class MemoryOrderRepository(OrderRepository):"]
+    }
+  },
+  {
+    "id": "seemore-rust-save",
+    "feature": "see_more",
+    "target": { "path": "src/repository.rs", "line": 25, "column": 8 },
+    "expected": {
+      "symbol": "save",
+      "requiredEvidencePaths": ["src/repository.rs"],
+      "evidenceContentSubstrings": ["impl Repository for MemoryRepository"]
+    }
+  },
+  {
+    "id": "codemap-order-flow",
+    "feature": "codemap",
+    "query": "checkout submit order service save",
+    "expected": {
+      "relevantSymbolKeys": ["Submit"],
+      "minNodes": 3
+    }
+  },
+  {
+    "id": "codemap-js-ts-checkout-flow",
+    "feature": "codemap",
+    "query": "bootstrap checkout controller complete submit order",
+    "expected": {
+      "relevantSymbolKeys": ["bootstrapCheckout", "CheckoutController", "completeCheckout", "submitOrder"],
+      "minNodes": 3
+    }
+  },
+  {
+    "id": "codemap-swift-order-flow",
+    "feature": "codemap",
+    "query": "Swift MemoryOrderRepository save find OrderRepository",
+    "expected": {
+      "relevantSymbolKeys": ["MemoryOrderRepository", "save", "find", "OrderRepository"],
+      "minNodes": 3
+    }
+  },
+  {
+    "id": "codemap-python-order-flow",
+    "feature": "codemap",
+    "query": "Python MemoryOrderRepository save find OrderRepository",
+    "expected": {
+      "relevantSymbolKeys": ["MemoryOrderRepository", "save", "find", "OrderRepository"],
+      "minNodes": 3
+    }
+  },
+  {
+    "id": "codemap-rust-order-flow",
+    "feature": "codemap",
+    "query": "Rust repository_event record_save MemoryRepository OrderService",
+    "expected": {
+      "relevantSymbolKeys": ["repository_event", "record_save", "OrderService", "constructs_service_without_running_repository_hooks"],
+      "minNodes": 3
+    }
+  },
+  {
+    "id": "deepwiki-order-module",
+    "feature": "deepwiki",
+    "scope": [
+      "internal/order/service.go",
+      "internal/order/http.go",
+      "internal/order/model.go",
+      "internal/order/repository.go"
+    ],
+    "expected": {
+      "relevantSymbolKeys": ["Submit"],
+      "evidenceContentSubstrings": ["Order is the aggregate accepted by the checkout flow."]
+    }
+  },
+  {
+    "id": "deepwiki-js-ts-frontend",
+    "feature": "deepwiki",
+    "scope": [
+      "web/src/app.ts",
+      "web/src/checkout.ts",
+      "web/src/api.ts"
+    ],
+    "expected": {
+      "relevantSymbolKeys": ["bootstrapCheckout", "CheckoutController", "completeCheckout", "submitOrder"],
+      "evidenceContentSubstrings": ["fetch(\"/orders\"", "validateCheckout(input)"]
+    }
+  },
+  {
+    "id": "deepwiki-swift-commerce",
+    "feature": "deepwiki",
+    "scope": [
+      "Sources/Commerce/Order.swift",
+      "Sources/Commerce/MemoryOrderRepository.swift",
+      "Sources/Commerce/Order+Display.swift",
+      "Tests/CommerceTests/OrderServiceTests.swift"
+    ],
+    "expected": {
+      "relevantSymbolKeys": ["Order", "OrderRepository", "MemoryOrderRepository", "testPersistsAnOrder"],
+      "evidenceContentSubstrings": ["Lifecycle of an order.", "async throws"]
+    }
+  },
+  {
+    "id": "deepwiki-python-commerce",
+    "feature": "deepwiki",
+    "scope": [
+      "commerce/models.py",
+      "commerce/repository.py",
+      "commerce/service.py",
+      "tests/test_service.py",
+      "tests/test_unittest_service.py"
+    ],
+    "expected": {
+      "relevantSymbolKeys": ["Order", "OrderRepository", "MemoryOrderRepository", "OrderService", "test_submit_persists_order"],
+      "evidenceContentSubstrings": ["Stores orders without executing external code.", "async def submit"]
+    }
+  },
+  {
+    "id": "deepwiki-rust-commerce",
+    "feature": "deepwiki",
+    "scope": [
+      "src/lib.rs",
+      "src/models.rs",
+      "src/repository.rs",
+      "src/service.rs",
+      "tests/service_test.rs"
+    ],
+    "expected": {
+      "relevantSymbolKeys": ["Order", "Repository", "MemoryRepository", "OrderService", "constructs_service_without_running_repository_hooks"],
+      "evidenceContentSubstrings": ["Repository defines the persistence boundary", "pub async fn submit"]
+    }
+  },
+  {
+    "id": "deepwiki-repository-config",
+    "feature": "deepwiki",
+    "expected": {
+      "evidenceContentSubstrings": ["module example.com/tinycommerce", "go 1.23"],
+      "forbiddenPaths": [".env"]
+    }
+  },
+  {
+    "id": "hover-ambiguous-fast-process",
+    "feature": "hover",
+    "target": { "path": "ambiguous.go", "line": 15, "column": 14 },
+    "expected": { "symbol": "Process" }
+  },
+  {
+    "id": "hover-adversarial-lookup",
+    "feature": "hover",
+    "target": { "path": "inject.go", "line": 13, "column": 8 },
+    "expected": {
+      "symbol": "Lookup",
+      "forbiddenPaths": ["/etc", "secret/keys", "../../secret"]
+    }
+  }
+]

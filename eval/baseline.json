@@ -1,0 +1,30 @@
+{
+  "versions": {
+    "hover": "hover.v3",
+    "seeMore": "see_more.v3",
+    "codemap": "codemap.v2",
+    "deepWiki": "deepwiki.v3",
+    "output": "explanation/v2,codemap-narrative/v2,wiki-page/v4,mermaid/v1"
+  },
+  "minTargetResolution": 1,
+  "minMeanRecallAtK": 1,
+  "maxGroundingInvalid": 0,
+  "maxBudgetViolations": 0,
+  "maxForbiddenHits": 0,
+  "requireDeterminism": true,
+  "minSurfaceScores": {
+    "codemap": 90,
+    "deepwiki": 100,
+    "hover": 100,
+    "see_more": 100
+  },
+  "maxSpeculationHits": {
+    "codemap": 0,
+    "deepwiki": 0,
+    "hover": 0,
+    "see_more": 0
+  },
+  "maxExternalNodeRatio": {
+    "codemap": 0.1388888888888889
+  }
+}

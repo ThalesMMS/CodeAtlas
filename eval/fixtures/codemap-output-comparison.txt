@@ -1,0 +1,127 @@
+Below is the lower-quality codemap output from our tool (CodeAtlas) for the question "What is the handler's role in the main function?" in the "tinycommerce" example repository. The reference output appears farther below (we want something similar).
+
+"### Codemap: What is the handler's role in the main function?
+
+36 nodes45 edgesopenai-compatible:default
+
+### Overview
+
+The retrieved subgraph describes the architecture of a Go order-management application centered on the `main` function (`cmd/api/main.go`). The entry point initializes the system's core components: an in-memory repository (`NewMemoryRepository`), a service layer (`NewService`), and an HTTP handler (`NewHandler`). The handler is registered with the default mux to process requests, connecting the HTTP entry point to the business logic.
+
+Executing a request—specifically, creating an order—follows a well-defined layered flow. The handler's `Create` method (`internal/order/http.go`) decodes the JSON request body and delegates the operation to the service. The service (`internal/order/service.go`) validates the order and then persists it through the repository's `Save` method. The repository (`internal/order/repository.go`) manages in-memory state and uses locks for concurrency safety.
+
+The context also includes the `TestServiceSubmitPersistsValidOrder` unit test, which validates the order-submission flow and confirms the integration between the service and repository. However, the graph contains many external nodes for Go standard-library packages such as `net/http`, `encoding/json`, and `context`. This indicates that the analysis focuses on the application's internal structure without resolving standard-library dependencies, as expected for this scope.
+
+### Likely Flow
+
+1.  **Initialization**: The `main` function in `cmd/api/main.go` runs and calls `NewMemoryRepository`, `NewService`, and `NewHandler` to configure the infrastructure.
+2.  **Route registration**: `main` registers the handler with `http.NewServeMux` through `mux.HandleFunc`, binding a URL to the handler's `Create` method.
+3.  **Request receipt**: An HTTP request reaches the server and triggers `Create` in `internal/order/http.go`.
+4.  **Decoding**: `Create` uses `json.NewDecoder` to decode the request payload into an internal data structure.
+5.  **Service delegation**: The handler invokes `h.service.Submit` and passes the decoded data to the service layer.
+6.  **Validation and persistence**: `Submit` in `internal/order/service.go` calls `validateOrder` to check the data and then calls `s.repository.Save` to persist the order.
+7.  **Storage**: The repository (`internal/order/repository.go`) runs `Save` and uses `r.mu.Lock` to protect in-memory state before updating it.
+
+### Files Most Likely to Change
+
+-   `cmd/api/main.go`: Application entry point and configuration.
+-   `internal/order/http.go`: HTTP control logic, including request decoding and service delegation.
+-   `internal/order/service.go`: Business rules, validation, and orchestration between the handler and repository.
+-   `internal/order/repository.go`: In-memory persistence and concurrency management.
+
+### Uncertainties
+
+-   **External dependencies**: Most edges point to external nodes (`external-*`) representing Go standard-library packages such as `net/http`, `encoding/json`, and `context`. This limits the ability to trace their detailed implementation within the provided source.
+-   **Data structure**: The `Decode` node is external, so the exact order object structure or decoder implementation is not detailed in the subgraph; only its invocation is visible.
+-   **Test relationships**: `TestServiceSubmitPersistsValidOrder` is connected to the primary flow, but it is a test node rather than part of production execution. It validates the integration among `NewMemoryRepository`, `NewService`, and `service.Submit`.
+
+CMD
+
+FUNCTION**main**cmd/api/main.go:10FILE**main.go**cmd/api/main.go:1
+
+INTERNAL
+
+TYPE**Handler**internal/order/http.go:8FUNCTION**NewHandler**internal/order/http.go:12METHOD**Create**internal/order/http.go:16METHOD**Find**internal/order/repository.go:30FILE**http.go**internal/order/http.go:1FUNCTION**NewMemoryRepository**internal/order/repository.go:19FUNCTION**NewService**internal/order/service.go:14FILE**repository.go**internal/order/repository.go:1METHOD**Save**internal/order/repository.go:23FILE**service.go**internal/order/service.go:1METHOD**Submit**internal/order/service.go:18FUNCTION**validateOrder**internal/order/service.go:26
+
+TESTS
+
+TEST**TestServiceSubmitPersistsValidOrder**internal/order/service\_test.go:8
+
+EXTERNAL
+
+EXTERNAL**context**Unresolved dependency for a local symbol.EXTERNAL**context.Background**Unresolved dependency for a local symbol.EXTERNAL**Decode**Unresolved dependency for a local symbol.EXTERNAL**encoding/json**Unresolved dependency for a local symbol.EXTERNAL**err.Error**Unresolved dependency for a local symbol.EXTERNAL**example.com/tinycommerce/internal/order**Unresolved dependency for a local symbol.EXTERNAL**http.Error**Unresolved dependency for a local symbol.EXTERNAL**http.ListenAndServe**Unresolved dependency for a local symbol.EXTERNAL**http.NewServeMux**Unresolved dependency for a local symbol.EXTERNAL**json.NewDecoder**Unresolved dependency for a local symbol.EXTERNAL**log**Unresolved dependency for a local symbol.EXTERNAL**log.Fatal**Unresolved dependency for a local symbol.EXTERNAL**make**Unresolved dependency for a local symbol.EXTERNAL**mux.HandleFunc**Unresolved dependency for a local symbol.EXTERNAL**net/http**Unresolved dependency for a local symbol.EXTERNAL**request.Context**Unresolved dependency for a local symbol.EXTERNAL**response.WriteHeader**Unresolved dependency for a local symbol.EXTERNAL**s.clock**Unresolved dependency for a local symbol.EXTERNAL**t.Fatal**Unresolved dependency for a local symbol.EXTERNAL**t.Fatalf**Unresolved dependency for a local symbol.EXTERNAL**UTC**Unresolved dependency for a local symbol.
+
+### Trace Guide
+
+1.  main.go —imports→ log
+2.  main.go —imports→ net/http
+3.  main.go —imports→ example.com/tinycommerce/internal/order
+4.  http.go —imports→ encoding/json
+5.  http.go —imports→ net/http
+6.  repository.go —imports→ context
+7.  service.go —imports→ context
+8.  main —calls→ NewMemoryRepository
+9.  main —calls→ NewService
+10.  main —calls→ NewHandler"
+
+HERE is the higher-quality codemap output from the reference tool for the same question in the same example repository:
+
+"## HTTP Handler Flow for Order Creation
+
+Created June 24, 2026 at 12:47 AM
+
+A map of the HTTP handler flow from initial setup in `main` through order persistence, showing how `POST /orders` requests pass through the application layers. Highlights include dependency creation \[1a-1c\], endpoint registration \[1d\], HTTP processing \[1e-1f\], and persistence \[1g-1h\].
+
+## 1. POST /orders Request Setup and Processing
+### Shows how the handler is configured in `main` and processes HTTP requests that create orders.
+
+AI-generated guide
+
+# Motivation
+
+This system solves the problem of **managing e-commerce orders** simply and efficiently. When a customer completes a purchase, the application must receive the order data, validate it, and persist it safely. The layered architecture separates responsibilities: the HTTP layer handles web requests, the service layer contains business logic, and the repository manages data persistence.
+
+# Details
+
+The flow begins in `main()`, where the essential dependencies are created: an in-memory repository \[1a\], an order service \[1b\], and an HTTP handler \[1c\]. The handler is registered to process POST requests at the `/orders` endpoint \[1d\].
+
+When a request arrives, the handler decodes the JSON request body \[1e\] and delegates processing to the service \[1f\]. The service validates the order data (ID, customer, and total amount), adds a timestamp \[1g\], and persists the order in the repository \[1h\]. The repository uses a mutex to provide safe access to in-memory data.
+
+This structure is easy to extend: the repository can be replaced with a real database without changing the handler or service.
+
+HTTP API Setup
+	main() entrypoint
+
+		1a
+		#### Repository Creation - main.go:11
+			repository := order.NewMemoryRepository()
+		1b
+		#### Service Creation - main.go:12
+			service := order.NewService(repository)
+		1c		#### Handler Creation - main.go:13
+			handler := order.NewHandler(service)
+		1d
+		#### Handler Registration - main.go:16
+			mux.HandleFunc("POST /orders", handler.Create)
+
+Request Processing
+	handler.Create() entrypoint
+
+		1e
+		#### JSON Decoding - http.go:18
+			if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		1f
+		#### Service Call - http.go:22
+			if err := h.service.Submit(request.Context(), input); err != nil {
+			validateOrder()
+			1g
+			#### Order Timestamp - service.go:22
+				order.CreatedAt = s.clock().UTC()
+			1h
+			#### Order Persistence - service.go:23
+				return s.repository.Save(ctx, order)
+
+		HTTP Response
+
+	MemoryRepository.Save()
+		orders[id] = order (mutex protected)"

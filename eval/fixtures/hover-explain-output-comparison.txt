@@ -1,0 +1,12 @@
+Current hover output for "order" on line 13 of api/main.go:
+"FUNCTION
+main
+func main()
+function main in cmd/api/main.go; calls http.ListenAndServe, http.NewServeMux, log.Fatal, mux.HandleFunc, order.NewHandler."
+
+Hover output from the reference tool:
+"Constructor namespace for order domain logic in tinycommerce API.
+-Referenced as example.com/tinycommerce/internal/order.
+-Used to create repository, service, and handler in main.go.
+-Provides NewMemoryRepository, NewService, and NewHandler constructors."
+We want our hover explanation to produce output closer to the reference tool.
