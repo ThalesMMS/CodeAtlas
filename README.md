@@ -3,6 +3,8 @@
 [![CI](https://github.com/ThalesMMS/CodeAtlas/actions/workflows/test.yml/badge.svg)](https://github.com/ThalesMMS/CodeAtlas/actions/workflows/test.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
+![CodeAtlas workspace showing code intelligence, Hover Explain, and DeepWiki](docs/assets/codeatlas-overview.png)
+
 CodeAtlas is a local-first code intelligence workspace with a Go backend and an embedded web editor. It builds a shared repository index for four connected experiences:
 
 - **Hover Explain** for concise, evidence-backed symbol explanations.
