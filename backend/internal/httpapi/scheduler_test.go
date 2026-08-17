@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -176,5 +177,73 @@ func TestStatsExposeInternalMutationSnapshot(t *testing.T) {
 	}
 	if _, exists := internal["entries"]; exists {
 		t.Fatalf("stats internalMutations exposed entries: %#v", internal)
+	}
+}
+
+type blockingSchedulerEmbeddingProvider struct {
+	calls   atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingSchedulerEmbeddingProvider) Name() string    { return "embedding-test" }
+func (p *blockingSchedulerEmbeddingProvider) Available() bool { return true }
+func (p *blockingSchedulerEmbeddingProvider) Complete(context.Context, string, string, int) (string, error) {
+	return "", nil
+}
+func (p *blockingSchedulerEmbeddingProvider) Embed(context.Context, []string) ([][]float64, error) {
+	call := p.calls.Add(1)
+	if call >= 2 {
+		select {
+		case p.entered <- struct{}{}:
+		default:
+		}
+		<-p.release
+	}
+	return [][]float64{{0.1, 0.2}}, nil
+}
+
+func TestEmbeddingRuntimeRebuildUsesRepositoryDeduplicationKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &blockingSchedulerEmbeddingProvider{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	runtime := retrieval.NewEmbeddingRuntime(provider, false)
+	prepared, err := runtime.Prepare(context.Background(), retrieval.EmbeddingConfiguration{
+		Provider: provider, Enabled: true, Model: "embed", BaseURL: "https://example.test/v1",
+	}, domain.EmbeddingIndexMetadata{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.Activate()
+	retriever := retrieval.NewHybridWithRuntime(store, runtime)
+	workspace := service.NewWorkspace(root)
+	api := httpapi.New(
+		workspace, store, nil, retriever, nil, nil, nil, nil, provider,
+		coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	t.Cleanup(func() {
+		close(provider.release)
+		_ = api.ShutdownJobs(context.Background())
+	})
+
+	first, err := api.ScheduleEmbeddingRebuild(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-provider.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("embedding rebuild did not start")
+	}
+	second, err := api.ScheduleEmbeddingRebuild(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" || first != second {
+		t.Fatalf("deduplicated job IDs = %q/%q", first, second)
 	}
 }

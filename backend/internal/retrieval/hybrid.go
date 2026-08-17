@@ -16,10 +16,9 @@ import (
 )
 
 type Hybrid struct {
-	store    repository.Store
-	provider ai.Provider
-	enabled  bool
-	logger   *slog.Logger
+	store      repository.Store
+	embeddings *EmbeddingRuntime
+	logger     *slog.Logger
 	// degradationLogged prevents a remote outage from producing one warning per
 	// debounced search keystroke. Reasons are stable and logged once per process.
 	degradationLogged sync.Map
@@ -30,7 +29,14 @@ type Hybrid struct {
 func (h *Hybrid) SetLogger(logger *slog.Logger) { h.logger = logger }
 
 func NewHybrid(store repository.Store, provider ai.Provider, enabled bool) *Hybrid {
-	return &Hybrid{store: store, provider: provider, enabled: enabled}
+	return NewHybridWithRuntime(store, NewEmbeddingRuntime(provider, enabled))
+}
+
+func NewHybridWithRuntime(store repository.Store, runtime *EmbeddingRuntime) *Hybrid {
+	if runtime == nil {
+		runtime = NewEmbeddingRuntime(ai.Disabled{}, false)
+	}
+	return &Hybrid{store: store, embeddings: runtime}
 }
 
 func (h *Hybrid) Search(ctx context.Context, query string, limit int) ([]domain.SearchHit, error) {
@@ -44,14 +50,15 @@ func (h *Hybrid) Search(ctx context.Context, query string, limit int) ([]domain.
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if !h.enabled {
+	embeddingSnapshot := h.embeddings.load()
+	if embeddingSnapshot.State != EmbeddingAvailable {
 		return limitLexical(lexical, limit), nil
 	}
-	if !h.provider.Available() {
+	if !embeddingSnapshot.provider.Available() {
 		return h.degradedLexical(lexical, limit, "provider_unavailable"), nil
 	}
 
-	vectors, err := h.provider.Embed(ctx, []string{query})
+	vectors, err := embeddingSnapshot.provider.Embed(ctx, []string{query})
 	if err != nil {
 		if contextError := preserveSearchContextError(ctx, err); contextError != nil {
 			return nil, contextError
@@ -152,7 +159,8 @@ func preserveSearchContextError(ctx context.Context, err error) error {
 }
 
 func (h *Hybrid) RefreshEmbeddings(ctx context.Context, symbols []domain.Symbol) error {
-	if !h.enabled {
+	embeddingSnapshot := h.embeddings.load()
+	if embeddingSnapshot.State != EmbeddingAvailable {
 		return nil
 	}
 	existing := h.store.Embeddings()
@@ -165,7 +173,7 @@ func (h *Hybrid) RefreshEmbeddings(ctx context.Context, symbols []domain.Symbol)
 			pending = append(pending, symbol)
 		}
 	}
-	vectors, err := h.GenerateEmbeddings(ctx, pending)
+	vectors, err := h.generateEmbeddings(ctx, pending, embeddingSnapshot)
 	if err != nil {
 		return err
 	}
@@ -242,10 +250,15 @@ func (h *Hybrid) searchDense(ctx context.Context, queryVector []float64, limit i
 // per input. Callers (e.g. a batched index commit) embed the vectors in a
 // ChangeSet rather than mutating the store during preparation.
 func (h *Hybrid) GenerateEmbeddings(ctx context.Context, symbols []domain.Symbol) (map[string][]float64, error) {
-	if !h.enabled {
+	embeddingSnapshot := h.embeddings.load()
+	return h.generateEmbeddings(ctx, symbols, embeddingSnapshot)
+}
+
+func (h *Hybrid) generateEmbeddings(ctx context.Context, symbols []domain.Symbol, embeddingSnapshot *EmbeddingSnapshot) (map[string][]float64, error) {
+	if embeddingSnapshot.State != EmbeddingAvailable {
 		return nil, nil
 	}
-	if !h.provider.Available() {
+	if !embeddingSnapshot.provider.Available() {
 		return nil, ai.ErrUnavailable
 	}
 	targets := make([]domain.Symbol, 0, len(symbols))
@@ -265,7 +278,7 @@ func (h *Hybrid) GenerateEmbeddings(ctx context.Context, symbols []domain.Symbol
 		for _, symbol := range targets[start:end] {
 			texts = append(texts, SymbolEmbeddingTextV2(symbol))
 		}
-		vectors, err := h.provider.Embed(ctx, texts)
+		vectors, err := embeddingSnapshot.provider.Embed(ctx, texts)
 		if err != nil {
 			return nil, err
 		}

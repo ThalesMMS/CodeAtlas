@@ -80,6 +80,17 @@ func (s *Server) SetScheduler(reconciler scheduler.ManualReconciler) {
 	s.scheduler = reconciler
 }
 
+// ScheduleEmbeddingRebuild submits the same coalescing job used by the public
+// maintenance API. Runtime settings activation uses this narrow surface so
+// concurrent incompatible changes reuse the stable repository rebuild key.
+func (s *Server) ScheduleEmbeddingRebuild(ctx context.Context) (domain.JobID, error) {
+	snapshot, err := s.submitReindexJob(ctx, "embeddings.rebuild", "embeddings:repository", "")
+	if err != nil {
+		return "", err
+	}
+	return snapshot.ID, nil
+}
+
 // SetMutationRegistry exposes internal-write correlation status in diagnostics.
 func (s *Server) SetMutationRegistry(registry mutation.Registry) {
 	s.mutations = registry

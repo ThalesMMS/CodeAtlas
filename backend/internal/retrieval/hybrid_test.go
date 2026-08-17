@@ -165,6 +165,63 @@ func TestRefreshEmbeddingsCopiesExistingIndexOnce(t *testing.T) {
 	}
 }
 
+func TestHybridUsesDenseOnlyWhenRuntimeAvailable(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*testing.T, *EmbeddingRuntime, *embeddingProvider)
+		wantDense bool
+	}{
+		{name: "disabled", configure: func(_ *testing.T, _ *EmbeddingRuntime, _ *embeddingProvider) {}},
+		{name: "rebuilding", configure: func(t *testing.T, runtime *EmbeddingRuntime, provider *embeddingProvider) {
+			prepared, err := runtime.Prepare(context.Background(), EmbeddingConfiguration{Provider: provider, Enabled: true, Model: "m", BaseURL: "https://example.test/v1"}, domain.EmbeddingIndexMetadata{}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared.Activate()
+			provider.calls = 0
+		}},
+		{name: "unavailable", configure: func(t *testing.T, runtime *EmbeddingRuntime, provider *embeddingProvider) {
+			prepared, err := runtime.Prepare(context.Background(), EmbeddingConfiguration{Provider: provider, Enabled: true, Model: "m", BaseURL: "https://example.test/v1"}, domain.EmbeddingIndexMetadata{}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared.Activate()
+			runtime.MarkFailed(prepared.Fingerprint())
+			provider.calls = 0
+		}},
+		{name: "available", wantDense: true, configure: func(_ *testing.T, runtime *EmbeddingRuntime, _ *embeddingProvider) {
+			runtime.forceAvailableForCompatibility()
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := &denseStoreSpy{Store: indexedStore(t)}
+			provider := &embeddingProvider{vectors: [][]float64{{0.1, 0.2}}}
+			runtime := NewEmbeddingRuntime(provider, false)
+			test.configure(t, runtime, provider)
+			retriever := NewHybridWithRuntime(store, runtime)
+
+			hits, err := retriever.Search(context.Background(), "submit order", 5)
+			if err != nil || len(hits) == 0 {
+				t.Fatalf("Search = %#v, %v", hits, err)
+			}
+			if got := store.denseCalls > 0; got != test.wantDense {
+				t.Fatalf("dense used = %v, want %v", got, test.wantDense)
+			}
+			if got := provider.calls > 0; got != test.wantDense {
+				t.Fatalf("query embedding used = %v, want %v", got, test.wantDense)
+			}
+			vectors, err := retriever.GenerateEmbeddings(context.Background(), []domain.Symbol{{ID: "x", Kind: "function"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(vectors) > 0; got != test.wantDense {
+				t.Fatalf("incremental embedding used = %v, want %v", got, test.wantDense)
+			}
+		})
+	}
+}
+
 func indexedStore(t *testing.T) repository.Store {
 	t.Helper()
 	repository, err := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))

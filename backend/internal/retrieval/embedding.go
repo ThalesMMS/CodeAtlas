@@ -87,25 +87,41 @@ func validateIncrementalVectors(vectors map[string][]float64, dimension int) err
 // commit so the published snapshot holds one compatible configuration. A rebuild
 // failure is returned so readiness can fail rather than serve a partial index.
 func (h *Hybrid) Reconcile(ctx context.Context, providerID, model string) error {
-	if !h.enabled {
+	embeddingSnapshot := h.embeddings.load()
+	if embeddingSnapshot.State == EmbeddingDisabled {
 		return nil
 	}
-	if !h.provider.Available() {
+	if !embeddingSnapshot.provider.Available() {
 		return ai.ErrUnavailable
 	}
-	dimension, err := h.probeDimension(ctx)
+	dimension, err := h.probeDimension(ctx, embeddingSnapshot.provider)
 	if err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
 		return err
 	}
 	desired := DesiredMetadata(providerID, model, dimension)
+	if embeddingSnapshot.Fingerprint != (EmbeddingFingerprint{}) {
+		desired = embeddingSnapshot.Fingerprint.Metadata()
+		if desired.Dimension != dimension {
+			h.markEmbeddingFailed(embeddingSnapshot)
+			return fmt.Errorf("embedding dimension changed after preparation")
+		}
+	}
 	metadata, err := h.store.EmbeddingMetadataContext(ctx)
 	if err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
 		return err
 	}
 	if MetadataCompatible(metadata, desired) && h.store.EmbeddingCount() > 0 {
+		h.markEmbeddingAvailable(embeddingSnapshot)
 		return nil
 	}
-	return h.rebuildAll(ctx, desired)
+	if err := h.rebuildAll(ctx, desired, embeddingSnapshot); err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
+		return err
+	}
+	h.markEmbeddingAvailable(embeddingSnapshot)
+	return nil
 }
 
 // RebuildEmbeddings regenerates every vector even when the persisted metadata is
@@ -113,28 +129,44 @@ func (h *Hybrid) Reconcile(ctx context.Context, providerID, model string) error 
 // metadata established by startup reconciliation, so this is an explicit
 // maintenance operation rather than another incremental repository scan.
 func (h *Hybrid) RebuildEmbeddings(ctx context.Context) error {
-	if !h.enabled {
+	embeddingSnapshot := h.embeddings.load()
+	if embeddingSnapshot.State == EmbeddingDisabled {
 		return fmt.Errorf("embeddings are disabled")
 	}
-	if !h.provider.Available() {
+	if !embeddingSnapshot.provider.Available() {
 		return ai.ErrUnavailable
 	}
 	metadata, err := h.store.EmbeddingMetadataContext(ctx)
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(metadata.Provider) == "" || strings.TrimSpace(metadata.Model) == "" {
+	desired := metadata
+	if embeddingSnapshot.Fingerprint != (EmbeddingFingerprint{}) {
+		desired = embeddingSnapshot.Fingerprint.Metadata()
+	}
+	if strings.TrimSpace(desired.Provider) == "" || strings.TrimSpace(desired.Model) == "" {
 		return fmt.Errorf("embedding index metadata is not configured")
 	}
-	dimension, err := h.probeDimension(ctx)
+	dimension, err := h.probeDimension(ctx, embeddingSnapshot.provider)
 	if err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
 		return err
 	}
-	return h.rebuildAll(ctx, DesiredMetadata(metadata.Provider, metadata.Model, dimension))
+	if embeddingSnapshot.Fingerprint != (EmbeddingFingerprint{}) && embeddingSnapshot.Fingerprint.Dimension != dimension {
+		h.markEmbeddingFailed(embeddingSnapshot)
+		return fmt.Errorf("embedding dimension changed after preparation")
+	}
+	desired.Dimension = dimension
+	if err := h.rebuildAll(ctx, desired, embeddingSnapshot); err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
+		return err
+	}
+	h.markEmbeddingAvailable(embeddingSnapshot)
+	return nil
 }
 
-func (h *Hybrid) probeDimension(ctx context.Context) (int, error) {
-	vectors, err := h.provider.Embed(ctx, []string{"codeatlas embedding dimension probe"})
+func (h *Hybrid) probeDimension(ctx context.Context, provider ai.Provider) (int, error) {
+	vectors, err := provider.Embed(ctx, []string{"codeatlas embedding dimension probe"})
 	if err != nil {
 		return 0, err
 	}
@@ -144,14 +176,15 @@ func (h *Hybrid) probeDimension(ctx context.Context) (int, error) {
 	return len(vectors[0]), nil
 }
 
-func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMetadata) error {
+func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMetadata, embeddingSnapshot *EmbeddingSnapshot) error {
 	view, err := h.store.SnapshotContext(ctx)
 	if err != nil {
 		return err
 	}
 	symbols := view.AllSymbols()
 	_ = view.Close()
-	vectors, err := h.GenerateEmbeddings(ctx, symbols)
+	availableSnapshot := &EmbeddingSnapshot{State: EmbeddingAvailable, Fingerprint: embeddingSnapshot.Fingerprint, provider: embeddingSnapshot.provider}
+	vectors, err := h.generateEmbeddings(ctx, symbols, availableSnapshot)
 	if err != nil {
 		return err
 	}
@@ -162,4 +195,16 @@ func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMe
 	}
 	_, err = h.store.CommitPreparedContext(ctx, prepared)
 	return err
+}
+
+func (h *Hybrid) markEmbeddingAvailable(snapshot *EmbeddingSnapshot) {
+	if snapshot.Fingerprint != (EmbeddingFingerprint{}) {
+		h.embeddings.MarkAvailable(snapshot.Fingerprint)
+	}
+}
+
+func (h *Hybrid) markEmbeddingFailed(snapshot *EmbeddingSnapshot) {
+	if snapshot.Fingerprint != (EmbeddingFingerprint{}) {
+		h.embeddings.MarkFailed(snapshot.Fingerprint)
+	}
 }
