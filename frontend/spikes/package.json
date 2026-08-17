@@ -1,0 +1,40 @@
+{
+  "name": "@codeatlas/editor-spikes",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev:monaco": "vite --host 127.0.0.1 --port 5174 --open /editor-monaco/",
+    "dev:codemirror": "vite --host 127.0.0.1 --port 5175 --open /editor-codemirror/",
+    "fixtures": "tsx fixtures/generator.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "benchmark": "tsx benchmarks/run-benchmarks.ts",
+    "report": "tsx benchmarks/report.ts"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/commands": "6.10.4",
+    "@codemirror/lang-go": "6.0.1",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/language": "6.12.3",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/search": "6.7.1",
+    "@codemirror/state": "6.7.0",
+    "@codemirror/view": "6.43.2",
+    "axe-core": "4.12.1",
+    "monaco-editor": "0.56.0",
+    "playwright": "1.61.1",
+    "vite": "8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.1",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "dompurify": "3.4.13"
+  }
+}

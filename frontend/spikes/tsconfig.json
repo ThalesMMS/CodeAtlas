@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "shared/**/*.ts",
+    "editor-monaco/**/*.ts",
+    "editor-codemirror/**/*.ts",
+    "benchmarks/**/*.ts",
+    "fixtures/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "fixtures/generated/**/*"
+  ]
+}

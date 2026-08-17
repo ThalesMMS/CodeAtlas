@@ -1,0 +1,171 @@
+{
+  "generatedAt": "2026-08-16T19:31:42.321Z",
+  "environment": {
+    "node": "v22.15.1",
+    "platform": "win32",
+    "arch": "x64",
+    "browser": "149.0.7827.55"
+  },
+  "results": [
+    {
+      "editor": "monaco",
+      "version": "0.56.0",
+      "build": {
+        "rawBytes": 9520403,
+        "gzipBytes": 2166288,
+        "chunks": 7,
+        "workerBytes": 9461901,
+        "workerCount": 6,
+        "coldBuildMs": 1822.0959000000003,
+        "warmBuildMs": 1841.5794,
+        "dependencyCount": 108,
+        "licenses": {
+          "@codemirror/autocomplete": "MIT",
+          "@codemirror/commands": "MIT",
+          "@codemirror/lang-go": "MIT",
+          "@codemirror/lang-javascript": "MIT",
+          "@codemirror/language": "MIT",
+          "@codemirror/lint": "MIT",
+          "@codemirror/search": "MIT",
+          "@codemirror/state": "MIT",
+          "@codemirror/view": "MIT",
+          "axe-core": "MPL-2.0",
+          "monaco-editor": "MIT",
+          "playwright": "Apache-2.0",
+          "vite": "MIT",
+          "@types/node": "MIT",
+          "tsx": "MIT",
+          "typescript": "Apache-2.0"
+        },
+        "cspRelaxations": [
+          "style-src 'unsafe-inline'",
+          "img-src data:"
+        ]
+      },
+      "runtime": {
+        "firstUsableMs": 1126.1000000014901,
+        "open100KiBMs": 6.5,
+        "open1MiBMs": 26.399999998509884,
+        "openLimitMs": 28.700000002980232,
+        "tabSwitchP95Ms": 11.400000002235174,
+        "typingP50Ms": 0.6000000014901161,
+        "typingP95Ms": 2.399999998509884,
+        "semanticTokensMs": 16.800000000745058,
+        "diagnosticsMs": 2.600000001490116,
+        "revealRangeMs": 0.19999999925494194,
+        "memoryOneModelBytes": 81400000,
+        "memoryThirtyModelsBytes": null,
+        "memoryAfterDisposeBytes": 81400000,
+        "longTasks": 0
+      },
+      "accessibility": {
+        "axeViolations": 3,
+        "keyboard": "pass",
+        "screenReaderNotes": "Hover card uses role=dialog and aria-live; diagnostics are mirrored in a problems list.",
+        "highContrast": "needs-work",
+        "reducedMotion": "pass",
+        "zoom200": "pass",
+        "imeComposition": "needs-work"
+      },
+      "csp": {
+        "passed": true,
+        "externalRequests": [],
+        "requiresUnsafeEval": false,
+        "requiresUnsafeInline": true,
+        "requiresBlobWorker": false
+      },
+      "gates": {
+        "eliminated": false,
+        "reasons": []
+      }
+    },
+    {
+      "editor": "codemirror",
+      "version": "6.43.2",
+      "build": {
+        "rawBytes": 466346,
+        "gzipBytes": 158399,
+        "chunks": 1,
+        "workerBytes": 0,
+        "workerCount": 0,
+        "coldBuildMs": 1822.0959000000003,
+        "warmBuildMs": 1841.5794,
+        "dependencyCount": 108,
+        "licenses": {
+          "@codemirror/autocomplete": "MIT",
+          "@codemirror/commands": "MIT",
+          "@codemirror/lang-go": "MIT",
+          "@codemirror/lang-javascript": "MIT",
+          "@codemirror/language": "MIT",
+          "@codemirror/lint": "MIT",
+          "@codemirror/search": "MIT",
+          "@codemirror/state": "MIT",
+          "@codemirror/view": "MIT",
+          "axe-core": "MPL-2.0",
+          "monaco-editor": "MIT",
+          "playwright": "Apache-2.0",
+          "vite": "MIT",
+          "@types/node": "MIT",
+          "tsx": "MIT",
+          "typescript": "Apache-2.0"
+        },
+        "cspRelaxations": [
+          "style-src 'unsafe-inline'"
+        ]
+      },
+      "runtime": {
+        "firstUsableMs": 578.3000000007451,
+        "open100KiBMs": 2.899999998509884,
+        "open1MiBMs": 6,
+        "openLimitMs": 7.400000002235174,
+        "tabSwitchP95Ms": 8.5,
+        "typingP50Ms": 3,
+        "typingP95Ms": 3.7999999970197678,
+        "semanticTokensMs": 5.099999997764826,
+        "diagnosticsMs": 15.800000000745058,
+        "revealRangeMs": 7.700000002980232,
+        "memoryOneModelBytes": 64000000,
+        "memoryThirtyModelsBytes": null,
+        "memoryAfterDisposeBytes": 64000000,
+        "longTasks": 0
+      },
+      "accessibility": {
+        "axeViolations": 5,
+        "keyboard": "pass",
+        "screenReaderNotes": "Hover card uses role=dialog and aria-live; diagnostics are mirrored in a problems list.",
+        "highContrast": "needs-work",
+        "reducedMotion": "pass",
+        "zoom200": "pass",
+        "imeComposition": "needs-work"
+      },
+      "csp": {
+        "passed": true,
+        "externalRequests": [],
+        "requiresUnsafeEval": false,
+        "requiresUnsafeInline": true,
+        "requiresBlobWorker": false
+      },
+      "gates": {
+        "eliminated": true,
+        "reasons": [
+          "accessibility smoke gate exceeded"
+        ]
+      }
+    }
+  ],
+  "audit": {
+    "vulnerabilityCounts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "advisories": []
+  },
+  "decision": {
+    "editor": "monaco",
+    "reason": "only editor without eliminatory gate"
+  }
+}
