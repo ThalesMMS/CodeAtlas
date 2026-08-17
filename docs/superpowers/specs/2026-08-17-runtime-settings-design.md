@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-17
 
-**Status:** Approved in chat; pending written-spec review
+**Status:** Approved
 
 **Scope:** Every setting documented by `.env.example`, with per-user persistence and UI overrides that take precedence over environment values
 
