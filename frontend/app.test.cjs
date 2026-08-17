@@ -11,6 +11,7 @@ test('backendStateToPhase maps every backend state', () => {
   assert.strictEqual(app.backendStateToPhase(200, 'READY'), 'ready');
   assert.strictEqual(app.backendStateToPhase(503, 'BOOTING'), 'booting');
   assert.strictEqual(app.backendStateToPhase(503, 'PROBING_CAPABILITIES'), 'probing');
+  assert.strictEqual(app.backendStateToPhase(503, 'AWAITING_CONFIGURATION'), 'configuration');
   assert.strictEqual(app.backendStateToPhase(503, 'INDEXING'), 'indexing');
   assert.strictEqual(app.backendStateToPhase(503, 'GENERATING_REQUIRED_ARTIFACTS'), 'indexing');
   assert.strictEqual(app.backendStateToPhase(503, 'FAILED'), 'failed');
@@ -21,7 +22,7 @@ test('backendStateToPhase maps every backend state', () => {
 });
 
 test('shouldContinuePolling only for transient phases', () => {
-  for (const phase of ['connecting', 'booting', 'probing', 'indexing', 'unreachable']) {
+  for (const phase of ['connecting', 'booting', 'probing', 'configuration', 'indexing', 'unreachable']) {
     assert.strictEqual(app.shouldContinuePolling(phase), true, phase);
   }
   for (const phase of ['ready', 'ready-loading', 'failed']) {

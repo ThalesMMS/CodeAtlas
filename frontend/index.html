@@ -23,6 +23,7 @@
       <div id="bootstrap-capabilities" class="bootstrap-capabilities"></div>
       <p id="bootstrap-instruction" class="bootstrap-instruction"></p>
       <div class="bootstrap-actions">
+        <button id="bootstrap-settings-button" class="button secondary" type="button">Settings</button>
         <button id="bootstrap-retry" class="button primary hidden" type="button">Try again</button>
       </div>
       <small id="bootstrap-updated" class="bootstrap-updated"></small>
@@ -51,6 +52,7 @@
       <div class="topbar-actions">
         <span id="index-status" class="status-pill">initializing</span>
         <button id="reindex-button" class="button secondary" type="button">Check for changes</button>
+        <button id="settings-button" class="icon-button settings-button" type="button" aria-label="Settings" title="Settings">⚙</button>
       </div>
     </header>
 
@@ -215,6 +217,46 @@
         </section>
       </aside>
     </main>
+  </div>
+
+  <div id="settings-backdrop" class="settings-backdrop hidden">
+    <aside id="settings-drawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-describedby="settings-description" tabindex="-1">
+      <header class="settings-header">
+        <div>
+          <span class="eyebrow">Per-user configuration</span>
+          <h2 id="settings-title">Settings</h2>
+          <p id="settings-description">Saved values override <code>.env</code>. API keys are stored in the system keychain.</p>
+        </div>
+        <button id="settings-close-button" class="icon-button" type="button" aria-label="Close Settings">×</button>
+      </header>
+      <div id="settings-restart-banner" class="settings-banner hidden" role="status"></div>
+      <div id="settings-status" class="settings-status" role="status" aria-live="polite"></div>
+      <form id="settings-form" class="settings-form">
+        <div class="settings-sections">
+          <section class="settings-section" data-settings-group="general" aria-labelledby="settings-general-title">
+            <h3 id="settings-general-title">General</h3>
+            <div class="settings-fields" data-settings-fields="general"></div>
+          </section>
+          <section class="settings-section" data-settings-group="llm" aria-labelledby="settings-llm-title">
+            <h3 id="settings-llm-title">LLM</h3>
+            <div class="settings-fields" data-settings-fields="llm"></div>
+          </section>
+          <section class="settings-section" data-settings-group="embeddings" aria-labelledby="settings-embeddings-title">
+            <h3 id="settings-embeddings-title">Embeddings</h3>
+            <div class="settings-fields" data-settings-fields="embeddings"></div>
+          </section>
+          <section class="settings-section" data-settings-group="languageServers" aria-labelledby="settings-languages-title">
+            <h3 id="settings-languages-title">Language servers</h3>
+            <div class="settings-fields" data-settings-fields="languageServers"></div>
+          </section>
+        </div>
+        <footer class="settings-actions">
+          <button id="settings-reset-button" class="button secondary settings-reset" type="button">Reset to .env</button>
+          <button id="settings-cancel-button" class="button secondary" type="button">Cancel</button>
+          <button id="settings-apply-button" class="button primary" type="submit">Test and apply</button>
+        </footer>
+      </form>
+    </aside>
   </div>
 
   <div id="a11y-polite" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>

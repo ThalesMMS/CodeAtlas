@@ -112,6 +112,7 @@ const state = {
   capabilities: [],
   lastReadyBody: null,
   lastUpdate: null,
+  settingsController: null,
   documentLeaseHeartbeat: null,
   documentLeaseHeartbeatInFlight: false,
 };
@@ -197,7 +198,36 @@ function boot() {
     overlayUpdated: $('bootstrap-updated'),
   });
   elements.overlayRetry.addEventListener('click', retryReadiness);
+  const settingsModule = globalThis.CodeAtlasSettings;
+  const settingsToken = document.querySelector('meta[name="codeatlas-settings-token"]')?.content || '';
+  if (settingsModule && settingsToken) {
+    state.settingsController = settingsModule.createSettingsController({
+      api,
+      token: settingsToken,
+      focusManager: FocusManager,
+      announce,
+      onApplied: retryReadiness,
+      confirmReset: confirmSettingsReset,
+    }).bind();
+  }
   startReadinessLoop();
+}
+
+async function confirmSettingsReset() {
+  const drawer = document.getElementById('settings-drawer');
+  drawer?.setAttribute('aria-hidden', 'true');
+  const confirmed = await showAppDialog({
+    title: 'Reset settings to .env?',
+    description: 'All saved overrides and saved API keys will be removed. Values from .env and defaults will become effective.',
+    actions: [
+      { label: 'Cancel', value: false, variant: 'secondary' },
+      { label: 'Reset to .env', value: true, variant: 'primary' },
+    ],
+  });
+  drawer?.removeAttribute('aria-hidden');
+  FocusManager.trapFocus(drawer);
+  FocusManager.moveFocus(document.getElementById('settings-reset-button'));
+  return confirmed;
 }
 
 if (typeof window !== 'undefined') {
@@ -214,6 +244,8 @@ function backendStateToPhase(status, backendState) {
       return 'booting';
     case 'PROBING_CAPABILITIES':
       return 'probing';
+    case 'AWAITING_CONFIGURATION':
+      return 'configuration';
     case 'INDEXING':
     case 'GENERATING_REQUIRED_ARTIFACTS':
       return 'indexing';
@@ -229,7 +261,7 @@ function backendStateToPhase(status, backendState) {
 // shouldContinuePolling reports whether a phase is transient and worth re-polling.
 function shouldContinuePolling(phase) {
   return phase === 'connecting' || phase === 'booting' || phase === 'probing'
-    || phase === 'indexing' || phase === 'unreachable';
+    || phase === 'configuration' || phase === 'indexing' || phase === 'unreachable';
 }
 
 function isDiagnosticPhase(phase) {
@@ -695,6 +727,8 @@ function phaseLabel(phase) {
       return 'Initializing…';
     case 'probing':
       return 'Checking capabilities…';
+    case 'configuration':
+      return 'Configuration required';
     case 'indexing':
       return 'Indexing workspace…';
     case 'ready-loading':
@@ -882,7 +916,9 @@ function renderDiagnostic(phase, body, capabilities) {
     elements.overlayInstruction.textContent = 'Check whether the backend is running.';
   } else {
     elements.overlayError.classList.add('hidden');
-    elements.overlayInstruction.textContent = '';
+    elements.overlayInstruction.textContent = phase === 'configuration'
+      ? 'Open Settings to configure the LLM endpoint and model. CodeAtlas will continue automatically after a valid configuration.'
+      : '';
   }
 
   if (state.bootstrapped && [...state.tabs.values()].some((tab) => tab.dirty)) {

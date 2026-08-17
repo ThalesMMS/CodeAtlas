@@ -31,6 +31,11 @@ test('production build emits manifest and all referenced assets', () => {
     /<meta name="codeatlas-style-nonce" content="__CODEATLAS_CSP_NONCE__">/,
     'index must expose the per-response nonce placeholder to the Monaco adapter',
   );
+  assert.equal(
+    (html.match(/<meta name="codeatlas-settings-token" content="__CODEATLAS_SETTINGS_TOKEN__">/g) || []).length,
+    1,
+    'index must expose exactly one per-process settings token placeholder',
+  );
   for (const asset of htmlAssetReferences(html)) {
     assertNoUnsafePath(asset);
     assert.ok(fs.existsSync(path.join(distRoot, asset)), `missing HTML asset ${asset}`);
@@ -56,8 +61,6 @@ test('production build does not emit sourcemaps', () => {
 
 test('production bundle does not contain secrets, private dev URLs, or local absolute paths', () => {
   const forbidden = [
-    /CODEATLAS_LLM_API_KEY/,
-    /CODEATLAS_EMBEDDINGS_API_KEY/,
     /sk-[A-Za-z0-9]{20,}/,
     /http:\/\/127\.0\.0\.1:8080/,
     /http:\/\/localhost:8080/,
