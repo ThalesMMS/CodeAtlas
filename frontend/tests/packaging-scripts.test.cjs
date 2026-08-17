@@ -60,6 +60,8 @@ function prependPath(bin) {
 test('Windows script builds the embedded executable and runs it from the repository root', { skip: process.platform !== 'win32' }, (t) => {
   const f = fixture(t, 'build_package_and_run.cmd');
   fs.mkdirSync(f.bin);
+  fs.mkdirSync(path.join(f.root, 'dist'));
+  fs.writeFileSync(path.join(f.root, 'dist', 'stale-secret.txt'), 'must not survive packaging');
 
   const helperSource = path.join(f.root, 'runner.go');
   const helper = path.join(f.root, 'runner.exe');
@@ -124,7 +126,9 @@ exit /b 0
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Starting CodeAtlas\.\.\./);
   assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas.exe')));
+  assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas-server.exe')));
   assert.ok(fs.existsSync(path.join(f.root, 'dist', 'codeatlas-server.cmd')));
+  assert.equal(fs.existsSync(path.join(f.root, 'dist', 'stale-secret.txt')), false);
   const serverResult = spawnSync('cmd.exe', ['/d', '/c', path.join(f.root, 'dist', 'codeatlas-server.cmd'), '-listen', '127.0.0.1:19091'], {
     cwd: f.outside,
     encoding: 'utf8',
@@ -140,9 +144,34 @@ exit /b 0
   const log = readLog(f.log);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=ci/);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=run build/);
-  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=gcc\|cxx=g\+\+\|args=build -tags "?fts5 desktop"? -trimpath -ldflags "?-H=windowsgui"? -o "?.*\/dist\/codeatlas\.exe"? \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=gcc\|cxx=g\+\+\|args=build -tags "?fts5 desktop"? -trimpath -ldflags "?-H=windowsgui"? -o "?.*\/dist\.staging\/codeatlas\.exe"? \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=gcc\|cxx=g\+\+\|args=build -tags "?fts5 desktop"? -trimpath -o "?.*\/dist\.staging\/codeatlas-server\.exe"? \.\/cmd\/codeatlas/);
   assert.match(log, /run\|cwd=.*codeatlas-package-[^/]+\|dotenv=loaded-from-dotenv\|workspace=.*\/examples\/tinycommerce\|args=-listen 127\.0\.0\.1:19090/);
   assert.match(log, /run\|cwd=.*codeatlas-cwd-[^/]+\|dotenv=\|workspace=\|args=-desktop=false -listen 127\.0\.0\.1:19091/);
+});
+
+test('Windows script rejects non-CodeAtlas dotenv variables before packaging', { skip: process.platform !== 'win32' }, async (t) => {
+  for (const key of ['ROOT', 'PATH', 'CC', 'CXX']) {
+    await t.test(key, (st) => {
+      const f = fixture(st, 'build_package_and_run.cmd');
+      fs.mkdirSync(f.bin);
+      fs.writeFileSync(path.join(f.root, '.env'), `${key}=untrusted\n`);
+      fs.writeFileSync(path.join(f.bin, 'go.cmd'), '@echo off\r\nif "%~1"=="version" echo go version go1.26.4 windows/amd64\r\nexit /b 0\r\n');
+      fs.writeFileSync(path.join(f.bin, 'node.cmd'), '@echo off\r\nif "%~1"=="--version" echo v26.7.0\r\nexit /b 0\r\n');
+      fs.writeFileSync(path.join(f.bin, 'npm.cmd'), '@echo off\r\nif "%~1"=="--version" echo 11.16.0& exit /b 0\r\n>>"%CODEATLAS_TEST_LOG%" echo npm-started\r\nexit /b 0\r\n');
+      fs.writeFileSync(path.join(f.bin, 'gcc.cmd'), '@echo off\r\nexit /b 0\r\n');
+      fs.writeFileSync(path.join(f.bin, 'g++.cmd'), '@echo off\r\nexit /b 0\r\n');
+      const result = spawnSync('cmd.exe', ['/d', '/c', f.script], {
+        cwd: f.outside,
+        encoding: 'utf8',
+        timeout: 5000,
+        env: { ...process.env, PATH: prependPath(f.bin), CODEATLAS_TEST_LOG: f.log },
+      });
+      assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+      assert.match(result.stderr, new RegExp(`Unsupported \\.env variable on line 1: ${key}`));
+      assert.equal(fs.existsSync(f.log), false, 'dependency installation must not start after an unsafe dotenv entry');
+    });
+  }
 });
 
 test('Windows script rejects unsupported build-tool versions before installation', { skip: process.platform !== 'win32' }, async (t) => {
@@ -200,6 +229,9 @@ test('macOS script builds the embedded executable and runs it from the repositor
 
   const f = fixture(t, 'build_package_and_run.sh');
   fs.mkdirSync(f.bin);
+  writeDarwinUname(f.bin);
+  fs.mkdirSync(path.join(f.root, 'dist', 'CodeAtlas.app', 'Contents', 'Resources'), { recursive: true });
+  fs.writeFileSync(path.join(f.root, 'dist', 'CodeAtlas.app', 'Contents', 'Resources', 'stale-secret.txt'), 'must not survive packaging');
   const dotenvMarker = path.join(f.root, 'dotenv-command-ran');
   fs.writeFileSync(path.join(f.root, '.env'), 'CODEATLAS_TEST_ENV=$(touch "$CODEATLAS_TEST_MARKER")\n');
   const helper = path.join(f.root, 'runner');
@@ -255,6 +287,7 @@ exec "$bundle/Contents/MacOS/codeatlas" "$@"
   const app = path.join(f.root, 'dist', 'CodeAtlas.app');
   assert.ok(fs.existsSync(path.join(app, 'Contents', 'MacOS', 'codeatlas')));
   assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources')));
+  assert.equal(fs.existsSync(path.join(app, 'Contents', 'Resources', 'stale-secret.txt')), false);
   assert.match(fs.readFileSync(path.join(app, 'Contents', 'Info.plist'), 'utf8'), /<string>CodeAtlas<\/string>/);
   const serverLauncher = path.join(f.root, 'dist', 'codeatlas-server');
   assert.ok(fs.existsSync(serverLauncher));
@@ -267,7 +300,7 @@ exec "$bundle/Contents/MacOS/codeatlas" "$@"
   const log = readLog(f.log);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=ci/);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=run build/);
-  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=cc\|cxx=c\+\+\|args=build -tags fts5 desktop -trimpath -o .*\/dist\/CodeAtlas\.app\/Contents\/MacOS\/codeatlas \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=cc\|cxx=c\+\+\|args=build -tags fts5 desktop -trimpath -o .*\/dist\.staging\/CodeAtlas\.app\/Contents\/MacOS\/codeatlas \.\/cmd\/codeatlas/);
   assert.match(log, /run\|cwd=.*codeatlas-package-[^/]+\|dotenv=\$\(touch "\$CODEATLAS_TEST_MARKER"\)\|workspace=.*\/examples\/tinycommerce\|args=-listen 127\.0\.0\.1:19090/);
   assert.match(log, /run\|cwd=.*codeatlas-cwd-[^/]+\|dotenv=\|workspace=\|args=-desktop=false -listen 127\.0\.0\.1:19092/);
 });
@@ -284,6 +317,7 @@ test('macOS script rejects unsupported build-tool versions before installation',
     await t.test(item.name, (st) => {
       const f = fixture(st, 'build_package_and_run.sh');
       fs.mkdirSync(f.bin);
+      writeDarwinUname(f.bin);
       fs.writeFileSync(path.join(f.bin, 'go'), '#!/usr/bin/env bash\nif [[ "$1" == version ]]; then printf "go version go%s darwin/arm64\\n" "$CODEATLAS_TEST_GO_VERSION"; fi\nexit 0\n');
       fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v%s\\n" "$CODEATLAS_TEST_NODE_VERSION"; fi\nexit 0\n');
       fs.writeFileSync(path.join(f.bin, 'npm'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "%s\\n" "$CODEATLAS_TEST_NPM_VERSION"; fi\nexit 0\n');
@@ -311,6 +345,7 @@ test('macOS script requires a C++ compiler before installation', { skip: process
   if (!bash) return t.skip('bash is unavailable');
   const f = fixture(t, 'build_package_and_run.sh');
   fs.mkdirSync(f.bin);
+  writeDarwinUname(f.bin);
   fs.writeFileSync(path.join(f.bin, 'go'), '#!/usr/bin/env bash\nif [[ "$1" == version ]]; then printf "go version go1.26.4 darwin/arm64\\n"; fi\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v26.7.0\\n"; fi\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'npm'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "11.16.0\\n"; else printf installed > "$CODEATLAS_TEST_LOG"; fi\nexit 0\n');
@@ -338,6 +373,7 @@ test('macOS script rejects malformed dotenv entries before installation', { skip
   if (!bash) return t.skip('bash is unavailable');
   const f = fixture(t, 'build_package_and_run.sh');
   fs.mkdirSync(f.bin);
+  writeDarwinUname(f.bin);
   fs.writeFileSync(path.join(f.root, '.env'), 'this is not an assignment\n');
   fs.writeFileSync(path.join(f.bin, 'go'), '#!/usr/bin/env bash\nif [[ "$1" == version ]]; then printf "go version go1.26.4 darwin/arm64\\n"; fi\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v26.7.0\\n"; fi\nexit 0\n');
@@ -356,6 +392,62 @@ test('macOS script rejects malformed dotenv entries before installation', { skip
   assert.match(result.stderr, /Invalid \.env entry on line 1\. Expected KEY=VALUE\./);
   assert.equal(fs.existsSync(f.log), false, 'dependency installation must not start after invalid configuration');
 });
+
+test('macOS script rejects non-CodeAtlas dotenv variables before packaging', { skip: process.platform === 'win32' && !findBash() }, async (t) => {
+  const bash = findBash();
+  if (!bash) return t.skip('bash is unavailable');
+  for (const key of ['ROOT', 'PATH', 'CC', 'CXX']) {
+    await t.test(key, (st) => {
+      const f = fixture(st, 'build_package_and_run.sh');
+      fs.mkdirSync(f.bin);
+      writeDarwinUname(f.bin);
+      fs.writeFileSync(path.join(f.root, '.env'), `${key}=untrusted\n`);
+      fs.writeFileSync(path.join(f.bin, 'go'), '#!/usr/bin/env bash\nif [[ "$1" == version ]]; then printf "go version go1.26.4 darwin/arm64\\n"; fi\nexit 0\n');
+      fs.writeFileSync(path.join(f.bin, 'node'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "v26.7.0\\n"; fi\nexit 0\n');
+      fs.writeFileSync(path.join(f.bin, 'npm'), '#!/usr/bin/env bash\nif [[ "$1" == --version ]]; then printf "11.16.0\\n"; else printf installed > "$CODEATLAS_TEST_LOG"; fi\nexit 0\n');
+      fs.writeFileSync(path.join(f.bin, 'cc'), '#!/usr/bin/env bash\nexit 0\n');
+      fs.writeFileSync(path.join(f.bin, 'c++'), '#!/usr/bin/env bash\nexit 0\n');
+      for (const executable of ['go', 'node', 'npm', 'cc', 'c++']) fs.chmodSync(path.join(f.bin, executable), 0o755);
+      const result = spawnSync(bash, [f.script], {
+        cwd: f.outside,
+        encoding: 'utf8',
+        timeout: 5000,
+        env: { ...process.env, PATH: prependPath(f.bin), CODEATLAS_TEST_LOG: f.log },
+      });
+      assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+      assert.match(result.stderr, new RegExp(`Unsupported \\.env variable on line 1: ${key}`));
+      assert.equal(fs.existsSync(f.log), false, 'dependency installation must not start after an unsafe dotenv entry');
+    });
+  }
+});
+
+test('macOS script rejects non-Darwin hosts before dependency checks', { skip: process.platform === 'win32' && !findBash() }, (t) => {
+  const bash = findBash();
+  if (!bash) return t.skip('bash is unavailable');
+  const f = fixture(t, 'build_package_and_run.sh');
+  fs.mkdirSync(f.bin);
+  fs.writeFileSync(path.join(f.bin, 'uname'), '#!/usr/bin/env bash\nprintf "Linux\\n"\n');
+  fs.chmodSync(path.join(f.bin, 'uname'), 0o755);
+  const result = spawnSync(bash, [f.script], {
+    cwd: f.outside,
+    encoding: 'utf8',
+    timeout: 5000,
+    env: { ...process.env, PATH: prependPath(f.bin) },
+  });
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /macOS packaging requires Darwin\. Found Linux\./);
+});
+
+test('third-party notices pin bundled WebView native snapshots exactly', () => {
+  const notices = fs.readFileSync(path.join(repoRoot, 'THIRD_PARTY_NOTICES.md'), 'utf8');
+  assert.match(notices, /webview.*fb6b17d826041411e6346cd9a785a5ceba7987c4/is);
+  assert.match(notices, /WebView2.*1\.0\.1150\.38/is);
+});
+
+function writeDarwinUname(bin) {
+  fs.writeFileSync(path.join(bin, 'uname'), '#!/usr/bin/env bash\nprintf "Darwin\\n"\n');
+  fs.chmodSync(path.join(bin, 'uname'), 0o755);
+}
 
 function findBash() {
   const command = process.platform === 'win32' ? 'where.exe' : 'which';

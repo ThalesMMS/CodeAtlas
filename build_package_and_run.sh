@@ -27,10 +27,14 @@ load_dotenv() {
     fi
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
+    [[ "$key" == CODEATLAS_* ]] || fail "Unsupported .env variable on line $line_number: $key. Only CODEATLAS_* variables are allowed."
     printf -v "$key" '%s' "$value"
     export "$key"
   done < "$file"
 }
+
+host_os="$(uname -s)"
+[[ "$host_os" == Darwin ]] || fail "macOS packaging requires Darwin. Found $host_os."
 
 command -v go >/dev/null 2>&1 || fail 'Go 1.23 or newer is required.'
 command -v node >/dev/null 2>&1 || fail 'Node.js 26 or newer is required.'
@@ -112,15 +116,19 @@ printf '[2/3] Building the embedded frontend...\n'
 )
 
 printf '[3/3] Building the native application...\n'
-mkdir -p dist/CodeAtlas.app/Contents/MacOS dist/CodeAtlas.app/Contents/Resources
-cp packaging/macos/CodeAtlas.Info.plist dist/CodeAtlas.app/Contents/Info.plist
+STAGING="$ROOT/dist.staging"
+rm -rf -- "$STAGING"
+mkdir -p "$STAGING/CodeAtlas.app/Contents/MacOS" "$STAGING/CodeAtlas.app/Contents/Resources"
+cp packaging/macos/CodeAtlas.Info.plist "$STAGING/CodeAtlas.app/Contents/Info.plist"
 (
   cd backend
   CGO_ENABLED=1 CC="$CC" CXX="$CXX" go build -tags 'fts5 desktop' -trimpath \
-    -o "$ROOT/dist/CodeAtlas.app/Contents/MacOS/codeatlas" ./cmd/codeatlas
+    -o "$STAGING/CodeAtlas.app/Contents/MacOS/codeatlas" ./cmd/codeatlas
 )
-cp packaging/macos/codeatlas-server dist/codeatlas-server
-chmod +x dist/CodeAtlas.app/Contents/MacOS/codeatlas dist/codeatlas-server
+cp packaging/macos/codeatlas-server "$STAGING/codeatlas-server"
+chmod +x "$STAGING/CodeAtlas.app/Contents/MacOS/codeatlas" "$STAGING/codeatlas-server"
+rm -rf -- "$ROOT/dist"
+mv -- "$STAGING" "$ROOT/dist"
 
 printf 'Built %s\n' "$ROOT/dist/CodeAtlas.app"
 printf 'Starting CodeAtlas...\n'

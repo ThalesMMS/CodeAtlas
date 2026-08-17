@@ -1,4 +1,4 @@
-7337add1c7e2abebfe5127c25d79681595080c347d76b89b719c51dc0c536652  ./MANIFEST.txt
+82a41781a9d0a5aee6e40a8384d9b9ffd03ca0773c0cdd2f943995575cd6c5a3  ./MANIFEST.txt
 e9505814ae79ce657bebd2b93ae808c25bbf71fe5f27cbcaae53a1c7a2142f85  ./assets/codeatlas-overview.png
 2e2a01f2461cc67c06e5af4cd08a79259c16e49e536dec00cf8fa388943dc8e9  ./schemas/context-pack-v1.schema.json
 7f4c8dddb92ce2ab4b58ad0535092c33400494e0f0be15735a904c5ea6f05dc9  ./superpowers/plans/2026-08-16-deepwiki-planner-reliability.md
@@ -11,3 +11,4 @@ edc21248832c46f6d33f4fc90d55a515b1d675269ec528a21e6c3b5667f7064b  ./superpowers/
 ad831b90e62a0d1d97ba9536e3cb5f1fcfb84ca53b5d73f76a8875d95faf4cf3  ./superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md
 b58be347047ce2a4b2e83d81fdf375d9305604e9b81220ab6c8b7f25026eb442  ./superpowers/specs/2026-08-17-desktop-webview-packaging-design.md
 7a836e2aade0ffae890dbb0e688bf1158e2c62c2769688d77764d93fd7485aef  ./superpowers/specs/2026-08-17-runtime-settings-design.md
+28d877c840c7853c82718debddc813aa0abef244d8638d5812499729eec6101e  ./superpowers/verification/2026-08-17-desktop-windows-smoke.md

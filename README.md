@@ -88,7 +88,9 @@ This creates:
 
 - `dist/codeatlas.exe` — the Windows GUI executable; double-click it to open the
   integrated desktop window without a companion console;
-- `dist/codeatlas-server.cmd` — foreground server mode, with console logs and
+- `dist/codeatlas-server.exe` — console-subsystem executable for reliable
+  foreground signal handling;
+- `dist/codeatlas-server.cmd` — launcher for server mode, with console logs and
   `Ctrl+C` shutdown.
 
 On macOS, install the Xcode Command Line Tools if necessary, then run:
@@ -105,7 +107,8 @@ This creates:
 - `dist/codeatlas-server` — foreground server mode with terminal logs and
   `Ctrl+C` shutdown.
 
-Both scripts load unquoted `KEY=VALUE` assignments from `.env`, use
+Both scripts load unquoted `CODEATLAS_*=VALUE` assignments from `.env`, reject
+other variable names so packaging controls cannot be overwritten, use
 `examples/tinycommerce` when `CODEATLAS_WORKSPACE` is unset, and forward extra
 arguments to CodeAtlas. Persisted in-app Settings override `.env` independently
 per field. A packaged first run without a provider remains open and offers the
@@ -123,8 +126,8 @@ bash ./build_package_and_run.sh -workspace /absolute/path/to/project -listen 127
 ```
 
 Closing the final desktop window gracefully stops the HTTP server, indexer, and
-language-server processes. To run the desktop-tagged binary directly as a
-foreground server, pass `-desktop=false`, or use the platform launcher:
+language-server processes. For foreground mode, use the platform launcher below;
+on Windows it selects the console-subsystem build and supplies `-desktop=false`:
 
 ```powershell
 .\dist\codeatlas-server.cmd -listen 127.0.0.1:9090
@@ -134,8 +137,9 @@ foreground server, pass `-desktop=false`, or use the platform launcher:
 ./dist/codeatlas-server -listen 127.0.0.1:9090
 ```
 
-Packaging never copies `.env`, settings JSON, API keys, credentials, or frontend
-source into `dist`; the production frontend remains embedded in the binary.
+Packaging stages a clean deliverable before replacing `dist` and never copies
+`.env`, settings JSON, API keys, credentials, or frontend source; the production
+frontend remains embedded in the binary.
 This version intentionally excludes an installer, DMG, updater, code signing,
 notarization, and a custom application icon. The local macOS bundle is unsigned.
 

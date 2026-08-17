@@ -129,7 +129,15 @@ if errorlevel 1 (
 )
 
 if exist ".env" (
-  for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do set "%%A=%%B"
+  for /f "tokens=1,* delims=:" %%N in ('%SystemRoot%\System32\findstr.exe /n /r ".*" ".env"') do (
+    for /f "eol=# tokens=1,* delims==" %%A in ("%%O") do (
+      for /f "tokens=1 delims=_" %%P in ("%%A") do if not "%%P"=="CODEATLAS" (
+        echo Error: Unsupported .env variable on line %%N: %%A. Only CODEATLAS_* variables are allowed.>&2
+        goto dotenv_failed
+      )
+      set "%%A=%%B"
+    )
+  )
 )
 if not defined CODEATLAS_WORKSPACE set "CODEATLAS_WORKSPACE=%ROOT%examples\tinycommerce"
 
@@ -142,13 +150,21 @@ echo [2/3] Building the embedded frontend...
 call npm run build
 if errorlevel 1 goto build_failed
 
-echo [3/3] Building the native executable...
-if not exist "%ROOT%dist" mkdir "%ROOT%dist"
+echo [3/3] Building the native executables...
+set "STAGING=%ROOT%dist.staging"
+if exist "%STAGING%" rmdir /s /q "%STAGING%"
+mkdir "%STAGING%"
+if errorlevel 1 goto build_failed
 cd /d "%ROOT%backend"
 set "CGO_ENABLED=1"
-call go build -tags "fts5 desktop" -trimpath -ldflags "-H=windowsgui" -o "%ROOT%dist\codeatlas.exe" .\cmd\codeatlas
+call go build -tags "fts5 desktop" -trimpath -ldflags "-H=windowsgui" -o "%STAGING%\codeatlas.exe" .\cmd\codeatlas
 if errorlevel 1 goto build_failed
-copy /y "%ROOT%packaging\windows\codeatlas-server.cmd" "%ROOT%dist\codeatlas-server.cmd" >nul
+call go build -tags "fts5 desktop" -trimpath -o "%STAGING%\codeatlas-server.exe" .\cmd\codeatlas
+if errorlevel 1 goto build_failed
+copy /y "%ROOT%packaging\windows\codeatlas-server.cmd" "%STAGING%\codeatlas-server.cmd" >nul
+if errorlevel 1 goto build_failed
+if exist "%ROOT%dist" rmdir /s /q "%ROOT%dist"
+move "%STAGING%" "%ROOT%dist" >nul
 if errorlevel 1 goto build_failed
 
 cd /d "%ROOT%"
@@ -159,10 +175,15 @@ set "EXIT_CODE=%ERRORLEVEL%"
 popd >nul
 exit /b %EXIT_CODE%
 
+:dotenv_failed
+popd >nul
+exit /b 1
+
 :build_failed
 set "EXIT_CODE=%ERRORLEVEL%"
 if "%EXIT_CODE%"=="0" set "EXIT_CODE=1"
 echo Packaging failed with exit code %EXIT_CODE%.>&2
+if defined STAGING if exist "%STAGING%" rmdir /s /q "%STAGING%"
 popd >nul
 exit /b %EXIT_CODE%
 

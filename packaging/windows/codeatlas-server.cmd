@@ -1,4 +1,4 @@
 @echo off
 setlocal
-start "" /b /wait "%~dp0codeatlas.exe" -desktop=false %*
+"%~dp0codeatlas-server.exe" -desktop=false %*
 exit /b %ERRORLEVEL%
