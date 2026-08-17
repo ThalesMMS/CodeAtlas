@@ -1,0 +1,125 @@
+{
+  "scenarioMatrixVersion": "p10-v1",
+  "policy": {
+    "network": "loopback-only",
+    "provider": "e2e/harness/fake-provider.mjs",
+    "workspace": "temporary copy of generated or repository fixtures",
+    "determinism": "seeded fixtures, monotonic timings, no fixed long sleeps",
+    "retry": "no retry in the blocking gate"
+  },
+  "behavioralRegressions": [
+    {
+      "id": "provider-schema-compatibility",
+      "testFile": "e2e/tests/provider-reindex.test.mjs",
+      "coverage": ["structured readiness probe", "vLLM unsupported-key rejection", "real Hover response", "separate embeddings API key"]
+    },
+    {
+      "id": "index-maintenance-contract",
+      "testFile": "e2e/tests/provider-reindex.test.mjs",
+      "coverage": ["explicit no-op", "changed-file commit", "embedding regeneration", "FTS rebuild"]
+    }
+  ],
+  "groups": [
+    {
+      "id": "readiness",
+      "number": 1,
+      "automated": true,
+      "commands": ["make e2e", "cd backend && go test -tags fts5 ./internal/app ./internal/httpapi"],
+      "coverage": ["happy startup", "provider unavailable", "invalid embeddings", "index failure", "diagnostic-only UI"]
+    },
+    {
+      "id": "document-basic",
+      "number": 2,
+      "automated": true,
+      "commands": ["make e2e", "cd backend && go test -tags fts5 ./internal/httpapi -run Document"],
+      "coverage": ["production Monaco for Go/JS/JSX/TS/TSX and module variants", "rapid edit", "save", "self-write confirmation", "atomic clean/dirty reload reclaim", "close/reopen", "10 tabs", "1.5 MiB model"]
+    },
+    {
+      "id": "out-of-order",
+      "number": 3,
+      "automated": true,
+      "commands": ["cd frontend && npm test", "cd backend && go test -tags fts5 ./internal/httpapi -run Navigation"],
+      "coverage": ["open ordering", "hover ordering", "semantic tokens", "diagnostics", "navigation", "jobs/SSE"]
+    },
+    {
+      "id": "dirty-buffer",
+      "number": 4,
+      "automated": true,
+      "commands": ["cd frontend && npm test", "cd backend && go test -tags fts5 ./internal/httpapi -run 'Document|Semantic|Navigation'"],
+      "coverage": ["unsaved overlays", "stale response discard", "save after sync", "restart persistence policy"]
+    },
+    {
+      "id": "external-change",
+      "number": 5,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/httpapi -run Document"],
+      "coverage": ["clean reload", "dirty conflict", "delete", "self-write vs external", "reload_external", "keep_local_rebase"]
+    },
+    {
+      "id": "navigation",
+      "number": 6,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/httpapi -run Navigation", "cd frontend && npm test"],
+      "coverage": ["definition", "multi-definition", "references", "implementations", "incoming/outgoing", "history", "stale occurrence"]
+    },
+    {
+      "id": "semantic-visuals",
+      "number": 7,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/httpapi -run Semantic", "cd frontend && npm test"],
+      "coverage": ["semantic tokens", "diagnostics", "unknown versions", "provider disabled/crash states", "model cleanup", "Go gopls and mixed JS/TS exact overlay binding"]
+    },
+    {
+      "id": "hover-see-more",
+      "number": 8,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/service ./internal/httpapi -run 'Explain|Context|Error'", "cd frontend && npm test"],
+      "coverage": ["mouse", "keyboard", "pin/stale", "evidence navigation", "timeout", "invalid output", "no heuristic fallback", "XSS", "Go and mixed JS/TS Hover and See More"]
+    },
+    {
+      "id": "deepwiki",
+      "number": 9,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/service ./internal/httpapi -run 'DeepWiki|Jobs'", "make e2e"],
+      "coverage": ["refresh job", "progress/cancel/failure", "preserve previous pages", "stale/success", "source links", "Go and mixed JS/TS page scopes"]
+    },
+    {
+      "id": "codemap",
+      "number": 10,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/service ./internal/httpapi -run 'Codemap|Jobs'", "cd frontend && npm test", "make e2e-budget"],
+      "coverage": ["submit job", "progress/cancel/fail/success", "graph/text mode", "filters/groups/traces", "evidence links", "worker failure", "large fixture", "Go and mixed JS/TS graph nodes"]
+    },
+    {
+      "id": "sse-gaps",
+      "number": 11,
+      "automated": true,
+      "commands": ["cd backend && go test -tags fts5 ./internal/httpapi ./internal/job -run 'Events|Jobs|Overflow|Gap'"],
+      "coverage": ["reconnect", "subscriber overflow", "canonical reload", "duplicate events", "old revision discard"]
+    },
+    {
+      "id": "shutdown",
+      "number": 12,
+      "automated": true,
+      "commands": ["make e2e", "cd backend && go test -tags fts5 ./internal/app ./internal/httpapi ./internal/job"],
+      "coverage": ["shutdown during job", "shutdown during save", "LSP request boundary", "no process leak", "restart valid state"]
+    }
+  ],
+  "crossCuttingGates": {
+    "security-csp-no-network": {
+      "automated": true,
+      "commands": ["make e2e", "cd backend && go test -tags fts5 ./internal/httpapi -run 'CSP|Path|Error|Observability'"],
+      "coverage": ["CSP with minimal Monaco style exception", "self-hosted Monaco workers", "no external requests", "API key canary absence", "XSS escaping", "path traversal rejection"]
+    },
+    "accessibility": {
+      "automated": true,
+      "commands": ["cd frontend && npm run check", "make e2e"],
+      "coverage": ["skip links", "tree", "tabs", "search listbox", "dialogs", "jobs", "problems", "navigation", "Codemap text mode"]
+    },
+    "performance-budget": {
+      "automated": true,
+      "commands": ["make e2e-budget"],
+      "coverage": ["p10-monaco-v1 bundle gzip", "Monaco excluded from initial requests", "self-hosted worker chunks", "public source map ban"]
+    }
+  }
+}
