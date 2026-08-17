@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant p0 as main · main.go
+  participant p1 as NewService · service.go
+  participant p2 as Create · http.go
+  participant p3 as Save · repository.go
+  p0->>p1: calls NewService
+  p1->>p2: calls Create
+  p2->>p3: calls Save
+  p3->>p1: calls NewService

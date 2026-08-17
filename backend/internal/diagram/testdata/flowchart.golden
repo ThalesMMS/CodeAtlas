@@ -1,0 +1,17 @@
+graph TD
+  subgraph g0["cmd"]
+    direction TB
+    n0["main · main.go"]
+  end
+  subgraph g1["External"]
+    direction TB
+    n1["Stripe"]
+  end
+  subgraph g2["internal"]
+    direction TB
+    n2["Create · http.go"]
+    n3["NewService · service.go"]
+  end
+  n0 -->|calls| n3
+  n2 -->|calls| n3
+  n0 -. imports .-> n1
