@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "revision": 12,
+  "overrides": {
+    "CODEATLAS_LLM_BASE_URL": "http://127.0.0.1:8000/v1",
+    "CODEATLAS_LLM_MODEL": "default",
+    "CODEATLAS_ENABLE_EMBEDDINGS": true,
+    "CODEATLAS_EMBEDDING_MODEL": "text-embedding"
+  },
+  "credentials": {
+    "llmApiKeyGeneration": "generation-a",
+    "embeddingsApiKeyGeneration": "generation-b"
+  }
+}
