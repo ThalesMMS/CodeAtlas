@@ -49,6 +49,7 @@ type SettingsRuntimeOptions struct {
 	PrepareLSP               func(context.Context, settings.Values, settings.ChangeSet) (LSPPreparation, []settings.FieldError)
 	EmbeddingMetadata        func(context.Context) (domain.EmbeddingIndexMetadata, int, error)
 	ScheduleEmbeddingRebuild func(context.Context) (domain.JobID, error)
+	OnProviderActivated      func()
 
 	Logger                *slog.Logger
 	Metrics               *observability.Metrics
@@ -63,6 +64,7 @@ type SettingsRuntime struct {
 	prepareLSP               func(context.Context, settings.Values, settings.ChangeSet) (LSPPreparation, []settings.FieldError)
 	embeddingMetadata        func(context.Context) (domain.EmbeddingIndexMetadata, int, error)
 	scheduleEmbeddingRebuild func(context.Context) (domain.JobID, error)
+	onProviderActivated      func()
 }
 
 func NewSettingsRuntime(options SettingsRuntimeOptions) *SettingsRuntime {
@@ -106,6 +108,7 @@ func NewSettingsRuntime(options SettingsRuntimeOptions) *SettingsRuntime {
 		aiRuntime: options.AIRuntime, buildAI: options.BuildAI,
 		prepareEmbeddings: options.PrepareEmbeddings, prepareLSP: options.PrepareLSP,
 		embeddingMetadata: options.EmbeddingMetadata, scheduleEmbeddingRebuild: options.ScheduleEmbeddingRebuild,
+		onProviderActivated: options.OnProviderActivated,
 	}
 }
 
@@ -219,6 +222,9 @@ func (p *preparedSettingsRuntime) Activate() settings.ActivationResult {
 		if p.swapAI {
 			p.owner.aiRuntime.Swap(p.aiCandidate)
 			p.result.Applied = append(p.result.Applied, settings.GroupLLM)
+			if p.owner.onProviderActivated != nil {
+				p.owner.onProviderActivated()
+			}
 		}
 		if p.embedding != nil {
 			p.embedding.Activate()

@@ -34,6 +34,8 @@ func TestCanTransitionTable(t *testing.T) {
 	}{
 		// Valid forward lifecycle.
 		{StateBooting, StateProbingCapabilities, true},
+		{StateProbingCapabilities, StateAwaitingConfiguration, true},
+		{StateAwaitingConfiguration, StateProbingCapabilities, true},
 		{StateProbingCapabilities, StateIndexing, true},
 		{StateIndexing, StateGeneratingArtifacts, true},
 		{StateIndexing, StateReady, true},
@@ -66,6 +68,37 @@ func TestCanTransitionTable(t *testing.T) {
 		if got := CanTransition(tc.from, tc.to); got != tc.want {
 			t.Errorf("CanTransition(%q, %q) = %v, want %v", tc.from, tc.to, got, tc.want)
 		}
+	}
+}
+
+func TestCoordinatorAwaitingConfigurationRetryCoalesces(t *testing.T) {
+	c := NewCoordinator()
+	if err := c.Transition(StateProbingCapabilities, "probe"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Transition(StateAwaitingConfiguration, "provider configuration required"); err != nil {
+		t.Fatal(err)
+	}
+	c.SignalConfigurationRetry()
+	c.SignalConfigurationRetry()
+	select {
+	case <-c.ConfigurationRetries():
+	case <-time.After(time.Second):
+		t.Fatal("configuration retry was not signaled")
+	}
+	select {
+	case <-c.ConfigurationRetries():
+		t.Fatal("configuration retries did not coalesce")
+	default:
+	}
+	if err := c.Transition(StateProbingCapabilities, "retry provider configuration"); err != nil {
+		t.Fatal(err)
+	}
+	c.SignalConfigurationRetry()
+	select {
+	case <-c.ConfigurationRetries():
+		t.Fatal("retry signal was retained outside awaiting state")
+	default:
 	}
 }
 

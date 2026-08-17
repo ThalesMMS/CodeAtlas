@@ -12,11 +12,13 @@ import (
 // functional route and is gated. Non-API paths (the static UI) are always
 // allowed so the diagnostic UI can load.
 var diagnosticAPIPaths = map[string]struct{}{
-	"/api/health":       {},
-	"/api/health/live":  {},
-	"/api/health/ready": {},
-	"/api/capabilities": {},
-	"/api/stats":        {},
+	"/api/health":             {},
+	"/api/health/live":        {},
+	"/api/health/ready":       {},
+	"/api/capabilities":       {},
+	"/api/stats":              {},
+	"/api/settings":           {},
+	"/api/settings/overrides": {},
 }
 
 // allowedBeforeReady reports whether a request path may be served before READY.

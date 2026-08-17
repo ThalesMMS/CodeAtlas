@@ -162,6 +162,7 @@ func run() int {
 		AIRuntime: providerRuntime, EmbeddingRuntime: embeddingRuntime, EmbeddingStore: storeRef,
 		LSPCoordinator: lspCoordinator, Logger: logger, Metrics: metrics, ProbeTimeout: cfg.ProbeTimeout,
 		StructuredProbeSchema: aiout.ExplanationSchema(),
+		OnProviderActivated:   coordinator.SignalConfigurationRetry,
 	})
 	settingsManager, err := settings.NewManagerWithRunningValues(rootContext, settingsEnvironment, settingsStore, credentialStore, settingsRuntime, settings.Values{
 		Workspace: cfg.Workspace, ListenAddress: cfg.ListenAddress, MaxFileBytes: cfg.MaxFileBytes,

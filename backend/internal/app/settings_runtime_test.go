@@ -91,6 +91,7 @@ func TestSettingsRuntimePreparesEveryLiveGroupBeforeCommit(t *testing.T) {
 			events = append(events, "schedule:embeddings")
 			return "job-1", nil
 		},
+		OnProviderActivated: func() { events = append(events, "signal:provider-retry") },
 	})
 	resolved := settings.Resolved{Values: settings.Values{
 		Workspace: ".", LLMBaseURL: "https://example.test/v1", LLMModel: "new", LLMTimeout: 1,
@@ -117,7 +118,7 @@ func TestSettingsRuntimePreparesEveryLiveGroupBeforeCommit(t *testing.T) {
 	if aiRuntime.Name() != "new" || activation.EmbeddingJobID != "job-1" {
 		t.Fatalf("activation = %#v runtime=%q", activation, aiRuntime.Name())
 	}
-	wantActivated := append(wantPrepared, "activate:embeddings", "activate:lsp", "schedule:embeddings")
+	wantActivated := append(wantPrepared, "signal:provider-retry", "activate:embeddings", "activate:lsp", "schedule:embeddings")
 	if !reflect.DeepEqual(events, wantActivated) {
 		t.Fatalf("activation events = %#v, want %#v", events, wantActivated)
 	}

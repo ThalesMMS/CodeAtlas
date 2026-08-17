@@ -17,16 +17,17 @@ const subscriberBuffer = 16
 // Coordinator is the single source of truth for the operational state. It is
 // safe for concurrent use and never blocks a transition on a slow subscriber.
 type Coordinator struct {
-	mu             sync.RWMutex
-	state          State
-	lastTransition time.Time
-	currentStep    string
-	indexRevision  string
-	fatal          *FatalError
-	capabilities   map[string]CapabilityStatus
-	history        []TransitionRecord
-	subscribers    map[chan StateChangeEvent]struct{}
-	onEventDropped func()
+	mu                 sync.RWMutex
+	state              State
+	lastTransition     time.Time
+	currentStep        string
+	indexRevision      string
+	fatal              *FatalError
+	capabilities       map[string]CapabilityStatus
+	history            []TransitionRecord
+	subscribers        map[chan StateChangeEvent]struct{}
+	onEventDropped     func()
+	configurationRetry chan struct{}
 }
 
 // SetEventDropObserver installs a non-blocking callback for each subscriber
@@ -42,13 +43,32 @@ func (c *Coordinator) SetEventDropObserver(observer func()) {
 func NewCoordinator() *Coordinator {
 	now := time.Now().UTC()
 	return &Coordinator{
-		state:          StateBooting,
-		lastTransition: now,
-		capabilities:   make(map[string]CapabilityStatus),
-		history:        []TransitionRecord{{From: StateBooting, To: StateBooting, At: now, Reason: "bootstrap"}},
-		subscribers:    make(map[chan StateChangeEvent]struct{}),
+		state:              StateBooting,
+		lastTransition:     now,
+		capabilities:       make(map[string]CapabilityStatus),
+		history:            []TransitionRecord{{From: StateBooting, To: StateBooting, At: now, Reason: "bootstrap"}},
+		subscribers:        make(map[chan StateChangeEvent]struct{}),
+		configurationRetry: make(chan struct{}, 1),
 	}
 }
+
+// SignalConfigurationRetry wakes a bootstrap that is waiting for repaired
+// provider settings. The single-slot channel coalesces repeated successful
+// applies, and signals outside AWAITING_CONFIGURATION are intentionally dropped.
+func (c *Coordinator) SignalConfigurationRetry() {
+	c.mu.RLock()
+	waiting := c.state == StateAwaitingConfiguration
+	c.mu.RUnlock()
+	if !waiting {
+		return
+	}
+	select {
+	case c.configurationRetry <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Coordinator) ConfigurationRetries() <-chan struct{} { return c.configurationRetry }
 
 // Transition moves the machine to a new state, validating against the allowed
 // edges. It returns ErrInvalidTransition (wrapped) when the move is not

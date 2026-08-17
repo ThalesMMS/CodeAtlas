@@ -38,11 +38,9 @@ type bootstrapDeps struct {
 //
 //	BOOTING -> PROBING_CAPABILITIES -> INDEXING -> READY
 //
-// A mandatory probe failure or an initial-index failure transitions to FAILED
-// with a structured cause and stops; there is no silent retry. The function
-// honors context cancellation at every step and never reaches READY before the
-// initial index has been persisted. After READY it starts the periodic indexer,
-// which blocks until the context is cancelled.
+// A mandatory local probe or initial-index failure transitions to FAILED. A
+// provider-only failure enters AWAITING_CONFIGURATION and blocks on an explicit,
+// coalesced retry signal from a successful Settings activation.
 func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 	if ctx.Err() != nil {
 		return
@@ -58,7 +56,7 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		return
 	}
 
-	failure, failed := probeMandatory(ctx, deps)
+	failure, failed := probeLocalMandatory(ctx, deps)
 	if ctx.Err() != nil {
 		return // cancelled during probing; do not mark FAILED
 	}
@@ -66,6 +64,30 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		_ = deps.coordinator.Fail(failure.ErrorCode, "required capability unavailable: "+string(failure.ID))
 		deps.logger.Error("required probe failed", "capability", string(failure.ID), "code", failure.ErrorCode)
 		return
+	}
+
+	for {
+		failure, failed = probeProviderMandatory(ctx, deps)
+		if ctx.Err() != nil {
+			return
+		}
+		if !failed {
+			break
+		}
+		deps.coordinator.SetStep("awaiting provider configuration")
+		if err := deps.coordinator.Transition(readiness.StateAwaitingConfiguration, "provider configuration required"); err != nil {
+			return
+		}
+		deps.logger.Warn("provider configuration required", "capability", string(failure.ID), "code", failure.ErrorCode)
+		select {
+		case <-ctx.Done():
+			return
+		case <-deps.coordinator.ConfigurationRetries():
+		}
+		deps.coordinator.SetStep("probing provider configuration")
+		if err := deps.coordinator.Transition(readiness.StateProbingCapabilities, "retry provider configuration"); err != nil {
+			return
+		}
 	}
 
 	if deps.migrateStore != nil {
@@ -130,27 +152,35 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 	}
 }
 
-// probeMandatory runs every probe (local capabilities plus the provider) into
-// the registry and returns the first mandatory failure, if any.
-func probeMandatory(ctx context.Context, deps bootstrapDeps) (capabilities.Result, bool) {
+func probeLocalMandatory(ctx context.Context, deps bootstrapDeps) (capabilities.Result, bool) {
 	results := capabilities.Runner{}.Run(ctx, deps.probes, deps.registry)
-
-	if deps.providerProbe != nil {
-		chat := providerCapability(capabilityLLMChat, capabilities.Required, deps.providerProbe.ProbeChat(ctx))
-		deps.registry.UpdateCapability(chat)
-		results = append(results, chat)
-
-		embeddingRequirement := capabilities.Optional
-		if deps.enableEmbeddings {
-			embeddingRequirement = capabilities.Required
-		}
-		embeddings := providerCapability(capabilityLLMEmbeddings, embeddingRequirement, deps.providerProbe.ProbeEmbeddings(ctx))
-		deps.registry.UpdateCapability(embeddings)
-		results = append(results, embeddings)
-	}
-
 	for _, result := range results {
-		if result.Requirement == capabilities.Required && result.State == capabilities.CapabilityUnavailable {
+		if result.Requirement == capabilities.Required && result.State != capabilities.CapabilityAvailable {
+			return result, true
+		}
+	}
+	return capabilities.Result{}, false
+}
+
+func probeProviderMandatory(ctx context.Context, deps bootstrapDeps) (capabilities.Result, bool) {
+	chatProbe := ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: "PROVIDER_UNCONFIGURED", Message: "provider is not configured"}
+	embeddingProbe := ai.ProviderProbeResult{Status: ai.ProbeDisabled, Message: "embeddings are disabled"}
+	if deps.providerProbe != nil {
+		chatProbe = deps.providerProbe.ProbeChat(ctx)
+		embeddingProbe = deps.providerProbe.ProbeEmbeddings(ctx)
+	}
+	chat := providerCapability(capabilityLLMChat, capabilities.Required, chatProbe)
+	deps.registry.UpdateCapability(chat)
+
+	embeddingRequirement := capabilities.Optional
+	if deps.enableEmbeddings {
+		embeddingRequirement = capabilities.Required
+	}
+	embeddings := providerCapability(capabilityLLMEmbeddings, embeddingRequirement, embeddingProbe)
+	deps.registry.UpdateCapability(embeddings)
+
+	for _, result := range []capabilities.Result{chat, embeddings} {
+		if result.Requirement == capabilities.Required && result.State != capabilities.CapabilityAvailable {
 			return result, true
 		}
 	}

@@ -195,6 +195,7 @@ func TestStartupFailureMatrix(t *testing.T) {
 		enableEmbeddings bool
 		initialIndex     func(context.Context) error
 		failingID        capabilities.CapabilityID // capability expected unavailable in registry
+		recoverable      bool
 	}{
 		{
 			name:     "workspace illegible",
@@ -225,37 +226,37 @@ func TestStartupFailureMatrix(t *testing.T) {
 			name:      "chat endpoint unreachable",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnreachable}, emb: okEmb()},
-			failingID: "llm-chat",
+			failingID: "llm-chat", recoverable: true,
 		},
 		{
 			name:      "llm auth invalid",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnauthorized}, emb: okEmb()},
-			failingID: "llm-chat",
+			failingID: "llm-chat", recoverable: true,
 		},
 		{
 			name:      "chat model invalid",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeChatModelInvalid}, emb: okEmb()},
-			failingID: "llm-chat",
+			failingID: "llm-chat", recoverable: true,
 		},
 		{
 			name:             "embeddings enabled without model",
 			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingModelMissing}},
-			enableEmbeddings: true, failingID: "llm-embeddings",
+			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
 		},
 		{
 			name:             "embeddings endpoint invalid",
 			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingModelInvalid}},
-			enableEmbeddings: true, failingID: "llm-embeddings",
+			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
 		},
 		{
 			name:             "embedding dimension invalid",
 			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
 			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingResponseInvalid}},
-			enableEmbeddings: true, failingID: "llm-embeddings",
+			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
 		},
 		{
 			name:         "initial index read error",
@@ -293,7 +294,11 @@ func TestStartupFailureMatrix(t *testing.T) {
 			}, false)
 			defer h.stop(t)
 
-			h.waitForState(t, readiness.StateFailed)
+			expectedState := readiness.StateFailed
+			if tc.recoverable {
+				expectedState = readiness.StateAwaitingConfiguration
+			}
+			h.waitForState(t, expectedState)
 
 			// /live always answers 200.
 			if status, _ := httpGet(t, h.baseURL+"/api/health/live"); status != http.StatusOK {
@@ -305,8 +310,8 @@ func TestStartupFailureMatrix(t *testing.T) {
 			}
 			// Diagnostic stats remain available while the runtime is not READY.
 			status, body := httpGet(t, h.baseURL+"/api/stats")
-			if status != http.StatusOK || !strings.Contains(string(body), `"readinessState":"FAILED"`) {
-				t.Fatalf("/api/stats status=%d body=%s, want 200 readinessState FAILED", status, body)
+			if status != http.StatusOK || !strings.Contains(string(body), `"readinessState":"`+string(expectedState)+`"`) {
+				t.Fatalf("/api/stats status=%d body=%s, want 200 readinessState %s", status, body, expectedState)
 			}
 			// The periodic indexer must not have started.
 			if atomic.LoadInt32(h.indexer) != 0 {

@@ -66,6 +66,22 @@ func TestReadinessGateAllowsDiagnosticsAndStatic(t *testing.T) {
 	}
 }
 
+func TestSettingsRoutesAllowedBeforeReady(t *testing.T) {
+	t.Parallel()
+	server := healthServer(t, coordinatorInState(t, readiness.StateAwaitingConfiguration), capabilities.NewRegistry())
+	for _, path := range []string{"/api/settings", "/api/settings/overrides"} {
+		response, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode == http.StatusServiceUnavailable && strings.Contains(string(body), "APP_NOT_READY") {
+			t.Fatalf("%s was blocked by readiness: %s", path, body)
+		}
+	}
+}
+
 func TestUnknownAPIRouteDoesNotFallThroughToSPA(t *testing.T) {
 	t.Parallel()
 	server := healthServer(t, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry())

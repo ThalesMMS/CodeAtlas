@@ -18,6 +18,9 @@ const (
 	StateBooting State = "BOOTING"
 	// StateProbingCapabilities runs the mandatory local/remote probes.
 	StateProbingCapabilities State = "PROBING_CAPABILITIES"
+	// StateAwaitingConfiguration keeps the local HTTP/UI surface alive while a
+	// missing or invalid provider is repaired through Settings.
+	StateAwaitingConfiguration State = "AWAITING_CONFIGURATION"
 	// StateMigratingStore migrates/rebuilds the store backend (JSON→SQLite) before
 	// indexing. During this state only diagnostics/progress endpoints are served.
 	StateMigratingStore State = "MIGRATING_STORE"
@@ -49,14 +52,15 @@ var ErrInvalidTransition = errors.New("readiness: invalid state transition")
 //     auditable cycle from a fresh coordinator.
 //   - SHUTTING_DOWN is terminal.
 var validTransitions = map[State][]State{
-	StateBooting:             {StateProbingCapabilities, StateFailed, StateShuttingDown},
-	StateProbingCapabilities: {StateMigratingStore, StateIndexing, StateFailed, StateShuttingDown},
-	StateMigratingStore:      {StateIndexing, StateFailed, StateShuttingDown},
-	StateIndexing:            {StateGeneratingArtifacts, StateReady, StateFailed, StateShuttingDown},
-	StateGeneratingArtifacts: {StateReady, StateFailed, StateShuttingDown},
-	StateReady:               {StateFailed, StateShuttingDown},
-	StateFailed:              {StateShuttingDown},
-	StateShuttingDown:        {},
+	StateBooting:               {StateProbingCapabilities, StateFailed, StateShuttingDown},
+	StateProbingCapabilities:   {StateAwaitingConfiguration, StateMigratingStore, StateIndexing, StateFailed, StateShuttingDown},
+	StateAwaitingConfiguration: {StateProbingCapabilities, StateFailed, StateShuttingDown},
+	StateMigratingStore:        {StateIndexing, StateFailed, StateShuttingDown},
+	StateIndexing:              {StateGeneratingArtifacts, StateReady, StateFailed, StateShuttingDown},
+	StateGeneratingArtifacts:   {StateReady, StateFailed, StateShuttingDown},
+	StateReady:                 {StateFailed, StateShuttingDown},
+	StateFailed:                {StateShuttingDown},
+	StateShuttingDown:          {},
 }
 
 // CanTransition reports whether moving from one state to another is permitted.
