@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "context-pack/v1",
+  "id": "ctxpack:0123456789abcdef",
+  "hash": "sha256:deadbeef",
+  "snapshot": {"snapshotId": "sha256:s", "revision": 1, "createdAt": "1970-01-01T00:00:00Z", "schema": 3, "identityAlgorithm": "v1"},
+  "feature": "hover",
+  "task": {"query": "what does Submit do?"},
+  "evidence": [
+    {"id": "ev:1", "kind": "ast_observation", "path": "pkg/svc.go", "range": {"start": {"line": 1, "column": 1}, "end": {"line": 3, "column": 1}}, "contentHash": "h1", "title": "Submit", "content": "func Submit() {}", "relevance": 0.9, "confidence": 0.8}
+  ],
+  "graph": {"nodes": [], "edges": []},
+  "omissions": [{"reason": "budget"}],
+  "budget": {"requestedBytes": 4000, "usedBytes": 120, "estimatedTokens": 40},
+  "policyVersion": "hover.policy.v1",
+  "generatedAt": "1970-01-01T00:00:00Z"
+}

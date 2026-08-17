@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "context-pack/v1",
+  "id": "ctxpack:bad",
+  "hash": "sha256:bad",
+  "snapshot": {"snapshotId": "sha256:s", "revision": 1, "createdAt": "1970-01-01T00:00:00Z", "schema": 3, "identityAlgorithm": "v1"},
+  "feature": "hover",
+  "task": {"query": "q"},
+  "evidence": [
+    {"id": "ev:1", "kind": "rumor", "path": "a.go", "range": {}, "contentHash": "h", "title": "t", "content": "c", "relevance": 0.5, "confidence": 0.5}
+  ],
+  "graph": {"nodes": [], "edges": []},
+  "omissions": [],
+  "budget": {"requestedBytes": 1, "usedBytes": 1, "estimatedTokens": 1},
+  "policyVersion": "p",
+  "generatedAt": "1970-01-01T00:00:00Z"
+}
