@@ -76,19 +76,19 @@ func TestLoadLLMReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresLLMEndpointAndModel(t *testing.T) {
+func TestLoadAllowsMissingLLMEndpointAndModelForSettingsBootstrap(t *testing.T) {
 	resetFlags(t)
 	t.Setenv("CODEATLAS_WORKSPACE", t.TempDir())
 	t.Setenv("CODEATLAS_LLM_BASE_URL", "")
 	t.Setenv("CODEATLAS_LLM_MODEL", "")
 
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load() succeeded without LLM config; want error")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want recoverable provider configuration", err)
 	}
-	if !strings.Contains(err.Error(), "CODEATLAS_LLM_BASE_URL") ||
-		!strings.Contains(err.Error(), "CODEATLAS_LLM_MODEL") {
-		t.Fatalf("error = %q, want missing LLM config keys", err.Error())
+	issues := ValidateProvider(cfg)
+	if len(issues) != 2 || issues[0].EnvironmentKey != "CODEATLAS_LLM_BASE_URL" || issues[1].EnvironmentKey != "CODEATLAS_LLM_MODEL" {
+		t.Fatalf("ValidateProvider() = %#v, want missing endpoint/model", issues)
 	}
 }
 

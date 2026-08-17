@@ -45,6 +45,11 @@ type Config struct {
 	RustLSPPath            string
 }
 
+type ValidationIssue struct {
+	EnvironmentKey string
+	Message        string
+}
+
 func Load() (Config, error) {
 	workspaceFlag := flag.String("workspace", envOr("CODEATLAS_WORKSPACE", "."), "workspace directory to index")
 	listenFlag := flag.String("listen", envOr("CODEATLAS_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
@@ -145,19 +150,11 @@ func Load() (Config, error) {
 }
 
 func (c Config) validate() error {
-	missing := make([]string, 0, 2)
-	if strings.TrimSpace(c.LLMBaseURL) == "" {
-		missing = append(missing, "CODEATLAS_LLM_BASE_URL")
-	}
-	if strings.TrimSpace(c.LLMModel) == "" {
-		missing = append(missing, "CODEATLAS_LLM_MODEL")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("LLM endpoint required; configure %s", strings.Join(missing, " and "))
-	}
-	parsed, err := url.Parse(c.LLMBaseURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return fmt.Errorf("CODEATLAS_LLM_BASE_URL must be an http(s) URL with a valid host")
+	if strings.TrimSpace(c.LLMBaseURL) != "" {
+		parsed, err := url.Parse(c.LLMBaseURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return fmt.Errorf("CODEATLAS_LLM_BASE_URL must be an http(s) URL with a valid host")
+		}
 	}
 	if c.EnableEmbeddings && strings.TrimSpace(c.EmbeddingModel) == "" {
 		return fmt.Errorf("CODEATLAS_EMBEDDING_MODEL is required when CODEATLAS_ENABLE_EMBEDDINGS=true")
@@ -240,6 +237,30 @@ func (c Config) validate() error {
 		return fmt.Errorf("CODEATLAS_POLL_INTERVAL must be positive")
 	}
 	return nil
+}
+
+// ValidateProvider reports recoverable provider configuration problems without
+// making workspace/listener startup fail. Runtime settings can repair these
+// fields after the local HTTP UI has bound successfully.
+func ValidateProvider(c Config) []ValidationIssue {
+	issues := make([]ValidationIssue, 0, 4)
+	if strings.TrimSpace(c.LLMBaseURL) == "" {
+		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_BASE_URL", Message: "LLM base URL is required"})
+	} else if parsed, err := url.Parse(c.LLMBaseURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_BASE_URL", Message: "LLM base URL must be an http(s) URL with a valid host"})
+	}
+	if strings.TrimSpace(c.LLMModel) == "" {
+		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_MODEL", Message: "LLM model is required"})
+	}
+	switch c.LLMReasoningEffort {
+	case "", "none", "minimal", "low", "medium", "high", "xhigh", "max":
+	default:
+		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_REASONING_EFFORT", Message: "unsupported reasoning effort"})
+	}
+	if c.LLMTimeout <= 0 {
+		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_TIMEOUT", Message: "LLM timeout must be positive"})
+	}
+	return issues
 }
 
 func envOr(key, fallback string) string {
