@@ -174,6 +174,14 @@ test('Windows script rejects non-CodeAtlas dotenv variables before packaging', {
   }
 });
 
+test('Windows script refuses to move staging beneath an undeletable package', () => {
+  const script = fs.readFileSync(path.join(repoRoot, 'build_package_and_run.cmd'), 'utf8');
+  assert.match(
+    script,
+    /if exist "%ROOT%dist" rmdir \/s \/q "%ROOT%dist"\s+if exist "%ROOT%dist" \(\s+echo Error: Could not replace the existing package directory\.>&2\s+goto build_failed\s+\)\s+move "%STAGING%" "%ROOT%dist"/i,
+  );
+});
+
 test('Windows script rejects unsupported build-tool versions before installation', { skip: process.platform !== 'win32' }, async (t) => {
   const cases = [
     { name: 'Go', go: '1.22.9', node: '26.7.0', npm: '11.16.0', message: /Go 1\.23 or newer is required.*1\.22\.9/s },

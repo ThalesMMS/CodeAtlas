@@ -11,4 +11,4 @@ edc21248832c46f6d33f4fc90d55a515b1d675269ec528a21e6c3b5667f7064b  ./superpowers/
 ad831b90e62a0d1d97ba9536e3cb5f1fcfb84ca53b5d73f76a8875d95faf4cf3  ./superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md
 b58be347047ce2a4b2e83d81fdf375d9305604e9b81220ab6c8b7f25026eb442  ./superpowers/specs/2026-08-17-desktop-webview-packaging-design.md
 7a836e2aade0ffae890dbb0e688bf1158e2c62c2769688d77764d93fd7485aef  ./superpowers/specs/2026-08-17-runtime-settings-design.md
-28d877c840c7853c82718debddc813aa0abef244d8638d5812499729eec6101e  ./superpowers/verification/2026-08-17-desktop-windows-smoke.md
+5e36cf60fef238ddc6b90479a5d95afe67cfe6ab87ad41a706050759641ef087  ./superpowers/verification/2026-08-17-desktop-windows-smoke.md

@@ -164,6 +164,10 @@ if errorlevel 1 goto build_failed
 copy /y "%ROOT%packaging\windows\codeatlas-server.cmd" "%STAGING%\codeatlas-server.cmd" >nul
 if errorlevel 1 goto build_failed
 if exist "%ROOT%dist" rmdir /s /q "%ROOT%dist"
+if exist "%ROOT%dist" (
+  echo Error: Could not replace the existing package directory.>&2
+  goto build_failed
+)
 move "%STAGING%" "%ROOT%dist" >nul
 if errorlevel 1 goto build_failed
 

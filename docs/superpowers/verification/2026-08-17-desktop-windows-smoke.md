@@ -1,7 +1,7 @@
 # Windows desktop package smoke — 2026-08-17
 
-Host: Windows, repository `main`, commit under verification `64df055` plus the
-packaging review fixes recorded in the following commit.
+Host: Windows, repository `main`, commits through the desktop packaging review
+fixes recorded on 2026-08-17.
 
 ## Native desktop window
 
@@ -9,12 +9,17 @@ packaging review fixes recorded in the following commit.
    and both native Go builds with `CGO_ENABLED=1` and tags `fts5 desktop`.
 2. Launching `dist/codeatlas.exe` produced exactly one top-level window titled
    **CodeAtlas**. No companion console or new external-browser window appeared.
-3. The bootstrap **Settings** action opened the in-process Settings drawer. The
-   drawer exposed Workspace, listen address, LLM, embeddings, and language-server
-   controls. This remained available when the arbitrary automation working
-   directory caused the expected local workspace/state capability diagnostics.
-4. Closing the native title-bar control removed the CodeAtlas window and left no
-   `codeatlas.exe` process running.
+3. With an isolated `%APPDATA%`, valid workspace, fixed listener at
+   `127.0.0.1:19092`, and no provider environment, the same window reached
+   **Configuration required** / `AWAITING_CONFIGURATION` and opened Settings.
+4. Entering the isolated local provider URL and model through the visible drawer,
+   then selecting **Test and apply**, moved the same PID to the full application.
+   The UI reported `IA: openai-compatible:fake-codeatlas`, `index updated`, and
+   `GET /api/health/ready` returned `state=READY`.
+5. Before close, process inspection found the expected WebView2 and `gopls`
+   children. Closing the native title bar stopped `codeatlas.exe`, WebView2, and
+   `gopls`, removed the top-level window, and allowed port 19092 to bind
+   immediately in a new process.
 
 ## Windows executable contracts
 
@@ -41,6 +46,15 @@ codeatlas-server.cmd
    server process and a new TCP connection confirmed the port was released.
 3. Running the same launcher again reopened port 19091, proving immediate port
    reuse, and a second `Ctrl+C` stopped it.
+
+## Missing WebView2 native dialog
+
+The opt-in `TestManualUnavailableWebView2Dialog` test build injected registry
+`not found` results through the WebView2 preflight and opened the production
+Windows fatal dialog. The visible dialog was titled **CodeAtlas could not start**,
+explained that the Microsoft WebView2 Evergreen Runtime is required, and rendered
+the injected `sk-WEBVIEW-SECRET` canary only as `[REDACTED]`. Selecting **OK**
+allowed the interactive test to pass.
 
 ## Platform boundary
 

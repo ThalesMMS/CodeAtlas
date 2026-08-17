@@ -88,8 +88,8 @@ This creates:
 
 - `dist/codeatlas.exe` — the Windows GUI executable; double-click it to open the
   integrated desktop window without a companion console;
-- `dist/codeatlas-server.exe` — console-subsystem executable for reliable
-  foreground signal handling;
+- `dist/codeatlas-server.exe` — launcher-internal console-subsystem executable
+  for reliable foreground signal handling (use the `.cmd` entry point below);
 - `dist/codeatlas-server.cmd` — launcher for server mode, with console logs and
   `Ctrl+C` shutdown.
 
