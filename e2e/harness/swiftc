@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+
+if (process.argv.includes('--version')) {
+  process.stdout.write('Apple Swift version 6.3.3-fake (codeatlas fixture)\n');
+  process.exit(0);
+}
+process.stderr.write('CodeAtlas fake swiftc only supports --version\n');
+process.exit(64);
