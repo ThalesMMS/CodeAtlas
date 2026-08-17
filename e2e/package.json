@@ -1,0 +1,21 @@
+{
+  "name": "@codeatlas/e2e",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=26.0.0",
+    "npm": ">=11.16.0 <12"
+  },
+  "scripts": {
+    "pretest": "node harness/prepare-lsp-launchers.mjs",
+    "test": "node --test tests/lsp-launcher.test.mjs tests/p10-smoke.test.mjs tests/provider-reindex.test.mjs tests/scenario-matrix.test.mjs tests/monaco-editor.test.mjs tests/typescript-experiences.test.mjs tests/go-experiences.test.mjs tests/swift-experiences.test.mjs tests/python-experiences.test.mjs tests/rust-experiences.test.mjs",
+    "test:smoke": "node --test tests/p10-smoke.test.mjs",
+    "budget": "node --test tests/budget.test.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.61.1"
+  }
+}
