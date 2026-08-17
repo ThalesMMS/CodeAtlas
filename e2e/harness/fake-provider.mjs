@@ -4,6 +4,7 @@ const defaultVector = Object.freeze([0.11, 0.23, 0.37, 0.41, 0.53, 0.67, 0.79, 0
 
 export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '', authLabels = {} } = {}) {
   let activeScenario = scenario;
+  let blockedChats = null;
   const normalizedPrefix = apiPrefix === '' ? '' : `/${String(apiPrefix).replace(/^\/+|\/+$/gu, '')}`;
   const requests = [];
   const server = http.createServer(async (request, response) => {
@@ -15,10 +16,11 @@ export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '
     } catch {
       body = { malformed: rawBody };
     }
+    const requestScenario = activeScenario;
     requests.push({
       method: request.method,
       path: request.url,
-      scenario: activeScenario,
+      scenario: requestScenario,
       headers: sanitizeHeaders(request.headers),
       authorizationLabel: authLabels[request.headers.authorization] ?? (request.headers.authorization ? 'unrecognized' : 'missing'),
       body,
@@ -29,10 +31,11 @@ export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '
       return writeJSON(response, 405, { error: { message: 'method not allowed' } });
     }
     if (request.url === `${normalizedPrefix}/chat/completions`) {
-      return handleChat(response, body, activeScenario);
+      if (blockedChats) await blockedChats.promise;
+      return handleChat(response, body, requestScenario);
     }
     if (request.url === `${normalizedPrefix}/embeddings`) {
-      return handleEmbeddings(response, body, activeScenario);
+      return handleEmbeddings(response, body, requestScenario);
     }
     return writeJSON(response, 404, { error: { message: 'unknown fake provider path' } });
   });
@@ -45,6 +48,23 @@ export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '
   return {
     baseURL,
     requests,
+    setScenario(nextScenario) {
+      activeScenario = nextScenario;
+    },
+    blockChats() {
+      if (blockedChats) throw new Error('fake provider chats are already blocked');
+      let release;
+      const promise = new Promise((resolve) => { release = resolve; });
+      blockedChats = { promise, release };
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        const gate = blockedChats;
+        blockedChats = null;
+        gate?.release();
+      };
+    },
     close: () => closeServer(server),
     async withScenario(nextScenario, fn) {
       const previous = activeScenario;
@@ -107,7 +127,10 @@ function containsJSONKeyword(value, keyword) {
   return Object.entries(value).some(([key, child]) => key === keyword || containsJSONKeyword(child, keyword));
 }
 
-function handleEmbeddings(response, body, scenario) {
+async function handleEmbeddings(response, body, scenario) {
+  if (scenario === 'embeddings-slow') {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
   if (scenario === 'embeddings-invalid') {
     return writeJSON(response, 200, { data: [{ index: 0, embedding: [] }] });
   }

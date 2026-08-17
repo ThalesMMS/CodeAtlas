@@ -107,7 +107,7 @@ test('P10 smoke harness starts fake provider, temp workspace and real backend wi
   assert.match(report.markdownPath, /e2e[\\/]reports[\\/]p10-smoke\.md$/);
 });
 
-test('P10 smoke harness fails fast when readiness reaches FAILED', async () => {
+test('P10 smoke harness exposes provider failure as recoverable configuration state', async () => {
   const provider = await startFakeProvider({ scenario: 'chat-500' });
   cleanup.push(provider);
 
@@ -119,15 +119,17 @@ test('P10 smoke harness fails fast when readiness reaches FAILED', async () => {
   cleanup.push(workspace);
 
   const startedAt = performance.now();
-  await assert.rejects(
-    () => startBackend({
-      root,
-      workspaceDir: workspace.path,
-      providerBaseURL: provider.baseURL,
-      scenario: 'chat-500',
-      timeoutMs: 10_000,
-    }),
-    /backend readiness failed: .*"state":"FAILED"/,
-  );
-  assert.ok(performance.now() - startedAt < 10_000, 'terminal readiness failure should not wait for the full timeout');
+  const backend = await startBackend({
+    root,
+    workspaceDir: workspace.path,
+    providerBaseURL: provider.baseURL,
+    scenario: 'chat-500',
+    waitFor: 'awaiting-configuration',
+    timeoutMs: 10_000,
+  });
+  cleanup.push(backend);
+  const readiness = await backend.json('/api/health/ready');
+  assert.equal(readiness.status, 503);
+  assert.equal(readiness.body.state, 'AWAITING_CONFIGURATION');
+  assert.ok(performance.now() - startedAt < 10_000, 'recoverable readiness should not wait for the full timeout');
 });

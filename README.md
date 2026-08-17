@@ -33,7 +33,8 @@ CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship gr
 - Node.js 26 or newer and npm 11.16.0 or newer, below npm 12.
 - GNU Make and a POSIX-compatible shell for the provided `Makefile`.
 - A C compiler available to cgo, such as Clang or GCC.
-- An OpenAI-compatible `/chat/completions` endpoint.
+- An OpenAI-compatible `/chat/completions` endpoint for generated explanations;
+  it can be configured after CodeAtlas starts.
 
 Language servers and embeddings are optional. Their absence reduces semantic precision but does not disable deterministic AST indexing.
 
@@ -51,7 +52,8 @@ On PowerShell, copy the environment file with:
 Copy-Item .env.example .env
 ```
 
-Edit `.env` with your provider URL, model, and API key, then run:
+Edit `.env` with your provider URL, model, and API key, or configure the provider
+from the Settings button after startup. Then run:
 
 ```bash
 make frontend-install
@@ -92,7 +94,8 @@ PowerShell:
 
 Both scripts load unquoted `KEY=VALUE` assignments from `.env`, use
 `examples/tinycommerce` when `CODEATLAS_WORKSPACE` is unset, and forward extra
-arguments to CodeAtlas. For example:
+arguments to CodeAtlas. Persisted in-app Settings override `.env` independently
+per field. For example:
 
 ```bash
 bash ./build_package_and_run.sh -workspace /absolute/path/to/project -listen 127.0.0.1:9090
@@ -107,21 +110,86 @@ The resulting executable is `dist/codeatlas` on macOS and
 
 ## Configuration
 
-The repository includes a documented [`.env.example`](.env.example). The main settings are:
+The repository includes a documented [`.env.example`](.env.example), and every
+variable in it is also available in the in-app Settings drawer. Use the small
+gear beside **Check for changes**, or **Settings** on the startup screen when a
+provider has not been configured yet. Provider configuration is recoverable:
+CodeAtlas remains running in `AWAITING_CONFIGURATION`, and a valid apply
+continues startup without restarting the process.
 
-| Variable | Required | Purpose |
-|---|---:|---|
-| `CODEATLAS_LLM_BASE_URL` | Yes | OpenAI-compatible API base URL, usually ending in `/v1`. |
-| `CODEATLAS_LLM_MODEL` | Yes | Chat model name exposed by the provider. |
-| `CODEATLAS_LLM_API_KEY` | Provider-dependent | Credential sent to the chat provider. |
-| `CODEATLAS_LLM_REASONING_EFFORT` | No | Optional reasoning budget for See More, Codemap, and DeepWiki: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`; omitted for legacy providers. Hover always uses `none`. |
-| `CODEATLAS_LLM_TIMEOUT` | No | Per-request timeout; defaults to `10m`. |
-| `CODEATLAS_WORKSPACE` | No | Workspace to analyze; defaults to the included example. |
-| `CODEATLAS_LISTEN` | No | HTTP listen address; defaults to `127.0.0.1:8080`. |
-| `CODEATLAS_ENABLE_EMBEDDINGS` | No | Enables dense retrieval when set to `true`. |
-| `CODEATLAS_EMBEDDING_MODEL` | With embeddings | Embedding model exposed by the provider. |
-| `CODEATLAS_EMBEDDING_BASE_URL` | No | Separate embeddings endpoint; defaults to the chat base URL. |
-| `CODEATLAS_EMBEDDINGS_API_KEY` | No | Separate embeddings credential; defaults to the chat credential. |
+Saved settings are global for the current operating-system user and apply to
+all CodeAtlas workspaces. Values are resolved independently per field in this
+order:
+
+1. a saved Settings override;
+2. the corresponding environment or `.env` value;
+3. the built-in default.
+
+Explicit `-workspace` and `-listen` command-line flags still describe the
+current process invocation. When they differ from a saved restart-only value,
+Settings shows both the saved and running values.
+
+| Group | Variable | Type / default | Apply | Purpose |
+|---|---|---|---|---|
+| General | `CODEATLAS_WORKSPACE` | string / `.` | Restart | Workspace to analyze. |
+| General | `CODEATLAS_LISTEN` | address / `127.0.0.1:8080` | Restart | HTTP listen address. |
+| General | `CODEATLAS_MAX_FILE_BYTES` | integer / `1500000` | Restart | Maximum source-file size accepted by the indexer. |
+| LLM | `CODEATLAS_LLM_BASE_URL` | HTTP(S) URL | Live | OpenAI-compatible chat API base URL, commonly ending in `/v1`. |
+| LLM | `CODEATLAS_LLM_API_KEY` | secret / empty | Live | Credential sent to the chat provider. |
+| LLM | `CODEATLAS_LLM_MODEL` | string | Live | Chat model exposed by the provider. |
+| LLM | `CODEATLAS_LLM_REASONING_EFFORT` | string / empty | Live | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. |
+| LLM | `CODEATLAS_LLM_TIMEOUT` | Go duration / `10m` | Live | Business-request timeout. |
+| Embeddings | `CODEATLAS_ENABLE_EMBEDDINGS` | boolean / `false` | Live | Enables dense retrieval. |
+| Embeddings | `CODEATLAS_EMBEDDING_MODEL` | string / empty | Live | Embedding model; required when embeddings are enabled. |
+| Embeddings | `CODEATLAS_EMBEDDING_BASE_URL` | HTTP(S) URL / empty | Live | Separate endpoint; empty uses the LLM base URL. |
+| Embeddings | `CODEATLAS_EMBEDDINGS_API_KEY` | secret / empty | Live | Separate credential; empty uses the LLM credential. |
+| Language servers | `CODEATLAS_GOPLS` | `auto` / `true` / `false` | Live | Go language-server mode. |
+| Language servers | `CODEATLAS_GOPLS_PATH` | path / `gopls` | Live | Go language-server executable. |
+| Language servers | `CODEATLAS_TYPESCRIPT_LSP` | `auto` / `true` / `false` | Live | JavaScript/TypeScript language-server mode. |
+| Language servers | `CODEATLAS_TYPESCRIPT_LSP_PATH` | path / `typescript-language-server` | Live | JavaScript/TypeScript language-server executable. |
+| Language servers | `CODEATLAS_TYPESCRIPT_SDK_PATH` | path / empty | Live | Optional directory containing `tsserver.js`. |
+| Language servers | `CODEATLAS_SWIFT_LSP` | `auto` / `true` / `false` | Live | Swift language-server mode. |
+| Language servers | `CODEATLAS_SWIFT_LSP_PATH` | path / `sourcekit-lsp` | Live | Swift language-server executable. |
+| Language servers | `CODEATLAS_PYTHON_LSP` | `auto` / `true` / `false` | Live | Python language-server mode. |
+| Language servers | `CODEATLAS_PYTHON_LSP_PATH` | path / `pyright-langserver` | Live | Python language-server executable. |
+| Language servers | `CODEATLAS_RUST_LSP` | `auto` / `true` / `false` | Live | Rust language-server mode. |
+| Language servers | `CODEATLAS_RUST_LSP_PATH` | path / `rust-analyzer` | Live | Rust language-server executable. |
+
+The drawer labels each value as **Settings**, **.env**, or **Default**, and as
+**Live** or **Restart required**. LLM, embeddings, and language-server changes
+are prepared and probed before an atomic runtime swap. Existing in-flight LLM
+requests and working language-server sessions finish on their old runtime.
+Changing embeddings schedules a linked rebuild while lexical retrieval remains
+available. Workspace, listen address, and maximum file size are saved
+immediately but become running values on the next launch.
+
+### Persistence and API keys
+
+Non-secret overrides are stored in a versioned JSON file:
+
+| Platform | Per-user settings file |
+|---|---|
+| Windows | `%APPDATA%\CodeAtlas\settings.json` |
+| macOS | `~/Library/Application Support/CodeAtlas/settings.json` |
+| Linux | `$XDG_CONFIG_HOME/CodeAtlas/settings.json`, or `~/.config/CodeAtlas/settings.json` |
+
+API keys are never written to that JSON file. Keys explicitly entered in
+Settings are stored under the `CodeAtlas` service in Windows Credential Manager
+or macOS Keychain. The browser and settings API receive only a configured flag
+and source label, never a saved key. Existing `.env` secrets are not imported
+automatically: they remain environment-sourced until you explicitly replace
+them in Settings.
+
+**Reset to .env** transactionally removes every saved override and saved key,
+then returns to environment/default values. If the system vault is unavailable
+or locked, a secret change is rejected and the previous file, credential, and
+runtime remain active.
+
+The settings administration API is intentionally narrower than the rest of the
+application. It requires a per-process token injected only into uncached HTML,
+a loopback TCP peer, a loopback/`localhost` Host, and exact same-origin mutation
+requests. It is not a remote administration interface, even if the main server
+is bound to a non-loopback address.
 
 Hover explicitly sends `reasoning_effort: "none"` for low latency. When
 reasoning is enabled for the other LLM features, CodeAtlas treats each
@@ -131,16 +199,6 @@ reasoning reserve (256, 1,024, 4,096, 8,192, and 16,384 tokens respectively) to
 `max_completion_tokens`. This prevents hidden reasoning from consuming the
 answer budget. Gateways with custom `REASONING_EFFORT_BUDGETS` should keep those
 values aligned; `max` has no separate bounded reserve.
-
-Provider controls use `auto`, `true`, or `false`:
-
-| Language | Enable variable | Executable variable | Default executable |
-|---|---|---|---|
-| Go | `CODEATLAS_GOPLS` | `CODEATLAS_GOPLS_PATH` | `gopls` |
-| JavaScript / TypeScript | `CODEATLAS_TYPESCRIPT_LSP` | `CODEATLAS_TYPESCRIPT_LSP_PATH` | `typescript-language-server` |
-| Swift | `CODEATLAS_SWIFT_LSP` | `CODEATLAS_SWIFT_LSP_PATH` | `sourcekit-lsp` |
-| Python | `CODEATLAS_PYTHON_LSP` | `CODEATLAS_PYTHON_LSP_PATH` | `pyright-langserver` |
-| Rust | `CODEATLAS_RUST_LSP` | `CODEATLAS_RUST_LSP_PATH` | `rust-analyzer` |
 
 CodeAtlas does not install, update, or discover language servers automatically.
 

@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,12 +8,49 @@ import process from 'node:process';
 
 import { resolveFakeLSPPath } from './lsp-launchers.mjs';
 
+const isolatedSettingKeys = Object.freeze([
+  'CODEATLAS_WORKSPACE', 'CODEATLAS_LISTEN', 'CODEATLAS_MAX_FILE_BYTES',
+  'CODEATLAS_LLM_BASE_URL', 'CODEATLAS_LLM_API_KEY', 'CODEATLAS_LLM_MODEL',
+  'CODEATLAS_LLM_REASONING_EFFORT', 'CODEATLAS_LLM_TIMEOUT',
+  'CODEATLAS_GOPLS', 'CODEATLAS_GOPLS_PATH',
+  'CODEATLAS_TYPESCRIPT_LSP', 'CODEATLAS_TYPESCRIPT_LSP_PATH', 'CODEATLAS_TYPESCRIPT_SDK_PATH',
+  'CODEATLAS_SWIFT_LSP', 'CODEATLAS_SWIFT_LSP_PATH',
+  'CODEATLAS_PYTHON_LSP', 'CODEATLAS_PYTHON_LSP_PATH',
+  'CODEATLAS_RUST_LSP', 'CODEATLAS_RUST_LSP_PATH',
+  'CODEATLAS_ENABLE_EMBEDDINGS', 'CODEATLAS_EMBEDDING_MODEL',
+  'CODEATLAS_EMBEDDING_BASE_URL', 'CODEATLAS_EMBEDDINGS_API_KEY',
+]);
+
+export async function createIsolatedUserProfile(prefix = 'codeatlas-e2e-profile-') {
+  const configRoot = await mkdtemp(path.join(os.tmpdir(), prefix));
+  const environment = process.platform === 'win32'
+    ? { APPDATA: configRoot }
+    : process.platform === 'darwin'
+      ? { HOME: configRoot }
+      : { XDG_CONFIG_HOME: configRoot };
+  const settingsPath = process.platform === 'darwin'
+    ? path.join(configRoot, 'Library', 'Application Support', 'CodeAtlas', 'settings.json')
+    : path.join(configRoot, 'CodeAtlas', 'settings.json');
+  let closed = false;
+  return {
+    configRoot,
+    environment,
+    settingsPath,
+    async close() {
+      if (closed) return;
+      closed = true;
+      await rm(configRoot, { recursive: true, force: true });
+    },
+  };
+}
+
 export async function startBackend({
   root,
   workspaceDir,
   providerBaseURL,
   embeddingBaseURL = providerBaseURL,
   llmAPIKey = 'sk-live-test-key',
+  llmModel = providerBaseURL ? 'fake-codeatlas' : '',
   embeddingsAPIKey = llmAPIKey,
   enableEmbeddings = false,
   embeddingModel = enableEmbeddings ? 'fake-embedding' : '',
@@ -25,22 +64,37 @@ export async function startBackend({
   rustLSPPath = '',
   scenario = 'happy-path',
   timeoutMs = 30_000,
+  waitFor = 'ready',
+  userProfile = null,
+  environment = {},
 } = {}) {
   const port = await freePort();
   const baseURL = `http://127.0.0.1:${port}`;
   const binary = path.join(root, process.platform === 'win32' ? 'dist/codeatlas.exe' : 'dist/codeatlas');
   const logs = [];
   const startedAt = performance.now();
-	const resolvedLSPPaths = {
-		typescript: resolveFakeLSPPath({ root, configuredPath: typescriptLSPPath }),
-		go: resolveFakeLSPPath({ root, configuredPath: goplsPath }),
-		swift: resolveFakeLSPPath({ root, configuredPath: swiftLSPPath }),
-		python: resolveFakeLSPPath({ root, configuredPath: pythonLSPPath }),
-		rust: resolveFakeLSPPath({ root, configuredPath: rustLSPPath }),
-	};
-	const childEnv = { ...process.env };
-	delete childEnv.CODEATLAS_MAX_FILE_BYTES;
-	if (maxFileBytes) childEnv.CODEATLAS_MAX_FILE_BYTES = String(maxFileBytes);
+  const resolvedLSPPaths = {
+    typescript: resolveFakeLSPPath({ root, configuredPath: typescriptLSPPath }),
+    go: resolveFakeLSPPath({ root, configuredPath: goplsPath }),
+    swift: resolveFakeLSPPath({ root, configuredPath: swiftLSPPath }),
+    python: resolveFakeLSPPath({ root, configuredPath: pythonLSPPath }),
+    rust: resolveFakeLSPPath({ root, configuredPath: rustLSPPath }),
+  };
+  const ownedProfile = userProfile ? null : await createIsolatedUserProfile();
+  const profile = userProfile ?? ownedProfile;
+  const childEnv = { ...process.env };
+  for (const key of isolatedSettingKeys) delete childEnv[key];
+  Object.assign(childEnv, profile.environment);
+  if (maxFileBytes) childEnv.CODEATLAS_MAX_FILE_BYTES = String(maxFileBytes);
+  const providerEnvironment = {
+    ...(providerBaseURL ? { CODEATLAS_LLM_BASE_URL: providerBaseURL } : {}),
+    ...(llmAPIKey ? { CODEATLAS_LLM_API_KEY: llmAPIKey } : {}),
+    ...(llmModel ? { CODEATLAS_LLM_MODEL: llmModel } : {}),
+    CODEATLAS_ENABLE_EMBEDDINGS: String(enableEmbeddings),
+    ...(embeddingModel ? { CODEATLAS_EMBEDDING_MODEL: embeddingModel } : {}),
+    ...(embeddingBaseURL ? { CODEATLAS_EMBEDDING_BASE_URL: embeddingBaseURL } : {}),
+    ...(embeddingsAPIKey ? { CODEATLAS_EMBEDDINGS_API_KEY: embeddingsAPIKey } : {}),
+  };
   const child = spawn(binary, [
     '-workspace',
     workspaceDir,
@@ -51,14 +105,8 @@ export async function startBackend({
   ], {
     cwd: root,
     env: {
-		...childEnv,
-      CODEATLAS_LLM_BASE_URL: providerBaseURL,
-      CODEATLAS_LLM_API_KEY: llmAPIKey,
-      CODEATLAS_LLM_MODEL: 'fake-codeatlas',
-      CODEATLAS_ENABLE_EMBEDDINGS: String(enableEmbeddings),
-      CODEATLAS_EMBEDDING_MODEL: embeddingModel,
-      CODEATLAS_EMBEDDING_BASE_URL: embeddingBaseURL,
-      CODEATLAS_EMBEDDINGS_API_KEY: embeddingsAPIKey,
+      ...childEnv,
+      ...providerEnvironment,
       CODEATLAS_PROBE_TIMEOUT: '2s',
       CODEATLAS_WATCH_MODE: watchMode,
       CODEATLAS_POLL_INTERVAL: pollInterval,
@@ -76,6 +124,8 @@ export async function startBackend({
       ...(resolvedLSPPaths.rust ? { CODEATLAS_RUST_LSP_PATH: resolvedLSPPaths.rust } : {}),
       TZ: 'UTC',
       LC_ALL: 'C',
+      ...environment,
+      ...profile.environment,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -86,13 +136,37 @@ export async function startBackend({
   child.stderr.on('data', (data) => logs.push(data));
 
   try {
-    await waitForReady(baseURL, child, timeoutMs);
+    await waitForBackendState(baseURL, child, waitFor, timeoutMs);
   } catch (error) {
     await stopProcess(child).catch(() => {});
+    if (ownedProfile) await ownedProfile.close().catch(() => {});
     error.logs = logs;
     throw error;
   }
   const readyAt = performance.now();
+  let settingsToken = '';
+  let closed = false;
+  const settings = async (urlPath, options = {}) => {
+    if (!settingsToken) settingsToken = await readSettingsToken(baseURL);
+    if (options.rawHost) {
+      return requestJSONWithHost(baseURL, urlPath, {
+        ...options,
+        headers: {
+          origin: baseURL,
+          ...(options.headers ?? {}),
+          'X-CodeAtlas-Settings-Token': settingsToken,
+        },
+      });
+    }
+    return requestJSON(baseURL, urlPath, {
+      ...options,
+      headers: {
+        origin: baseURL,
+        ...(options.headers ?? {}),
+        'X-CodeAtlas-Settings-Token': settingsToken,
+      },
+    });
+  };
 
   return {
     baseURL,
@@ -108,7 +182,18 @@ export async function startBackend({
     },
     json: (urlPath, options) => requestJSON(baseURL, urlPath, options),
     text: (urlPath, options) => requestText(baseURL, urlPath, options),
-    close: async () => stopProcess(child),
+    settings,
+    waitForState: (state, stateTimeoutMs = timeoutMs) => waitForBackendState(baseURL, child, state, stateTimeoutMs),
+    profile,
+    close: async () => {
+      if (closed) return;
+      closed = true;
+      try {
+        await stopProcess(child);
+      } finally {
+        if (ownedProfile) await ownedProfile.close();
+      }
+    },
   };
 }
 
@@ -130,7 +215,8 @@ export async function stopAll(resources) {
   }
 }
 
-async function waitForReady(baseURL, child, timeoutMs) {
+async function waitForBackendState(baseURL, child, target, timeoutMs) {
+  const targetState = target === 'awaiting-configuration' ? 'AWAITING_CONFIGURATION' : String(target).toUpperCase();
   const deadline = Date.now() + timeoutMs;
   let lastError;
   while (Date.now() < deadline) {
@@ -141,10 +227,10 @@ async function waitForReady(baseURL, child, timeoutMs) {
     try {
       const response = await fetch(`${baseURL}/api/health/ready`, { signal: AbortSignal.timeout(1000) });
       const body = await response.text();
-      if (response.status === 200) {
+      const readiness = parseOptionalJSON(body);
+      if (readiness?.state === targetState || (targetState === 'READY' && response.status === 200)) {
         return;
       }
-      const readiness = parseOptionalJSON(body);
       if (readiness?.state === 'FAILED') {
         terminalFailure = new Error(`backend readiness failed: ${body}`);
       }
@@ -157,7 +243,17 @@ async function waitForReady(baseURL, child, timeoutMs) {
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  throw new Error(`backend did not become ready within ${timeoutMs}ms: ${lastError?.message ?? 'no response'}`);
+  throw new Error(`backend did not reach ${targetState} within ${timeoutMs}ms: ${lastError?.message ?? 'no response'}`);
+}
+
+export async function readSettingsToken(baseURL) {
+  const response = await requestText(baseURL, '/');
+  if (response.status !== 200) throw new Error(`settings token HTML status ${response.status}`);
+  const match = response.body.match(/<meta name="codeatlas-settings-token" content="([A-Za-z0-9_-]+)">/u);
+  if (!match || !match[1] || match[1] === '__CODEATLAS_SETTINGS_TOKEN__') {
+    throw new Error('settings token meta tag is unavailable');
+  }
+  return match[1];
 }
 
 function parseOptionalJSON(value) {
@@ -190,6 +286,41 @@ async function requestJSON(baseURL, urlPath, options = {}) {
     headers: response.headers,
     durationMs: Math.round(performance.now() - startedAt),
   };
+}
+
+function requestJSONWithHost(baseURL, urlPath, options = {}) {
+  const startedAt = performance.now();
+  const target = new URL(baseURL);
+  const encodedBody = options.body ? JSON.stringify(options.body) : '';
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      host: target.hostname,
+      port: target.port,
+      path: urlPath,
+      method: options.method ?? 'GET',
+      headers: {
+        ...(encodedBody ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(encodedBody) } : {}),
+        ...(options.headers ?? {}),
+        host: options.rawHost,
+      },
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          status: response.statusCode,
+          body: raw ? JSON.parse(raw) : null,
+          headers: new Headers(response.headers),
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      });
+    });
+    request.once('error', reject);
+    request.setTimeout(options.timeoutMs ?? 10_000, () => request.destroy(new Error('request timed out')));
+    if (encodedBody) request.write(encodedBody);
+    request.end();
+  });
 }
 
 async function requestText(baseURL, urlPath, options = {}) {

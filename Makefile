@@ -62,10 +62,13 @@ docs-checksums: docs-manifest
 	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
 	git ls-files --cached --others --exclude-standard docs | grep -v '^docs/SHA256SUMS.txt$$' | LC_ALL=C /usr/bin/sort | \
 		while IFS= read -r path; do \
+			if ! git cat-file -e ":$$path" 2>/dev/null; then \
+				echo "docs checksum input must be staged: $$path" >&2; exit 1; \
+			fi; \
 			if command -v sha256sum >/dev/null 2>&1; then \
-				checksum=$$(sha256sum "$$path" | awk '{print $$1}'); \
+				checksum=$$(git show ":$$path" | sha256sum | awk '{print $$1}'); \
 			else \
-				checksum=$$(shasum -a 256 "$$path" | awk '{print $$1}'); \
+				checksum=$$(git show ":$$path" | shasum -a 256 | awk '{print $$1}'); \
 			fi; \
 			printf '%s  ./%s\n' "$$checksum" "$${path#docs/}"; \
 		done > "$$tmp"; \
@@ -74,6 +77,10 @@ docs-checksums: docs-manifest
 verify-docs:
 	@manifest=$$(mktemp); sums=$$(mktemp); expected=$$(mktemp); \
 		trap 'rm -f "$$manifest" "$$sums" "$$expected"' EXIT; \
+	if ! git diff --quiet -- docs; then \
+		echo 'docs contain unstaged content changes; stage them before verification' >&2; \
+		git diff --name-only -- docs >&2; exit 1; \
+	fi; \
 	git ls-files --cached --others --exclude-standard docs | sed 's#^docs/##' | LC_ALL=C /usr/bin/sort > "$$manifest"; \
 		if ! cmp -s "$$manifest" docs/MANIFEST.txt; then \
 			echo 'docs/MANIFEST.txt is stale; run make docs-checksums' >&2; \
@@ -85,11 +92,19 @@ verify-docs:
 			echo 'docs/SHA256SUMS.txt file list is stale; run make docs-checksums' >&2; \
 			diff -u "$$sums" "$$expected" || true; exit 1; \
 		fi; \
-	cd docs && if command -v sha256sum >/dev/null 2>&1; then \
-		sha256sum -c SHA256SUMS.txt; \
-	else \
-		shasum -a 256 -c SHA256SUMS.txt; \
-	fi
+	failed=0; while read -r checksum recorded_path; do \
+		name=$${recorded_path#./}; path="docs/$$name"; \
+		if ! git cat-file -e ":$$path" 2>/dev/null; then \
+			echo "./$$name: FAILED (not staged)"; failed=1; continue; \
+		fi; \
+		if command -v sha256sum >/dev/null 2>&1; then \
+			actual=$$(git show ":$$path" | sha256sum | awk '{print $$1}'); \
+		else \
+			actual=$$(git show ":$$path" | shasum -a 256 | awk '{print $$1}'); \
+		fi; \
+		if [ "$$actual" = "$$checksum" ]; then echo "./$$name: OK"; \
+		else echo "./$$name: FAILED"; failed=1; fi; \
+	done < docs/SHA256SUMS.txt; test "$$failed" -eq 0
 
 test: frontend-build frontend-test
 	@cd backend && go test -tags fts5 ./...
