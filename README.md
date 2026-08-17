@@ -32,7 +32,8 @@ CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship gr
 - Go 1.23 or newer.
 - Node.js 26 or newer and npm 11.16.0 or newer, below npm 12.
 - GNU Make and a POSIX-compatible shell for the provided `Makefile`.
-- A C compiler available to cgo, such as Clang or GCC.
+- A matching C and C++ compiler pair available to cgo, such as Clang/Clang++
+  or GCC/G++.
 - An OpenAI-compatible `/chat/completions` endpoint for generated explanations;
   it can be configured after CodeAtlas starts.
 
@@ -72,30 +73,46 @@ The server listens on `127.0.0.1:8080` by default. Override it with `LISTEN=host
 
 ### Build a native executable
 
-The packaging scripts build the frontend, embed it in the Go server, create a
-native executable for the current operating system, and run it in the
-foreground. They are native builds rather than cross-compilers, installers, or
-macOS application bundles.
+The packaging scripts build the frontend, embed it in the Go binary, assemble
+the native desktop artifact for the current operating system, and open the
+integrated CodeAtlas window. The application does not open an external browser.
 
-On macOS, install the Xcode Command Line Tools if a C compiler is not already
-available, then run:
+On Windows, install GCC/G++ or Clang/Clang++ and the Microsoft WebView2 Runtime,
+then run from Command Prompt or PowerShell:
+
+```powershell
+.\build_package_and_run.cmd
+```
+
+This creates:
+
+- `dist/codeatlas.exe` — the Windows GUI executable; double-click it to open the
+  integrated desktop window without a companion console;
+- `dist/codeatlas-server.cmd` — foreground server mode, with console logs and
+  `Ctrl+C` shutdown.
+
+On macOS, install the Xcode Command Line Tools if necessary, then run:
 
 ```bash
 xcode-select --install
 bash ./build_package_and_run.sh
 ```
 
-On Windows, install GCC or Clang for cgo, then run from Command Prompt or
-PowerShell:
+This creates:
 
-```powershell
-.\build_package_and_run.cmd
-```
+- `dist/CodeAtlas.app` — the unsigned local macOS application bundle using the
+  system WebKit runtime;
+- `dist/codeatlas-server` — foreground server mode with terminal logs and
+  `Ctrl+C` shutdown.
 
 Both scripts load unquoted `KEY=VALUE` assignments from `.env`, use
 `examples/tinycommerce` when `CODEATLAS_WORKSPACE` is unset, and forward extra
 arguments to CodeAtlas. Persisted in-app Settings override `.env` independently
-per field. For example:
+per field. A packaged first run without a provider remains open and offers the
+**Settings** action; applying a valid endpoint and model continues startup in
+the same process.
+
+For example:
 
 ```bash
 bash ./build_package_and_run.sh -workspace /absolute/path/to/project -listen 127.0.0.1:9090
@@ -105,8 +122,22 @@ bash ./build_package_and_run.sh -workspace /absolute/path/to/project -listen 127
 .\build_package_and_run.cmd -workspace "C:\Code\project" -listen 127.0.0.1:9090
 ```
 
-The resulting executable is `dist/codeatlas` on macOS and
-`dist/codeatlas.exe` on Windows. Stop the foreground server with `Ctrl+C`.
+Closing the final desktop window gracefully stops the HTTP server, indexer, and
+language-server processes. To run the desktop-tagged binary directly as a
+foreground server, pass `-desktop=false`, or use the platform launcher:
+
+```powershell
+.\dist\codeatlas-server.cmd -listen 127.0.0.1:9090
+```
+
+```bash
+./dist/codeatlas-server -listen 127.0.0.1:9090
+```
+
+Packaging never copies `.env`, settings JSON, API keys, credentials, or frontend
+source into `dist`; the production frontend remains embedded in the binary.
+This version intentionally excludes an installer, DMG, updater, code signing,
+notarization, and a custom application icon. The local macOS bundle is unsigned.
 
 ## Configuration
 
