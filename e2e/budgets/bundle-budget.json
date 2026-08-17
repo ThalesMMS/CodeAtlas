@@ -1,0 +1,8 @@
+{
+  "budgetVersion": "p10-monaco-v1",
+  "baselineSource": "Issue #153 production Monaco 0.53.0 build measured on 2026-07-18, with <=10% margin; editor assets stay lazy and workers stay self-hosted",
+  "mainJsGzipBytes": 49700,
+  "totalInitialGzipBytes": 60800,
+  "workerGzipBytes": 1545200,
+  "maxInitialRequests": 2
+}

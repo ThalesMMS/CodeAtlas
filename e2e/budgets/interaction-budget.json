@@ -1,0 +1,54 @@
+{
+  "budgetVersion": "p10-monaco-v1",
+  "measurementPolicy": {
+    "clock": "monotonic",
+    "samples": 5,
+    "warmupSamples": 1,
+    "timezone": "UTC",
+    "locale": "C",
+    "retryPolicy": "no automatic retry in the blocking gate"
+  },
+  "interactionP95Ms": {
+    "typingPaint100KiB": 50,
+    "typingPaint1_5MiB": 100,
+    "switchBetween10Tabs": 100,
+    "openReceived1_5MiBFile": 1000,
+    "hoverTriggerToRequestWithoutPendingSync": 100,
+    "hoverValidatedToRenderedCard": 100,
+    "apply10kSemanticTokens": 150,
+    "apply1kDiagnostics": 200,
+    "openOrFilter500References": 250,
+    "codemap150Node300EdgeWorkerLayout": 1500,
+    "selectNodeOrTraceAfterLayout": 100
+  },
+  "mainThread": {
+    "maxLongTaskMs": 100,
+    "normalFlowGoalMs": 50,
+    "codemapLayout": "worker"
+  },
+  "memory": {
+    "residualGrowthPercent": 15,
+    "scenarios": [
+      "openClose30Documents",
+      "alternate10Tabs",
+      "run50Hovers",
+      "openClose20Codemaps",
+      "repeatSSEReconnect",
+      "providerRestart",
+      "cancelJobs"
+    ]
+  },
+  "backend": {
+    "separateFakeProviderLatency": true,
+    "measuredOperations": [
+      "overlayReplace",
+      "contextPackHover",
+      "contextPackSeeMore",
+      "navigationQuery",
+      "semanticTokenNormalization",
+      "watcherSingleFileReconciliation",
+      "sqliteCommitSearch",
+      "jobManagerEventThroughput"
+    ]
+  }
+}
