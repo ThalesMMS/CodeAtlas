@@ -99,6 +99,14 @@ type Manager struct {
 }
 
 func NewManager(ctx context.Context, environment Environment, store DocumentStore, credentials CredentialStore, preparer RuntimePreparer) (*Manager, error) {
+	return newManager(ctx, environment, store, credentials, preparer, nil)
+}
+
+func NewManagerWithRunningValues(ctx context.Context, environment Environment, store DocumentStore, credentials CredentialStore, preparer RuntimePreparer, running Values) (*Manager, error) {
+	return newManager(ctx, environment, store, credentials, preparer, &running)
+}
+
+func newManager(ctx context.Context, environment Environment, store DocumentStore, credentials CredentialStore, preparer RuntimePreparer, runningOverride *Values) (*Manager, error) {
 	if store == nil {
 		return nil, errors.New("settings document store is unavailable")
 	}
@@ -108,30 +116,22 @@ func NewManager(ctx context.Context, environment Environment, store DocumentStor
 	if preparer == nil {
 		return nil, errors.New("runtime preparer is unavailable")
 	}
-	document, err := store.Load(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("load settings document: %w", err)
-	}
-	if document.SchemaVersion == 0 {
-		document.SchemaVersion = SettingsSchemaVersion
-	}
-	if document.Overrides == nil {
-		document.Overrides = Overrides{}
-	}
-	credentialValues, err := loadSavedCredentials(ctx, credentials, document.Credentials)
+	document, resolved, err := LoadStartup(ctx, environment, store, credentials)
 	if err != nil {
 		return nil, err
 	}
-	resolved := Resolve(cloneEnvironment(environment), cloneOverrides(document.Overrides), credentialValues)
-	if err := resolved.BootstrapError(); err != nil {
-		return nil, err
+	running := resolved.Values
+	if runningOverride != nil {
+		running.Workspace = runningOverride.Workspace
+		running.ListenAddress = runningOverride.ListenAddress
+		running.MaxFileBytes = runningOverride.MaxFileBytes
 	}
 	manager := &Manager{
 		environment: cloneEnvironment(environment),
 		store:       store,
 		credentials: credentials,
 		preparer:    preparer,
-		running:     resolved.Values,
+		running:     running,
 		document:    cloneDocument(document),
 		resolved:    cloneResolved(resolved),
 	}
@@ -190,6 +190,7 @@ func (m *Manager) Update(ctx context.Context, request UpdateRequest) (UpdateResu
 	}()
 	candidateCredentials := savedCredentialValues(credentialTransaction.Values(), credentialTransaction.References())
 	candidate := Resolve(m.environment, candidateOverrides, candidateCredentials)
+	candidate.Credentials = credentialTransaction.References()
 	if len(candidate.Errors) != 0 {
 		return UpdateResult{Snapshot: currentSnapshot}, &ManagerError{
 			Code: SettingsValidationFailed, Fields: candidate.Errors, Snapshot: currentSnapshot,
@@ -403,6 +404,35 @@ func loadSavedCredentials(ctx context.Context, store CredentialStore, references
 	return result, nil
 }
 
+func LoadStartup(ctx context.Context, environment Environment, store DocumentStore, credentials CredentialStore) (Document, Resolved, error) {
+	if store == nil {
+		return Document{}, Resolved{}, errors.New("settings document store is unavailable")
+	}
+	if credentials == nil {
+		return Document{}, Resolved{}, errors.New("credential store is unavailable")
+	}
+	document, err := store.Load(ctx)
+	if err != nil {
+		return Document{}, Resolved{}, fmt.Errorf("load settings document: %w", err)
+	}
+	if document.SchemaVersion == 0 {
+		document.SchemaVersion = SettingsSchemaVersion
+	}
+	if document.Overrides == nil {
+		document.Overrides = Overrides{}
+	}
+	credentialValues, err := loadSavedCredentials(ctx, credentials, document.Credentials)
+	if err != nil {
+		return Document{}, Resolved{}, err
+	}
+	resolved := Resolve(cloneEnvironment(environment), cloneOverrides(document.Overrides), credentialValues)
+	resolved.Credentials = document.Credentials
+	if err := resolved.BootstrapError(); err != nil {
+		return Document{}, Resolved{}, err
+	}
+	return cloneDocument(document), cloneResolved(resolved), nil
+}
+
 func environmentSecrets(environment Environment) SecretValues {
 	result := make(SecretValues)
 	for _, key := range []FieldKey{FieldLLMAPIKey, FieldEmbeddingsAPIKey} {
@@ -445,7 +475,7 @@ func cloneDocument(document Document) Document {
 }
 
 func cloneResolved(resolved Resolved) Resolved {
-	cloned := Resolved{Values: resolved.Values, Sources: make(map[FieldKey]Source, len(resolved.Sources)), Errors: append([]FieldError(nil), resolved.Errors...)}
+	cloned := Resolved{Values: resolved.Values, Sources: make(map[FieldKey]Source, len(resolved.Sources)), Errors: append([]FieldError(nil), resolved.Errors...), Credentials: resolved.Credentials}
 	for key, source := range resolved.Sources {
 		cloned.Sources[key] = source
 	}

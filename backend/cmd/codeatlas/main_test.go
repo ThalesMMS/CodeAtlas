@@ -18,9 +18,65 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
 	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/rustlsp"
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 	"github.com/ThalesMMS/CodeAtlas/internal/swiftlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/typescriptlsp"
 )
+
+type startupDocumentStore struct{ document settings.Document }
+
+func (s startupDocumentStore) Load(context.Context) (settings.Document, error) {
+	return s.document, nil
+}
+func (s startupDocumentStore) Save(context.Context, settings.Document) error { return nil }
+
+type startupCredentialStore struct{ values map[string]string }
+
+func (s startupCredentialStore) Get(_ context.Context, account string) (string, error) {
+	value, ok := s.values[account]
+	if !ok {
+		return "", settings.ErrCredentialNotFound
+	}
+	return value, nil
+}
+func (s startupCredentialStore) Set(context.Context, string, string) error { return nil }
+func (s startupCredentialStore) Delete(context.Context, string) error      { return nil }
+
+func TestStartupAppliesSavedOverridesBeforeComposition(t *testing.T) {
+	environmentWorkspace := t.TempDir()
+	savedWorkspace := t.TempDir()
+	cfg := config.Config{
+		Workspace: environmentWorkspace, DatabasePath: filepath.Join(environmentWorkspace, ".codeatlas", "codeatlas.db"),
+		ListenAddress: "127.0.0.1:8080", MaxFileBytes: 100, LLMBaseURL: "https://env.test/v1", LLMModel: "env-model",
+	}
+	environment := settings.Environment{
+		settings.FieldWorkspace: environmentWorkspace, settings.FieldListen: cfg.ListenAddress,
+		settings.FieldMaxFileBytes: "100", settings.FieldLLMBaseURL: cfg.LLMBaseURL, settings.FieldLLMModel: cfg.LLMModel,
+	}
+	document := settings.Document{
+		SchemaVersion: settings.SettingsSchemaVersion, Revision: 7,
+		Overrides: settings.Overrides{
+			settings.FieldWorkspace: savedWorkspace, settings.FieldMaxFileBytes: int64(200), settings.FieldLLMModel: "saved-model",
+		},
+		Credentials: settings.CredentialReferences{LLMAPIKeyGeneration: "saved-generation"},
+	}
+	loaded, err := loadStartupSettings(context.Background(), cfg, environment, startupDocumentStore{document}, startupCredentialStore{
+		values: map[string]string{"llm-api-key:saved-generation": "vault-secret"},
+	}, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Config.Workspace != savedWorkspace || loaded.Config.LLMModel != "saved-model" || loaded.Config.MaxFileBytes != 200 {
+		t.Fatalf("startup config = %#v", loaded.Config)
+	}
+	if loaded.Config.LLMAPIKey != "vault-secret" || loaded.Resolved.Source(settings.FieldLLMAPIKey) != settings.SourceSettings {
+		t.Fatal("vault credential was not resolved as a saved override")
+	}
+	wantDatabase := filepath.Join(savedWorkspace, ".codeatlas", "codeatlas.db")
+	if loaded.Config.DatabasePath != wantDatabase {
+		t.Fatalf("database path = %q, want %q", loaded.Config.DatabasePath, wantDatabase)
+	}
+}
 
 type embeddingReconcileProvider struct {
 	mu        sync.Mutex

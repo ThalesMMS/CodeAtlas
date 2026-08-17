@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 )
 
 // llmEnv sets the minimal valid LLM configuration plus a workspace so individual
@@ -39,10 +41,9 @@ func llmEnv(t *testing.T) {
 
 func TestLoadLLMReasoningEffort(t *testing.T) {
 	tests := []struct {
-		name    string
-		value   string
-		want    string
-		wantErr bool
+		name  string
+		value string
+		want  string
 	}{
 		{name: "unset", value: "", want: ""},
 		{name: "normalizes", value: " Medium ", want: "medium"},
@@ -52,7 +53,7 @@ func TestLoadLLMReasoningEffort(t *testing.T) {
 		{name: "high", value: "high", want: "high"},
 		{name: "xhigh", value: "xhigh", want: "xhigh"},
 		{name: "max", value: "max", want: "max"},
-		{name: "invalid", value: "extreme", wantErr: true},
+		{name: "invalid", value: "extreme", want: "extreme"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -60,17 +61,14 @@ func TestLoadLLMReasoningEffort(t *testing.T) {
 			llmEnv(t)
 			t.Setenv("CODEATLAS_LLM_REASONING_EFFORT", test.value)
 			cfg, err := Load()
-			if test.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "CODEATLAS_LLM_REASONING_EFFORT") {
-					t.Fatalf("Load() error = %v, want reasoning-effort validation error", err)
-				}
-				return
-			}
 			if err != nil {
 				t.Fatalf("Load() error = %v", err)
 			}
 			if cfg.LLMReasoningEffort != test.want {
 				t.Fatalf("LLMReasoningEffort = %q, want %q", cfg.LLMReasoningEffort, test.want)
+			}
+			if test.value == "extreme" && len(ValidateProvider(cfg)) == 0 {
+				t.Fatal("invalid reasoning effort was not reported as recoverable")
 			}
 		})
 	}
@@ -89,6 +87,31 @@ func TestLoadAllowsMissingLLMEndpointAndModelForSettingsBootstrap(t *testing.T) 
 	issues := ValidateProvider(cfg)
 	if len(issues) != 2 || issues[0].EnvironmentKey != "CODEATLAS_LLM_BASE_URL" || issues[1].EnvironmentKey != "CODEATLAS_LLM_MODEL" {
 		t.Fatalf("ValidateProvider() = %#v, want missing endpoint/model", issues)
+	}
+}
+
+func TestLoadWithSettingsAppliesTypedOverridesBeforeMalformedEnvironment(t *testing.T) {
+	resetFlags(t)
+	workspace := t.TempDir()
+	t.Setenv("CODEATLAS_WORKSPACE", filepath.Join(t.TempDir(), "missing"))
+	t.Setenv("CODEATLAS_MAX_FILE_BYTES", "many")
+	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "yes")
+	t.Setenv("CODEATLAS_LLM_TIMEOUT", "eventually")
+
+	cfg, err := LoadWithSettings(settings.Values{
+		Workspace: workspace, ListenAddress: "127.0.0.1:9000", MaxFileBytes: 2048,
+		LLMBaseURL: "https://saved.test/v1", LLMModel: "saved-model", LLMTimeout: time.Minute,
+		GoplsMode: "auto", GoplsPath: "gopls",
+		TypeScriptLSPMode: "auto", TypeScriptLSPPath: "typescript-language-server",
+		SwiftLSPMode: "auto", SwiftLSPPath: "sourcekit-lsp",
+		PythonLSPMode: "auto", PythonLSPPath: "pyright-langserver",
+		RustLSPMode: "auto", RustLSPPath: "rust-analyzer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Workspace != workspace || cfg.MaxFileBytes != 2048 || cfg.EnableEmbeddings || cfg.LLMTimeout != time.Minute {
+		t.Fatalf("LoadWithSettings() = %#v", cfg)
 	}
 }
 
@@ -130,15 +153,18 @@ func TestLoadDefaultsToSQLiteDatabasePath(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresEmbeddingModelWhenEnabled(t *testing.T) {
+func TestLoadReportsMissingEmbeddingModelAsRecoverable(t *testing.T) {
 	resetFlags(t)
 	llmEnv(t)
 	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
 	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "")
 
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "CODEATLAS_EMBEDDING_MODEL") {
-		t.Fatalf("Load() error = %v, want missing embedding model", err)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issues := ValidateProvider(cfg); len(issues) == 0 || issues[len(issues)-1].EnvironmentKey != "CODEATLAS_EMBEDDING_MODEL" {
+		t.Fatalf("ValidateProvider() = %#v, want missing embedding model", issues)
 	}
 }
 
@@ -198,26 +224,34 @@ func TestLoadAcceptsEmbeddingBaseURL(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsInvalidEmbeddingBaseURLScheme(t *testing.T) {
+func TestLoadReportsInvalidEmbeddingBaseURLSchemeAsRecoverable(t *testing.T) {
 	resetFlags(t)
 	llmEnv(t)
 	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
 	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "embed-model")
 	t.Setenv("CODEATLAS_EMBEDDING_BASE_URL", "ftp://example.com")
 
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "CODEATLAS_EMBEDDING_BASE_URL") {
-		t.Fatalf("Load() error = %v, want invalid embedding base URL", err)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	issues := ValidateProvider(cfg)
+	if len(issues) == 0 || issues[len(issues)-1].EnvironmentKey != "CODEATLAS_EMBEDDING_BASE_URL" {
+		t.Fatalf("ValidateProvider() = %#v, want invalid embedding base URL", issues)
 	}
 }
 
-func TestLoadRejectsInvalidURLScheme(t *testing.T) {
+func TestLoadReportsInvalidURLSchemeAsRecoverable(t *testing.T) {
 	resetFlags(t)
 	llmEnv(t)
 	t.Setenv("CODEATLAS_LLM_BASE_URL", "ftp://example.com")
 
-	if _, err := Load(); err == nil {
-		t.Fatal("Load() accepted a non-http(s) base URL")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issues := ValidateProvider(cfg); len(issues) == 0 || issues[0].EnvironmentKey != "CODEATLAS_LLM_BASE_URL" {
+		t.Fatalf("ValidateProvider() = %#v, want invalid LLM base URL", issues)
 	}
 }
 

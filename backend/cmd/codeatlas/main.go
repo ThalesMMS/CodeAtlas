@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"flag"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -58,7 +60,20 @@ func run() int {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	cfg, err := config.Load()
+	settingsPath, err := settings.DefaultPath()
+	if err != nil {
+		logger.Error("could not resolve per-user settings path", "error", err)
+		return 1
+	}
+	settingsStore := settings.NewFileStore(settingsPath)
+	credentialStore := settings.NewKeyringCredentialStore()
+	settingsEnvironment := settings.EnvironmentFromLookup(os.LookupEnv)
+	_, startupResolved, err := settings.LoadStartup(context.Background(), settingsEnvironment, settingsStore, credentialStore)
+	if err != nil {
+		logger.Error("could not load per-user settings", "error", err)
+		return 1
+	}
+	cfg, err := config.LoadWithSettings(startupResolved.Values)
 	if err != nil {
 		logger.Error("invalid configuration", "error", err)
 		return 1
@@ -86,9 +101,9 @@ func run() int {
 		ProbeTimeout:          cfg.ProbeTimeout,
 		RequestTimeout:        cfg.LLMTimeout,
 	})
-	// Business calls go through the observing decorator (sanitized logs + metrics);
-	// the raw provider is retained only for the typed capability probe.
-	provider := observability.ObserveProvider(rawProvider, logger, metrics)
+	providerRuntime := ai.NewRuntime()
+	providerRuntime.Swap(observability.ObserveRuntimeCandidate(ai.RuntimeCandidate{Provider: rawProvider}, logger, metrics))
+	var provider ai.Provider = providerRuntime
 	workspace := service.NewWorkspace(cfg.Workspace)
 	parserEngine := codeparser.New()
 	coordinator := readiness.NewCoordinator()
@@ -140,8 +155,22 @@ func run() int {
 		10*time.Second,
 	)
 	defer lspCoordinator.Shutdown(context.Background())
-	retriever := retrieval.NewHybrid(storeRef, provider, cfg.EnableEmbeddings)
+	embeddingRuntime := retrieval.NewEmbeddingRuntime(providerRuntime, cfg.EnableEmbeddings)
+	retriever := retrieval.NewHybridWithRuntime(storeRef, embeddingRuntime)
 	retriever.SetLogger(logger)
+	settingsRuntime := app.NewSettingsRuntime(app.SettingsRuntimeOptions{
+		AIRuntime: providerRuntime, EmbeddingRuntime: embeddingRuntime, EmbeddingStore: storeRef,
+		LSPCoordinator: lspCoordinator, Logger: logger, Metrics: metrics, ProbeTimeout: cfg.ProbeTimeout,
+		StructuredProbeSchema: aiout.ExplanationSchema(),
+	})
+	settingsManager, err := settings.NewManagerWithRunningValues(rootContext, settingsEnvironment, settingsStore, credentialStore, settingsRuntime, settings.Values{
+		Workspace: cfg.Workspace, ListenAddress: cfg.ListenAddress, MaxFileBytes: cfg.MaxFileBytes,
+	})
+	if err != nil {
+		logger.Error("could not initialize runtime settings", "error", err)
+		return 1
+	}
+	_ = settingsManager
 	internalMutations := mutation.NewMemoryRegistry(mutation.RegistryConfig{})
 	defer internalMutations.Close()
 	backgroundIndexer := indexer.New(cfg.Workspace, cfg.MaxFileBytes, parserEngine, storeRef, retriever)
@@ -175,6 +204,7 @@ func run() int {
 	api.SetMetrics(metrics)
 	api.SetScheduler(indexScheduler)
 	api.SetMutationRegistry(internalMutations)
+	settingsRuntime.SetEmbeddingScheduler(api.ScheduleEmbeddingRebuild)
 	httpServer := &http.Server{
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -190,10 +220,7 @@ func run() int {
 		}
 	})
 
-	var providerProbe ai.CapabilityProbe
-	if probe, ok := rawProvider.(ai.CapabilityProbe); ok {
-		providerProbe = probe
-	}
+	var providerProbe ai.CapabilityProbe = providerRuntime
 
 	logger.Info("CodeAtlas starting", "address", "http://"+cfg.ListenAddress, "workspace", cfg.Workspace, "provider", provider.Name())
 	err = app.Run(rootContext, app.RuntimeDeps{
@@ -234,6 +261,68 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+type startupSettings struct {
+	Config   config.Config
+	Document settings.Document
+	Resolved settings.Resolved
+}
+
+func loadStartupSettings(ctx context.Context, cfg config.Config, environment settings.Environment, store settings.DocumentStore, credentials settings.CredentialStore, operatorOverrides map[string]bool) (startupSettings, error) {
+	document, resolved, err := settings.LoadStartup(ctx, environment, store, credentials)
+	if err != nil {
+		return startupSettings{}, err
+	}
+	values := resolved.Values
+	if !operatorOverrides["workspace"] {
+		workspace, err := filepath.Abs(values.Workspace)
+		if err != nil {
+			return startupSettings{}, err
+		}
+		info, err := os.Stat(workspace)
+		if err != nil {
+			return startupSettings{}, err
+		}
+		if !info.IsDir() {
+			return startupSettings{}, fmt.Errorf("workspace is not a directory: %s", workspace)
+		}
+		cfg.Workspace = workspace
+	}
+	if !operatorOverrides["listen"] {
+		cfg.ListenAddress = values.ListenAddress
+	}
+	if !operatorOverrides["db"] {
+		cfg.DatabasePath = filepath.Join(cfg.Workspace, ".codeatlas", "codeatlas.db")
+	}
+	cfg.MaxFileBytes = values.MaxFileBytes
+	cfg.LLMBaseURL = values.LLMBaseURL
+	cfg.LLMAPIKey = values.LLMAPIKey
+	cfg.LLMModel = values.LLMModel
+	cfg.LLMReasoningEffort = values.LLMReasoningEffort
+	cfg.LLMTimeout = values.LLMTimeout
+	cfg.GoplsMode = values.GoplsMode
+	cfg.GoplsPath = values.GoplsPath
+	cfg.TypeScriptLSPMode = values.TypeScriptLSPMode
+	cfg.TypeScriptLSPPath = values.TypeScriptLSPPath
+	cfg.TypeScriptSDKPath = values.TypeScriptSDKPath
+	cfg.SwiftLSPMode = values.SwiftLSPMode
+	cfg.SwiftLSPPath = values.SwiftLSPPath
+	cfg.PythonLSPMode = values.PythonLSPMode
+	cfg.PythonLSPPath = values.PythonLSPPath
+	cfg.RustLSPMode = values.RustLSPMode
+	cfg.RustLSPPath = values.RustLSPPath
+	cfg.EnableEmbeddings = values.EnableEmbeddings
+	cfg.EmbeddingModel = values.EmbeddingModel
+	cfg.EmbeddingBaseURL = values.EmbeddingBaseURL
+	cfg.EmbeddingsAPIKey = values.EmbeddingsAPIKey
+	return startupSettings{Config: cfg, Document: document, Resolved: resolved}, nil
+}
+
+func explicitlySetFlags() map[string]bool {
+	result := make(map[string]bool)
+	flag.CommandLine.Visit(func(current *flag.Flag) { result[current.Name] = true })
+	return result
 }
 
 func newLSPRuntimeFactories(root string, workspace *service.Workspace, sourceExtensions map[string]struct{}) lspruntime.Factories {

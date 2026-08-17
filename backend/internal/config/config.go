@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 )
 
 type Config struct {
@@ -51,8 +53,25 @@ type ValidationIssue struct {
 }
 
 func Load() (Config, error) {
-	workspaceFlag := flag.String("workspace", envOr("CODEATLAS_WORKSPACE", "."), "workspace directory to index")
-	listenFlag := flag.String("listen", envOr("CODEATLAS_LISTEN", "127.0.0.1:8080"), "HTTP listen address")
+	return load(nil)
+}
+
+// LoadWithSettings applies already-resolved per-user values before parsing the
+// remaining environment-only configuration. Explicit CLI flags still override
+// workspace/listen values because they are parsed after these defaults.
+func LoadWithSettings(values settings.Values) (Config, error) {
+	return load(&values)
+}
+
+func load(saved *settings.Values) (Config, error) {
+	workspaceDefault := envOr("CODEATLAS_WORKSPACE", ".")
+	listenDefault := envOr("CODEATLAS_LISTEN", "127.0.0.1:8080")
+	if saved != nil {
+		workspaceDefault = saved.Workspace
+		listenDefault = saved.ListenAddress
+	}
+	workspaceFlag := flag.String("workspace", workspaceDefault, "workspace directory to index")
+	listenFlag := flag.String("listen", listenDefault, "HTTP listen address")
 	dbFlag := flag.String("db", envOr("CODEATLAS_DB", ""), "SQLite database path")
 	flag.Parse()
 
@@ -77,18 +96,27 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("resolve database path: %w", err)
 	}
 
-	maxFileBytesValue, err := envInt("CODEATLAS_MAX_FILE_BYTES", 1_500_000)
-	if err != nil {
-		return Config{}, err
-	}
-	maxFileBytes := int64(maxFileBytesValue)
-	enableEmbeddings, err := envBool("CODEATLAS_ENABLE_EMBEDDINGS", false)
-	if err != nil {
-		return Config{}, err
-	}
-	llmTimeout, err := envDuration("CODEATLAS_LLM_TIMEOUT", 10*time.Minute)
-	if err != nil {
-		return Config{}, err
+	maxFileBytes := int64(1_500_000)
+	enableEmbeddings := false
+	llmTimeout := 10 * time.Minute
+	if saved == nil {
+		maxFileBytesValue, err := envInt("CODEATLAS_MAX_FILE_BYTES", 1_500_000)
+		if err != nil {
+			return Config{}, err
+		}
+		maxFileBytes = int64(maxFileBytesValue)
+		enableEmbeddings, err = envBool("CODEATLAS_ENABLE_EMBEDDINGS", false)
+		if err != nil {
+			return Config{}, err
+		}
+		llmTimeout, err = envDuration("CODEATLAS_LLM_TIMEOUT", 10*time.Minute)
+		if err != nil {
+			return Config{}, err
+		}
+	} else {
+		maxFileBytes = saved.MaxFileBytes
+		enableEmbeddings = saved.EnableEmbeddings
+		llmTimeout = saved.LLMTimeout
 	}
 	probeTimeout, err := envDuration("CODEATLAS_PROBE_TIMEOUT", 10*time.Second)
 	if err != nil {
@@ -143,6 +171,26 @@ func Load() (Config, error) {
 		RustLSPMode:            strings.ToLower(envOr("CODEATLAS_RUST_LSP", "auto")),
 		RustLSPPath:            envOr("CODEATLAS_RUST_LSP_PATH", "rust-analyzer"),
 	}
+	if saved != nil {
+		cfg.LLMBaseURL = saved.LLMBaseURL
+		cfg.LLMAPIKey = saved.LLMAPIKey
+		cfg.LLMModel = saved.LLMModel
+		cfg.LLMReasoningEffort = saved.LLMReasoningEffort
+		cfg.EmbeddingBaseURL = saved.EmbeddingBaseURL
+		cfg.EmbeddingModel = saved.EmbeddingModel
+		cfg.EmbeddingsAPIKey = saved.EmbeddingsAPIKey
+		cfg.GoplsMode = saved.GoplsMode
+		cfg.GoplsPath = saved.GoplsPath
+		cfg.TypeScriptLSPMode = saved.TypeScriptLSPMode
+		cfg.TypeScriptLSPPath = saved.TypeScriptLSPPath
+		cfg.TypeScriptSDKPath = saved.TypeScriptSDKPath
+		cfg.SwiftLSPMode = saved.SwiftLSPMode
+		cfg.SwiftLSPPath = saved.SwiftLSPPath
+		cfg.PythonLSPMode = saved.PythonLSPMode
+		cfg.PythonLSPPath = saved.PythonLSPPath
+		cfg.RustLSPMode = saved.RustLSPMode
+		cfg.RustLSPPath = saved.RustLSPPath
+	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
 	}
@@ -150,21 +198,6 @@ func Load() (Config, error) {
 }
 
 func (c Config) validate() error {
-	if strings.TrimSpace(c.LLMBaseURL) != "" {
-		parsed, err := url.Parse(c.LLMBaseURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("CODEATLAS_LLM_BASE_URL must be an http(s) URL with a valid host")
-		}
-	}
-	if c.EnableEmbeddings && strings.TrimSpace(c.EmbeddingModel) == "" {
-		return fmt.Errorf("CODEATLAS_EMBEDDING_MODEL is required when CODEATLAS_ENABLE_EMBEDDINGS=true")
-	}
-	if c.EnableEmbeddings && strings.TrimSpace(c.EmbeddingBaseURL) != "" {
-		parsed, err := url.Parse(c.EmbeddingBaseURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("CODEATLAS_EMBEDDING_BASE_URL must be an http(s) URL with a valid host")
-		}
-	}
 	if c.MaxFileBytes <= 0 {
 		return fmt.Errorf("CODEATLAS_MAX_FILE_BYTES must be positive")
 	}
@@ -173,11 +206,6 @@ func (c Config) validate() error {
 	}
 	if c.LLMTimeout <= 0 {
 		return fmt.Errorf("CODEATLAS_LLM_TIMEOUT must be positive")
-	}
-	switch c.LLMReasoningEffort {
-	case "", "none", "minimal", "low", "medium", "high", "xhigh", "max":
-	default:
-		return fmt.Errorf("CODEATLAS_LLM_REASONING_EFFORT must be none, minimal, low, medium, high, xhigh, or max")
 	}
 	switch c.WatchMode {
 	case "auto", "native", "polling":
@@ -243,7 +271,7 @@ func (c Config) validate() error {
 // making workspace/listener startup fail. Runtime settings can repair these
 // fields after the local HTTP UI has bound successfully.
 func ValidateProvider(c Config) []ValidationIssue {
-	issues := make([]ValidationIssue, 0, 4)
+	issues := make([]ValidationIssue, 0, 6)
 	if strings.TrimSpace(c.LLMBaseURL) == "" {
 		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_BASE_URL", Message: "LLM base URL is required"})
 	} else if parsed, err := url.Parse(c.LLMBaseURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
@@ -259,6 +287,17 @@ func ValidateProvider(c Config) []ValidationIssue {
 	}
 	if c.LLMTimeout <= 0 {
 		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_TIMEOUT", Message: "LLM timeout must be positive"})
+	}
+	if c.EnableEmbeddings {
+		if strings.TrimSpace(c.EmbeddingModel) == "" {
+			issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_EMBEDDING_MODEL", Message: "embedding model is required"})
+		}
+		if strings.TrimSpace(c.EmbeddingBaseURL) != "" {
+			parsed, err := url.Parse(c.EmbeddingBaseURL)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+				issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_EMBEDDING_BASE_URL", Message: "embedding base URL must be an http(s) URL with a valid host"})
+			}
+		}
 	}
 	return issues
 }

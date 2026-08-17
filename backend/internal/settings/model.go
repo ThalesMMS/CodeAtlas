@@ -51,9 +51,10 @@ type FieldError struct {
 }
 
 type Resolved struct {
-	Values  Values
-	Sources map[FieldKey]Source
-	Errors  []FieldError
+	Values      Values
+	Sources     map[FieldKey]Source
+	Errors      []FieldError
+	Credentials CredentialReferences
 }
 
 func (r Resolved) Source(key FieldKey) Source { return r.Sources[key] }
