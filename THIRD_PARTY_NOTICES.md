@@ -25,7 +25,8 @@ licenses. The complete runtime headers/sources and grammar sources are under
 |---|---:|---|
 | `github.com/fsnotify/fsnotify` | 1.10.1 | BSD-3-Clause |
 | `github.com/mattn/go-sqlite3` | 1.14.45 | MIT |
-| `golang.org/x/sys` | 0.13.0 | BSD-3-Clause |
+| `github.com/zalando/go-keyring` | 0.2.6 | MIT |
+| `golang.org/x/sys` | 0.26.0 | BSD-3-Clause |
 
 ## Frontend and E2E dependencies
 
