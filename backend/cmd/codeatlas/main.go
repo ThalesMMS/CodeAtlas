@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -26,6 +25,7 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/gopls"
 	"github.com/ThalesMMS/CodeAtlas/internal/httpapi"
 	"github.com/ThalesMMS/CodeAtlas/internal/indexer"
+	"github.com/ThalesMMS/CodeAtlas/internal/lspruntime"
 	"github.com/ThalesMMS/CodeAtlas/internal/mutation"
 	"github.com/ThalesMMS/CodeAtlas/internal/observability"
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
@@ -38,6 +38,7 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/semantic"
 	"github.com/ThalesMMS/CodeAtlas/internal/semevidence"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
+	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 	"github.com/ThalesMMS/CodeAtlas/internal/storemigrate"
 	"github.com/ThalesMMS/CodeAtlas/internal/swiftlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/typescriptlsp"
@@ -99,7 +100,7 @@ func run() int {
 	swiftManager, swiftProvider := startSwiftLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".swift"), sourceScanErr)
 	pythonManager, pythonProvider := startPythonLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".py"), sourceScanErr)
 	rustManager, rustProvider := startRustLSP(rootContext, cfg, workspace, registry, logger, hasSourceExtension(sourceExtensions, ".rs"), sourceScanErr)
-	semanticProvider := semantic.NewPathRouter(map[string]semantic.SemanticProvider{
+	semanticRouter := semantic.NewPathRouter(map[string]semantic.SemanticProvider{
 		".go":    goplsProvider,
 		".js":    typeScriptProvider,
 		".jsx":   typeScriptProvider,
@@ -113,32 +114,32 @@ func run() int {
 		".py":    pythonProvider,
 		".rs":    rustProvider,
 	})
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		shutdowns := []struct {
-			name string
-			run  func(context.Context) error
-		}{
-			{"gopls", goplsManager.Shutdown},
-			{"TypeScript LSP", typeScriptManager.Shutdown},
-			{"SourceKit-LSP", swiftManager.Shutdown},
-			{"Pyright language server", pythonManager.Shutdown},
-			{"rust-analyzer", rustManager.Shutdown},
-		}
-		var wait sync.WaitGroup
-		wait.Add(len(shutdowns))
-		for _, shutdown := range shutdowns {
-			shutdown := shutdown
-			go func() {
-				defer wait.Done()
-				if err := shutdown.run(shutdownCtx); err != nil {
-					logger.Warn("failed to shut down "+shutdown.name, "error", err)
-				}
-			}()
-		}
-		wait.Wait()
-	}()
+	semanticProvider := semantic.NewRuntime(semanticRouter)
+	initialLSPSlots := map[lspruntime.Family]lspruntime.Slot{
+		lspruntime.FamilyGo: {
+			Provider: goplsProvider, Capability: goplsCapability(goplsManager, 0), Shutdown: goplsManager.Shutdown,
+		},
+		lspruntime.FamilyTypeScript: {
+			Provider: typeScriptProvider, Capability: typeScriptLSPCapability(typeScriptManager, 0), Shutdown: typeScriptManager.Shutdown,
+		},
+		lspruntime.FamilySwift: {
+			Provider: swiftProvider, Capability: swiftLSPCapability(swiftManager, 0), Shutdown: swiftManager.Shutdown,
+		},
+		lspruntime.FamilyPython: {
+			Provider: pythonProvider, Capability: pythonLSPCapability(pythonManager, 0), Shutdown: pythonManager.Shutdown,
+		},
+		lspruntime.FamilyRust: {
+			Provider: rustProvider, Capability: rustLSPCapability(rustManager, 0), Shutdown: rustManager.Shutdown,
+		},
+	}
+	lspCoordinator := lspruntime.NewCoordinator(
+		semanticProvider,
+		newLSPRuntimeFactories(cfg.Workspace, workspace, sourceExtensions),
+		registry,
+		initialLSPSlots,
+		10*time.Second,
+	)
+	defer lspCoordinator.Shutdown(context.Background())
 	retriever := retrieval.NewHybrid(storeRef, provider, cfg.EnableEmbeddings)
 	retriever.SetLogger(logger)
 	internalMutations := mutation.NewMemoryRegistry(mutation.RegistryConfig{})
@@ -233,6 +234,89 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+func newLSPRuntimeFactories(root string, workspace *service.Workspace, sourceExtensions map[string]struct{}) lspruntime.Factories {
+	readContent := func(query semantic.SemanticQuery, relativePath string) ([]byte, error) {
+		if query.UsesOpenDocument() && relativePath == query.Path && query.Content != nil {
+			return query.Content, nil
+		}
+		return workspace.Read(relativePath)
+	}
+	cleanup := func(shutdown func(context.Context) error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdown(ctx)
+	}
+	return lspruntime.Factories{
+		Go: func(ctx context.Context, values settings.Values) (lspruntime.Slot, error) {
+			manager := gopls.NewManager(gopls.Config{Enable: gopls.EnableMode(values.GoplsMode), Path: values.GoplsPath}, root, nil)
+			started := time.Now()
+			if err := manager.Start(ctx, hasSourceExtension(sourceExtensions, ".go")); err != nil {
+				cleanup(manager.Shutdown)
+				return lspruntime.Slot{}, err
+			}
+			return lspruntime.Slot{
+				Provider:   gopls.NewProvider(manager, root, readContent),
+				Capability: goplsCapability(manager, time.Since(started)),
+				Shutdown:   manager.Shutdown,
+			}, nil
+		},
+		TypeScript: func(ctx context.Context, values settings.Values) (lspruntime.Slot, error) {
+			manager := typescriptlsp.NewManager(typescriptlsp.Config{
+				Enable: typescriptlsp.EnableMode(values.TypeScriptLSPMode), Path: values.TypeScriptLSPPath, SDKPath: values.TypeScriptSDKPath,
+			}, root, nil)
+			started := time.Now()
+			if err := manager.Start(ctx, hasAnySourceExtension(sourceExtensions, ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")); err != nil {
+				cleanup(manager.Shutdown)
+				return lspruntime.Slot{}, err
+			}
+			return lspruntime.Slot{
+				Provider:   typescriptlsp.NewProvider(manager, root, readContent),
+				Capability: typeScriptLSPCapability(manager, time.Since(started)),
+				Shutdown:   manager.Shutdown,
+			}, nil
+		},
+		Swift: func(ctx context.Context, values settings.Values) (lspruntime.Slot, error) {
+			manager := swiftlsp.NewManager(swiftlsp.Config{Enable: swiftlsp.EnableMode(values.SwiftLSPMode), Path: values.SwiftLSPPath}, root, nil)
+			started := time.Now()
+			if err := manager.Start(ctx, hasSourceExtension(sourceExtensions, ".swift")); err != nil {
+				cleanup(manager.Shutdown)
+				return lspruntime.Slot{}, err
+			}
+			return lspruntime.Slot{
+				Provider:   swiftlsp.NewProvider(manager, root, readContent),
+				Capability: swiftLSPCapability(manager, time.Since(started)),
+				Shutdown:   manager.Shutdown,
+			}, nil
+		},
+		Python: func(ctx context.Context, values settings.Values) (lspruntime.Slot, error) {
+			manager := pythonlsp.NewManager(pythonlsp.Config{Enable: pythonlsp.EnableMode(values.PythonLSPMode), Path: values.PythonLSPPath}, root, nil)
+			started := time.Now()
+			if err := manager.Start(ctx, hasSourceExtension(sourceExtensions, ".py")); err != nil {
+				cleanup(manager.Shutdown)
+				return lspruntime.Slot{}, err
+			}
+			return lspruntime.Slot{
+				Provider:   pythonlsp.NewProvider(manager, root, readContent),
+				Capability: pythonLSPCapability(manager, time.Since(started)),
+				Shutdown:   manager.Shutdown,
+			}, nil
+		},
+		Rust: func(ctx context.Context, values settings.Values) (lspruntime.Slot, error) {
+			manager := rustlsp.NewManager(rustlsp.Config{Enable: rustlsp.EnableMode(values.RustLSPMode), Path: values.RustLSPPath}, root, nil)
+			started := time.Now()
+			if err := manager.Start(ctx, hasSourceExtension(sourceExtensions, ".rs")); err != nil {
+				cleanup(manager.Shutdown)
+				return lspruntime.Slot{}, err
+			}
+			return lspruntime.Slot{
+				Provider:   rustlsp.NewProvider(manager, root, readContent),
+				Capability: rustLSPCapability(manager, time.Since(started)),
+				Shutdown:   manager.Shutdown,
+			}, nil
+		},
+	}
 }
 
 // startGopls wires the already-existing semantic adapter into the runtime. The
