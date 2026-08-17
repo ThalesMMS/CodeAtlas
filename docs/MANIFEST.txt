@@ -1,5 +1,6 @@
 MANIFEST.txt
 SHA256SUMS.txt
+assets/codeatlas-overview.png
 schemas/context-pack-v1.schema.json
 superpowers/plans/2026-08-16-deepwiki-planner-reliability.md
 superpowers/plans/2026-08-16-integrated-live-verification.md
@@ -7,3 +8,4 @@ superpowers/plans/2026-08-16-llm-reasoning-control.md
 superpowers/plans/2026-08-16-windows-e2e-lsp-launcher.md
 superpowers/plans/2026-08-16-windows-go-portability.md
 superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md
+superpowers/specs/2026-08-17-runtime-settings-design.md
