@@ -1,0 +1,6 @@
+# Upstream Tree-sitter runtime and generated parsers/scanners: mark for GitHub
+# Linguist and keep upstream formatting/line endings untouched.
+vendor/** linguist-vendored
+grammars/** linguist-generated
+vendor/** -text
+grammars/** -text

@@ -1,0 +1,117 @@
+{
+  "lockfileFormat": 1,
+  "description": "Source of truth for the vendored Tree-sitter runtime and grammars. VERSIONS.md and THIRD_PARTY_NOTICES.md are derived from / verified against this file. Bootstrap downloads only from these allowlisted URLs and verifies archiveSha256 before extracting; verify recomputes vendorTreeSha256 offline.",
+  "allowlistedHosts": ["github.com", "codeload.github.com"],
+  "vendorTreeSha256": "380679fee18c00368ef0917d5634ef632ee71660a8b0e36ed8ab5e38d87ce3c2",
+  "components": [
+    {
+      "name": "tree-sitter",
+      "type": "runtime",
+      "version": "0.22.4",
+      "tag": "v0.22.4",
+      "commit": "51ec7527dc61d0b8fc72dd768c48136037e8abb1",
+      "url": "https://github.com/tree-sitter/tree-sitter/archive/refs/tags/v0.22.4.tar.gz",
+      "archiveSha256": "919b750da9af1260cd989498bc84c63391b72ee2aa2ec20fc84882544eb7a229",
+      "subpaths": ["lib/src", "lib/include"],
+      "destination": "vendor",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter"
+    },
+    {
+      "name": "tree-sitter-go",
+      "type": "grammar",
+      "version": "0.23.4",
+      "tag": "v0.23.4",
+      "commit": "3c3775faa968158a8b4ac190a7fda867fd5fb748",
+      "url": "https://github.com/tree-sitter/tree-sitter-go/archive/refs/tags/v0.23.4.tar.gz",
+      "archiveSha256": "967870d7d120e9b760e538aeb8331a72f70ffcca4f1eaf1e1dea5375886d25d2",
+      "subpaths": ["src"],
+      "destination": "grammars/go",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-go"
+    },
+    {
+      "name": "tree-sitter-javascript",
+      "type": "grammar",
+      "version": "0.23.1",
+      "tag": "v0.23.1",
+      "commit": "3a837b6f3658ca3618f2022f8707e29739c91364",
+      "url": "https://github.com/tree-sitter/tree-sitter-javascript/archive/refs/tags/v0.23.1.tar.gz",
+      "archiveSha256": "fc5b8f5a491a6db33ca4854b044b89363ff7615f4291977467f52c1b92a0c032",
+      "subpaths": ["src"],
+      "destination": "grammars/javascript",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-javascript"
+    },
+    {
+      "name": "tree-sitter-typescript",
+      "type": "grammar",
+      "version": "0.23.2",
+      "tag": "v0.23.2",
+      "commit": "f975a621f4e7f532fe322e13c4f79495e0a7b2e7",
+      "url": "https://github.com/tree-sitter/tree-sitter-typescript/archive/refs/tags/v0.23.2.tar.gz",
+      "archiveSha256": "2c4ce711ae8d1218a3b2f899189298159d672870b5b34dff5d937bed2f3e8983",
+      "subpaths": ["typescript/src", "tsx/src", "common"],
+      "destination": "grammars/typescript",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-typescript"
+    },
+    {
+      "name": "tree-sitter-swift",
+      "type": "grammar",
+      "version": "0.7.3",
+      "tag": "0.7.3-with-generated-files",
+      "commit": "31d17fe7e818a2048c808b5c6fdc2dc792f4f5b5",
+      "url": "https://github.com/alex-pinkus/tree-sitter-swift/archive/refs/tags/0.7.3-with-generated-files.tar.gz",
+      "archiveSha256": "e2e84d3b97cf6a0afbcab793c4910123da92a34c395b09cc8d0880562a21e956",
+      "subpaths": [
+        "src/grammar.json",
+        "src/node-types.json",
+        "src/parser.c",
+        "src/scanner.c",
+        "src/tree_sitter"
+      ],
+      "destination": "grammars/swift",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-swift"
+    },
+    {
+      "name": "tree-sitter-python",
+      "type": "grammar",
+      "version": "0.23.6",
+      "tag": "v0.23.6",
+      "commit": "bffb65a8cfe4e46290331dfef0dbf0ef3679de11",
+      "url": "https://github.com/tree-sitter/tree-sitter-python/archive/refs/tags/v0.23.6.tar.gz",
+      "archiveSha256": "630a0f45eccd9b69a66a07bf47d1568e96a9c855a2f30e0921c8af7121e8af96",
+      "subpaths": [
+        "src/grammar.json",
+        "src/node-types.json",
+        "src/parser.c",
+        "src/scanner.c",
+        "src/tree_sitter"
+      ],
+      "destination": "grammars/python",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-python"
+    },
+    {
+      "name": "tree-sitter-rust",
+      "type": "grammar",
+      "version": "0.23.3",
+      "tag": "v0.23.3",
+      "commit": "3d087c3df25286140393ddecc339208fae107149",
+      "url": "https://github.com/tree-sitter/tree-sitter-rust/archive/refs/tags/v0.23.3.tar.gz",
+      "archiveSha256": "67c3369c36671ea9aaa8429c5ceff8bc37426099e3447d81df28bef736951c87",
+      "subpaths": [
+        "src/grammar.json",
+        "src/node-types.json",
+        "src/parser.c",
+        "src/scanner.c",
+        "src/tree_sitter"
+      ],
+      "destination": "grammars/rust",
+      "spdx": "MIT",
+      "licenseFile": "LICENSE.tree-sitter-rust"
+    }
+  ]
+}
