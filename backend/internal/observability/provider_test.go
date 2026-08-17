@@ -3,10 +3,13 @@ package observability
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 )
 
 // recordingProvider is an ai.Provider whose calls capture the prompts/inputs so a
@@ -95,5 +98,55 @@ func TestObservedEmbedLogsDimension(t *testing.T) {
 	}
 	if metrics.Snapshot().EmbedSuccessTotal != 1 {
 		t.Fatal("embed success not counted")
+	}
+}
+
+type nativeStructuredProvider struct {
+	structuredCalls int
+	probeCalls      int
+}
+
+func (p *nativeStructuredProvider) Name() string    { return "native" }
+func (p *nativeStructuredProvider) Available() bool { return true }
+func (p *nativeStructuredProvider) Complete(context.Context, string, string, int) (string, error) {
+	return `{"fallback":true}`, nil
+}
+func (p *nativeStructuredProvider) CompleteStructured(context.Context, ai.GenerationRequest) (ai.GenerationResult, error) {
+	p.structuredCalls++
+	return ai.GenerationResult{RawJSON: []byte(`{"native":true}`), Provider: "native"}, nil
+}
+func (p *nativeStructuredProvider) Embed(context.Context, []string) ([][]float64, error) {
+	return nil, nil
+}
+func (p *nativeStructuredProvider) ProbeChat(context.Context) ai.ProviderProbeResult {
+	p.probeCalls++
+	return ai.ProviderProbeResult{Status: ai.ProbeSuccess}
+}
+func (p *nativeStructuredProvider) ProbeEmbeddings(context.Context) ai.ProviderProbeResult {
+	return ai.ProviderProbeResult{Status: ai.ProbeDisabled}
+}
+
+func TestObservedRuntimeCandidatePreservesStructuredCompletionAndProbe(t *testing.T) {
+	inner := &nativeStructuredProvider{}
+	logger, buffer := captureLogger()
+	candidate := ObserveRuntimeCandidate(ai.RuntimeCandidate{Provider: inner}, logger, NewMetrics())
+	runtime := ai.NewRuntime()
+	runtime.Swap(candidate)
+
+	result, err := runtime.CompleteStructured(context.Background(), ai.GenerationRequest{
+		Operation:    "runtime-test",
+		OutputSchema: json.RawMessage(`{"type":"object"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result.RawJSON) != `{"native":true}` || inner.structuredCalls != 1 {
+		t.Fatalf("native structured result/calls = %s/%d", result.RawJSON, inner.structuredCalls)
+	}
+	if runtime.ProbeChat(context.Background()).Status != ai.ProbeSuccess || inner.probeCalls != 1 {
+		t.Fatal("candidate probe was not preserved")
+	}
+	if !strings.Contains(buffer.String(), `"operation":"chat:runtime-test"`) {
+		t.Fatalf("structured call was not observed: %s", buffer.String())
 	}
 }

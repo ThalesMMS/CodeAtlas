@@ -28,6 +28,26 @@ func ObserveProvider(inner ai.Provider, logger *slog.Logger, metrics *Metrics) a
 	return &observingProvider{inner: inner, logger: logger, metrics: metrics, clock: RealClock}
 }
 
+// ObserveRuntimeCandidate decorates the concrete provider before it is swapped
+// into an ai.Runtime. The original probe is retained because observability wraps
+// calls rather than capability discovery, and the wrapper preserves native
+// structured completion through CompleteStructured.
+func ObserveRuntimeCandidate(candidate ai.RuntimeCandidate, logger *slog.Logger, metrics *Metrics) ai.RuntimeCandidate {
+	provider := candidate.Provider
+	if provider == nil {
+		provider = ai.Disabled{}
+	}
+	probe := candidate.Probe
+	if probe == nil {
+		if providerProbe, ok := provider.(ai.CapabilityProbe); ok {
+			probe = providerProbe
+		} else {
+			probe = ai.Disabled{}
+		}
+	}
+	return ai.RuntimeCandidate{Provider: ObserveProvider(provider, logger, metrics), Probe: probe}
+}
+
 func (p *observingProvider) Name() string    { return p.inner.Name() }
 func (p *observingProvider) Available() bool { return p.inner.Available() }
 
