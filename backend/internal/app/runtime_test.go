@@ -351,6 +351,53 @@ func TestStartupBindErrorIsFatal(t *testing.T) {
 	}
 }
 
+func TestRunNotifiesActualListenerBeforeServing(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notified := make(chan net.Addr, 1)
+	served := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		served <- struct{}{}
+		w.WriteHeader(http.StatusNoContent)
+	})}
+	done := make(chan error, 1)
+	go func() {
+		done <- app.Run(ctx, app.RuntimeDeps{
+			Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Coordinator:       readiness.NewCoordinator(),
+			Registry:          capabilities.NewRegistry(),
+			Probes:            []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
+			ProviderProbe:     fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			MigrateStore:      func(context.Context) error { return nil },
+			InitialIndex:      func(context.Context) error { return nil },
+			RunIndexer:        func(runCtx context.Context) { <-runCtx.Done() },
+			Server:            server,
+			Listen:            func() (net.Listener, error) { return listener, nil },
+			OnListening:       func(addr net.Addr) { notified <- addr },
+			ShutdownTimeout:   3 * time.Second,
+		})
+	}()
+
+	addr := <-notified
+	if addr.String() != listener.Addr().String() {
+		t.Fatalf("notified address = %q, want %q", addr, listener.Addr())
+	}
+	response, err := http.Get("http://" + addr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	<-served
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStartupRunsStoreMigrationBetweenProbesAndIndexing(t *testing.T) {
 	t.Parallel()
 	migrationStarted := make(chan struct{})

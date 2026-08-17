@@ -30,6 +30,7 @@ type RuntimeDeps struct {
 	ReconcileEmbeddings func(context.Context) error
 	Server              *http.Server
 	Listen              func() (net.Listener, error)
+	OnListening         func(net.Addr)
 	Persist             func() error
 	ShutdownTimeout     time.Duration
 	// RecoveryError, when non-nil, marks a failed startup workspace-transaction
@@ -48,6 +49,9 @@ func Run(ctx context.Context, deps RuntimeDeps) error {
 	listener, err := deps.Listen()
 	if err != nil {
 		return fmt.Errorf("bind/listen: %w", err)
+	}
+	if deps.OnListening != nil {
+		deps.OnListening(listener.Addr())
 	}
 
 	serveError := make(chan error, 1)
