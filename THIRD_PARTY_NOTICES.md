@@ -37,7 +37,10 @@ licenses. The complete runtime headers/sources and grammar sources are under
 |---|---:|---|---|
 | `monaco-editor` | 0.53.0 | MIT | Lazy production editor and self-hosted workers |
 | `playwright-core` | 1.61.1 | Apache-2.0 | Development-only Chrome E2E harness |
+| `AsyncFuncAI/deepwiki-open` | upstream `main`, reviewed 2026-09-02 | MIT | Visual and interaction patterns adapted for the CodeAtlas DeepWiki/Codemap knowledge workspace; notice in `frontend/DEEPWIKI_OPEN_LICENSE` |
 
 These packages are installed deterministically from their npm lockfiles. The
 production Monaco dependency graph passes `npm audit` with zero findings at the
-time of integration; Playwright is not embedded in the CodeAtlas binary.
+time of integration; Playwright is not embedded in the CodeAtlas binary. The
+DeepWiki-Open adaptation introduces no runtime package and no second application
+server.
