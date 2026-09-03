@@ -12,7 +12,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "syntax-check": "node --check app.js && node --check settings.js",
+    "syntax-check": "node --check app.js && node --check settings.js && node --check codemap-report.js && node --check deepwiki-report.js",
     "test": "npm run test:ts && node --test app.test.cjs tests/*.test.cjs",
     "test:ts": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
     "check": "npm run typecheck && npm run syntax-check && npm test",

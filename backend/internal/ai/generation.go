@@ -37,6 +37,14 @@ type StructuredCompleter interface {
 
 const jsonOnlyInstruction = "\n\nRespond ONLY with a single valid JSON document that conforms to the requested schema. No Markdown, no code fences, and no text outside the JSON."
 
+func promptSchemaInstruction(schema json.RawMessage) string {
+	if len(schema) == 0 {
+		return ""
+	}
+	return "\n\nThe exact JSON Schema is backend-owned data. Follow it literally:\n<CODEATLAS_OUTPUT_SCHEMA>\n" +
+		string(schema) + "\n</CODEATLAS_OUTPUT_SCHEMA>" + jsonOnlyInstruction
+}
+
 // Generate returns a structured result for req. A provider implementing
 // StructuredCompleter uses native json_schema; otherwise Generate falls back to
 // Complete with an explicit JSON-only instruction. Either way the caller validates
@@ -50,7 +58,7 @@ func Generate(ctx context.Context, provider Provider, req GenerationRequest) (Ge
 	}
 	userPrompt := req.UserPrompt
 	if len(req.OutputSchema) > 0 {
-		userPrompt += jsonOnlyInstruction
+		userPrompt += promptSchemaInstruction(req.OutputSchema)
 	}
 	raw, err := provider.Complete(ctx, req.SystemPrompt, userPrompt, req.MaxOutputTokens)
 	if err != nil {

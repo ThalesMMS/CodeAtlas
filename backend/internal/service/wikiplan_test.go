@@ -288,7 +288,7 @@ func TestValidateWikiPlanRejectsUnsafeHierarchyAndScope(t *testing.T) {
 	})
 }
 
-func TestDeepWikiGeneratesPagesConcurrentlyAndReportsProgress(t *testing.T) {
+func TestDeepWikiSerializesPageGenerationAndReportsProgress(t *testing.T) {
 	store := indexedTinycommerceStore(t)
 	provider := &delayedWikiProvider{}
 	service := NewDeepWikiService(store, provider)
@@ -303,8 +303,8 @@ func TestDeepWikiGeneratesPagesConcurrentlyAndReportsProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateWithProgress() error = %v", err)
 	}
-	if provider.maxActive.Load() < 2 {
-		t.Fatalf("maximum concurrent page calls = %d, want at least 2", provider.maxActive.Load())
+	if provider.maxActive.Load() != 1 {
+		t.Fatalf("maximum concurrent page calls = %d, want 1 so a two-slot provider preserves one slot for interactive work", provider.maxActive.Load())
 	}
 	if len(progress) != len(pages) {
 		t.Fatalf("progress updates = %d, pages = %d", len(progress), len(pages))

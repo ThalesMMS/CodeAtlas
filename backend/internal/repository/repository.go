@@ -123,6 +123,7 @@ type Store interface {
 	ReplaceWikiPages(pages []domain.WikiPage) error
 	PublishCodemap(codemap domain.Codemap) (domain.ArtifactMetadata, error)
 	CodemapByArtifactIDContext(ctx context.Context, id domain.ArtifactID) (domain.Codemap, error)
+	ListCodemapsContext(ctx context.Context) ([]domain.CodemapSummary, error)
 	Counts() (files, symbols, edges, wiki int, indexedAt time.Time)
 	CompositeView(ephemeral domain.ParsedFile, overlay OverlayContext) (CompositeReadView, error)
 	Validate(ctx context.Context) error
@@ -427,6 +428,13 @@ func (r *Ref) CodemapByArtifactIDContext(ctx context.Context, id domain.Artifact
 	}
 	return store.CodemapByArtifactIDContext(ctx, id)
 }
+func (r *Ref) ListCodemapsContext(ctx context.Context) ([]domain.CodemapSummary, error) {
+	store, err := r.require()
+	if err != nil {
+		return nil, err
+	}
+	return store.ListCodemapsContext(ctx)
+}
 func (r *Ref) Counts() (files, symbols, edges, wiki int, indexedAt time.Time) {
 	if store, ok := r.Inner(); ok {
 		return store.Counts()
@@ -581,6 +589,10 @@ func (a *jsonAdapter) PublishCodemap(codemap domain.Codemap) (domain.ArtifactMet
 }
 func (a *jsonAdapter) CodemapByArtifactIDContext(context.Context, domain.ArtifactID) (domain.Codemap, error) {
 	return domain.Codemap{}, apperror.ArtifactNotFound()
+}
+func (a *jsonAdapter) ListCodemapsContext(context.Context) ([]domain.CodemapSummary, error) {
+	// The JSON backend has no artifact persistence, so the saved list is empty.
+	return []domain.CodemapSummary{}, nil
 }
 func (a *jsonAdapter) Counts() (int, int, int, int, time.Time) {
 	return a.inner.Counts()
@@ -1066,6 +1078,56 @@ func (a *sqliteAdapter) CodemapByArtifactIDContext(ctx context.Context, id domai
 		CreatedAt:       published.CreatedAt,
 	}
 	return codemap, nil
+}
+
+// ListCodemapsContext lists the published Codemap heads as lightweight
+// summaries, newest first. Query and graph counts come from a partial payload
+// decode; a head whose current version row is missing is skipped rather than
+// failing the whole listing.
+func (a *sqliteAdapter) ListCodemapsContext(ctx context.Context) ([]domain.CodemapSummary, error) {
+	heads, err := a.inner.Artifacts().ListHeads(ctx, sqlitestore.ArtifactFilter{Type: "codemap"})
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]domain.CodemapSummary, 0, len(heads))
+	for _, head := range heads {
+		if head.CurrentID == "" {
+			continue
+		}
+		published, err := a.inner.Artifacts().Get(ctx, head.CurrentID)
+		if err != nil {
+			slog.Warn("repository codemap head has no readable current version", "artifactId", string(head.CurrentID), "error", err)
+			continue
+		}
+		var payload struct {
+			Query string            `json:"query"`
+			Nodes []json.RawMessage `json:"nodes"`
+			Edges []json.RawMessage `json:"edges"`
+		}
+		if err := json.Unmarshal([]byte(published.Payload), &payload); err != nil {
+			slog.Warn("repository codemap payload is not decodable for listing", "artifactId", string(head.CurrentID), "error", err)
+		}
+		status := string(domain.ArtifactCurrent)
+		staleReason := ""
+		if head.Status == sqlitestore.StatusStale {
+			status = string(domain.ArtifactStale)
+			staleReason = head.StaleReason
+		}
+		summaries = append(summaries, domain.CodemapSummary{
+			ArtifactID:  domain.ArtifactID(published.ID),
+			Title:       published.Title,
+			Query:       payload.Query,
+			Status:      status,
+			StaleReason: staleReason,
+			Revision:    published.Revision,
+			NodeCount:   len(payload.Nodes),
+			EdgeCount:   len(payload.Edges),
+			Provider:    published.Provider,
+			UpdatedAt:   head.UpdatedAt,
+		})
+	}
+	sort.Slice(summaries, func(i, j int) bool { return summaries[i].UpdatedAt.After(summaries[j].UpdatedAt) })
+	return summaries, nil
 }
 func (a *sqliteAdapter) Counts() (files, symbols, edges, wiki int, indexedAt time.Time) {
 	counts, err := a.inner.Counts(context.Background())

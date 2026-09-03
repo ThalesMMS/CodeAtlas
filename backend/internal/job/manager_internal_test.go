@@ -17,8 +17,8 @@ func TestDefaultConfigAllowsLongDeepWikiJobsWithoutExtendingOtherTypes(t *testin
 	if config.DefaultTimeout != 5*time.Minute {
 		t.Fatalf("DefaultTimeout = %s, want %s", config.DefaultTimeout, 5*time.Minute)
 	}
-	if got := config.TypeTimeouts["deepwiki.refresh"]; got != 15*time.Minute {
-		t.Fatalf("deepwiki.refresh timeout = %s, want %s", got, 15*time.Minute)
+	if got := config.TypeTimeouts["deepwiki.refresh"]; got != 30*time.Minute {
+		t.Fatalf("deepwiki.refresh timeout = %s, want %s", got, 30*time.Minute)
 	}
 	if _, ok := config.TypeTimeouts["codemap.generate"]; ok {
 		t.Fatal("codemap.generate should continue using DefaultTimeout")

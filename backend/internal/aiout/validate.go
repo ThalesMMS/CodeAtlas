@@ -119,6 +119,21 @@ func (c *checker) text(label, value string) {
 	}
 }
 
+func (c *checker) narrativeText(label, value string, minimum int) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		c.fail("%s text is empty", label)
+		return
+	}
+	count := utf8.RuneCountInString(trimmed)
+	if count < minimum {
+		c.fail("%s text has %d runes (min %d)", label, count, minimum)
+	}
+	if count > MaxCodemapNarrativeRunes {
+		c.fail("%s text exceeds %d runes", label, MaxCodemapNarrativeRunes)
+	}
+}
+
 func (c *checker) observations(label string, claims []Claim) {
 	if len(claims) > MaxClaims {
 		c.fail("%s has %d entries (max %d)", label, len(claims), MaxClaims)
@@ -212,7 +227,9 @@ func ValidateCodemap(allowedEvidence, allowedStructure, allowedNodes map[string]
 		c.fail("schemaVersion %q != %q", narr.SchemaVersion, CodemapSchemaVersion)
 	}
 	c.text("title", narr.Title)
-	c.text("overview", narr.Overview)
+	c.narrativeText("overview", narr.Overview, MinCodemapOverviewRunes)
+	c.narrativeText("motivation", narr.Motivation, MinCodemapMotivationRunes)
+	c.narrativeText("details", narr.Details, MinCodemapDetailsRunes)
 	c.observations("claims", narr.Claims)
 	c.inferences(narr.Inferences)
 	c.uncertainties(narr.Uncertainties)
@@ -230,6 +247,18 @@ func ValidateCodemap(allowedEvidence, allowedStructure, allowedNodes map[string]
 	for i, flow := range narr.Flows {
 		field := fmt.Sprintf("flows[%d]", i)
 		c.text(field+".title", flow.Title)
+		// Per-flow narrative is requested by the schema and prompt; providers
+		// that degrade to prompt-enforced JSON may omit it, so it is only
+		// validated when present.
+		if strings.TrimSpace(flow.Summary) != "" {
+			c.narrativeText(field+".summary", flow.Summary, MinFlowSummaryRunes)
+		}
+		if strings.TrimSpace(flow.Motivation) != "" {
+			c.narrativeText(field+".motivation", flow.Motivation, MinFlowMotivationRunes)
+		}
+		if strings.TrimSpace(flow.Details) != "" {
+			c.narrativeText(field+".details", flow.Details, MinFlowDetailsRunes)
+		}
 		if _, ok := allowedNodes[flow.EntryNodeID]; !ok {
 			c.fail("%s.entryNodeId references unknown node ID %q", field, flow.EntryNodeID)
 		}
@@ -243,6 +272,21 @@ func ValidateCodemap(allowedEvidence, allowedStructure, allowedNodes map[string]
 			stepField := fmt.Sprintf("%s.steps[%d]", field, j)
 			c.text(stepField+".label", step.Label)
 			c.text(stepField+".text", step.Text)
+			if utf8.RuneCountInString(step.AnchorText) > MaxAnchorTextRunes {
+				c.fail("%s.anchorText exceeds %d runes", stepField, MaxAnchorTextRunes)
+			}
+			if len(step.Notes) > MaxStepNotes {
+				c.fail("%s has %d notes (max %d)", stepField, len(step.Notes), MaxStepNotes)
+			}
+			for k, note := range step.Notes {
+				noteField := fmt.Sprintf("%s.notes[%d]", stepField, k)
+				if strings.TrimSpace(note) == "" {
+					c.fail("%s text is empty", noteField)
+				}
+				if utf8.RuneCountInString(note) > MaxStepNoteRunes {
+					c.fail("%s exceeds %d runes", noteField, MaxStepNoteRunes)
+				}
+			}
 			if _, ok := allowedNodes[step.NodeID]; !ok {
 				c.fail("%s.nodeId references unknown node ID %q", stepField, step.NodeID)
 			}

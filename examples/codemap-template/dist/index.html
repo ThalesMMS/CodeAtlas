@@ -1,0 +1,2625 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; connect-src 'none'; img-src data:; font-src data:; style-src-elem 'sha256-vYimdDba+y8Nuh9gLdBsuoQXtWGeGocZyIESYiAjccI='; style-src-attr 'unsafe-inline'; script-src-elem 'sha256-YxLvdZ3JOUMHL1eo+1XRv99pNhkrvIzN01/t6yF33BY='; script-src-attr 'none'">
+  <title>Codemap</title>
+  <style>:root {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f2f3f5;
+  --surface-hover: #eceef1;
+  --text: #202124;
+  --text-soft: #52565e;
+  --muted: #777c85;
+  --border: #dedfe3;
+  --border-strong: #c6c8ce;
+  --accent: #1769aa;
+  --accent-soft: #e8f3fc;
+  --accent-strong: #0c4f86;
+  --danger: #a33a3a;
+  --warning-bg: #fff8df;
+  --warning-border: #e5ce7a;
+  --warning-text: #665419;
+  --verified-bg: #e8f5ed;
+  --verified-text: #25633d;
+  --inferred-bg: #fff2dc;
+  --inferred-text: #7b5412;
+  --code-bg: #111722;
+  --code-text: #d9e1ec;
+  --code-line: #8994a3;
+  --code-highlight: #203653;
+  --grid: rgba(28, 46, 68, 0.055);
+  --shadow: 0 12px 32px rgba(22, 28, 38, 0.12);
+  --shadow-soft: 0 2px 9px rgba(22, 28, 38, 0.07);
+  --sand: #f7edd4;
+  --rose: #f5e1e5;
+  --blue: #dfeef8;
+  --mint: #def0e8;
+  --lavender: #ece5f6;
+  --gray: #e8eaed;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --appbar-height: 52px;
+  --source-width: clamp(360px, 34vw, 520px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --surface: #15181d;
+    --surface-raised: #191d23;
+    --surface-muted: #20242b;
+    --surface-hover: #272c34;
+    --text: #e6e9ee;
+    --text-soft: #b8bec8;
+    --muted: #929aa7;
+    --border: #2e343d;
+    --border-strong: #424a56;
+    --accent: #76b8ef;
+    --accent-soft: #18344c;
+    --accent-strong: #a5d2f5;
+    --danger: #ef8e8e;
+    --warning-bg: #332d18;
+    --warning-border: #6b5d25;
+    --warning-text: #e6d385;
+    --verified-bg: #173529;
+    --verified-text: #9bd0ac;
+    --inferred-bg: #3a2d17;
+    --inferred-text: #e4bd70;
+    --code-bg: #0b0f15;
+    --code-text: #d9e1ec;
+    --code-line: #758092;
+    --code-highlight: #1a3655;
+    --grid: rgba(205, 220, 238, 0.055);
+    --shadow: 0 14px 38px rgba(0, 0, 0, 0.35);
+    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.24);
+    --sand: #38301f;
+    --rose: #3a282d;
+    --blue: #223542;
+    --mint: #22372f;
+    --lavender: #302a3b;
+    --gray: #2b2f35;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --surface: #15181d;
+  --surface-raised: #191d23;
+  --surface-muted: #20242b;
+  --surface-hover: #272c34;
+  --text: #e6e9ee;
+  --text-soft: #b8bec8;
+  --muted: #929aa7;
+  --border: #2e343d;
+  --border-strong: #424a56;
+  --accent: #76b8ef;
+  --accent-soft: #18344c;
+  --accent-strong: #a5d2f5;
+  --danger: #ef8e8e;
+  --warning-bg: #332d18;
+  --warning-border: #6b5d25;
+  --warning-text: #e6d385;
+  --verified-bg: #173529;
+  --verified-text: #9bd0ac;
+  --inferred-bg: #3a2d17;
+  --inferred-text: #e4bd70;
+  --code-bg: #0b0f15;
+  --code-text: #d9e1ec;
+  --code-line: #758092;
+  --code-highlight: #1a3655;
+  --grid: rgba(205, 220, 238, 0.055);
+  --shadow: 0 14px 38px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.24);
+  --sand: #38301f;
+  --rose: #3a282d;
+  --blue: #223542;
+  --mint: #22372f;
+  --lavender: #302a3b;
+  --gray: #2b2f35;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button,
+summary {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+summary:focus-visible,
+.map-stage:focus-visible,
+.skip-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: fixed;
+  left: 10px;
+  top: 8px;
+  z-index: 200;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 8px 11px;
+  box-shadow: var(--shadow);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  height: var(--appbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.appbar-brand {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--text-soft);
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, transparent 45%, var(--text-soft) 45% 55%, transparent 55%),
+    linear-gradient(transparent 45%, var(--text-soft) 45% 55%, transparent 55%);
+  opacity: 0.75;
+}
+
+.appbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.view-button,
+.icon-button,
+.map-tool {
+  border: 0;
+  cursor: pointer;
+}
+
+.view-button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.view-button:hover {
+  color: var(--text);
+}
+
+.view-button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.button-icon,
+.icon-button [data-icon],
+.empty-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.button-icon svg,
+.icon-button svg,
+.empty-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.icon-button:hover {
+  border-color: var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.codemap-shell {
+  min-width: 0;
+  min-height: calc(100vh - var(--appbar-height));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--source-width);
+  align-items: stretch;
+}
+
+.content-pane {
+  min-width: 0;
+  width: 100%;
+  background: var(--surface);
+}
+
+.hero {
+  padding: 26px clamp(18px, 4vw, 54px) 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.codemap-title {
+  max-width: 980px;
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(22px, 3vw, 34px);
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+
+.metadata {
+  max-width: 100%;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.meta-item {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.meta-label {
+  color: var(--text-soft);
+  font-weight: 650;
+}
+
+.meta-value {
+  min-width: 0;
+  max-width: min(55vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-separator {
+  color: var(--border-strong);
+}
+
+.summary {
+  max-width: 930px;
+  margin: 16px 0 0;
+  color: var(--text-soft);
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.reference-link {
+  display: inline;
+  margin: 0;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.reference-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.uncertainty {
+  max-width: 930px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.guide-view {
+  background: var(--surface);
+}
+
+.sections {
+  width: 100%;
+}
+
+.codemap-section {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.codemap-section > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-muted);
+}
+
+.codemap-section > summary::-webkit-details-marker,
+.guide-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.section-summary-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  gap: 0;
+  align-items: start;
+  padding: 12px clamp(16px, 3vw, 42px);
+}
+
+.codemap-section > summary:hover {
+  background: var(--surface-hover);
+}
+
+.section-number {
+  padding-top: 1px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.section-heading {
+  min-width: 0;
+}
+
+.section-title {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.section-description {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.section-chevron {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.codemap-section[open] .section-chevron {
+  transform: rotate(90deg);
+}
+
+.section-body {
+  background: var(--surface);
+}
+
+.guide-details {
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-details > summary {
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+  margin: 0 clamp(16px, 3vw, 42px);
+  padding: 9px 0 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.guide-details > summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guide-panel {
+  padding: 0 clamp(16px, 3vw, 42px) 18px;
+  color: var(--text-soft);
+}
+
+.guide-kicker {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.guide-panel h3 {
+  margin: 0 0 7px;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.guide-panel h3:not(:first-of-type) {
+  margin-top: 17px;
+}
+
+.guide-panel p {
+  max-width: 900px;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.guide-panel ul {
+  max-width: 900px;
+  margin: 6px 0 10px 20px;
+  padding: 0;
+}
+
+.guide-panel li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.trace {
+  padding: 14px clamp(16px, 3vw, 42px) 22px;
+}
+
+.trace-title {
+  margin: 0 0 9px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.trace-tree,
+.trace-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trace-tree > li {
+  margin: 0 0 8px;
+}
+
+.tree-item {
+  position: relative;
+  min-width: 0;
+}
+
+.tree-group-label,
+.tree-note-label {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 0 5px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.tree-group-label {
+  font-weight: 650;
+}
+
+.tree-note-label {
+  text-decoration: underline dotted var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+.tree-children {
+  position: relative;
+  margin-left: 11px !important;
+  padding-left: 17px !important;
+  border-left: 2px solid var(--border-strong);
+}
+
+.tree-children > li {
+  position: relative;
+  padding: 0 0 6px;
+}
+
+.tree-children > li::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: -17px;
+  width: 13px;
+  border-top: 2px solid var(--border-strong);
+}
+
+.tree-children > li:last-child::after {
+  content: "";
+  position: absolute;
+  left: -19px;
+  top: 19px;
+  bottom: -5px;
+  width: 5px;
+  background: var(--surface);
+}
+
+.node-card {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) minmax(110px, auto);
+  grid-template-rows: auto auto;
+  gap: 3px 8px;
+  padding: 8px 10px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--surface-muted);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms ease, background 100ms ease, box-shadow 100ms ease;
+}
+
+.node-card:hover,
+.node-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: var(--accent-soft);
+}
+
+.node-card.is-selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.node-card.is-inferred {
+  border-style: dashed;
+}
+
+.node-id {
+  grid-column: 1;
+  grid-row: 1;
+  padding-top: 1px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.node-title {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-location {
+  min-width: 0;
+  max-width: 42vw;
+  grid-column: 3;
+  grid-row: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-snippet {
+  min-width: 0;
+  grid-column: 2 / 4;
+  grid-row: 2;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 11.3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-view {
+  position: relative;
+  height: 680px;
+  min-height: 520px;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    var(--surface);
+  background-size: 24px 24px;
+}
+
+.map-toolbar {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.map-tool {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-raised) 95%, transparent);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.map-tool:hover {
+  background: var(--surface-hover);
+}
+
+.map-reset {
+  font-size: 10px;
+  letter-spacing: -0.03em;
+}
+
+.map-stage {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-stage.is-panning {
+  cursor: grabbing;
+}
+
+.map-world {
+  position: relative;
+  width: 1200px;
+  height: 800px;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.map-edges,
+.map-groups,
+.map-nodes {
+  position: absolute;
+  inset: 0;
+}
+
+.map-edges {
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.map-groups {
+  z-index: 0;
+}
+
+.map-nodes {
+  z-index: 2;
+}
+
+.map-group {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+  border-radius: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.map-group.tone-sand { background: var(--sand); }
+.map-group.tone-rose { background: var(--rose); }
+.map-group.tone-blue { background: var(--blue); }
+.map-group.tone-mint { background: var(--mint); }
+.map-group.tone-lavender { background: var(--lavender); }
+.map-group.tone-gray { background: var(--gray); }
+
+.map-group-label {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-node-button {
+  position: absolute;
+  width: 196px;
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  gap: 3px 7px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+
+.map-node-button:hover,
+.map-node-button.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-soft);
+}
+
+.map-node-button.is-inferred {
+  border-style: dashed;
+}
+
+.map-node-id {
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.map-node-title {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-node-kind {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.map-node-path {
+  min-width: 0;
+  grid-column: 1 / 3;
+  grid-row: 3;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-soft) 78%, transparent);
+  stroke-width: 1.5;
+  marker-end: url(#edge-arrow);
+}
+
+.edge-path.kind-data {
+  stroke: var(--accent);
+}
+
+.edge-path.kind-structural {
+  stroke: var(--muted);
+  stroke-width: 1.25;
+}
+
+.edge-path.is-inferred {
+  stroke-dasharray: 7 5;
+}
+
+.edge-label-bg {
+  fill: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  stroke: var(--border);
+  stroke-width: 0.7;
+}
+
+.edge-label {
+  fill: var(--text-soft);
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.source-panel {
+  position: sticky;
+  top: var(--appbar-height);
+  z-index: 30;
+  min-width: 0;
+  height: calc(100vh - var(--appbar-height));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.source-header {
+  min-width: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 9px 9px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.source-heading {
+  min-width: 0;
+}
+
+.source-kicker {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.source-title {
+  min-width: 0;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-location {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.source-action {
+  width: 29px;
+  height: 29px;
+}
+
+.source-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.source-empty p {
+  max-width: 330px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.empty-icon {
+  width: 32px;
+  height: 32px;
+  opacity: 0.55;
+}
+
+.source-content {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.source-status-row {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.status-chip,
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.status-chip.verified {
+  background: var(--verified-bg);
+  color: var(--verified-text);
+}
+
+.status-chip.inferred {
+  background: var(--inferred-bg);
+  color: var(--inferred-text);
+}
+
+.kind-chip {
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-soft);
+}
+
+.source-code {
+  min-height: 220px;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 10px 0 18px;
+  overflow: auto;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.62;
+  list-style-position: outside;
+  counter-reset: source-line;
+}
+
+.code-row {
+  position: relative;
+  min-width: max-content;
+  display: grid;
+  grid-template-columns: 54px minmax(max-content, 1fr);
+  counter-increment: source-line;
+}
+
+.code-row::before {
+  content: attr(data-line-number);
+  grid-column: 1;
+  padding: 1px 10px 1px 4px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--code-line);
+  text-align: right;
+  user-select: none;
+}
+
+.code-row code {
+  grid-column: 2;
+  min-width: max-content;
+  display: block;
+  padding: 1px 14px;
+  color: inherit;
+  white-space: pre;
+}
+
+.code-row.is-target {
+  background: var(--code-highlight);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.tok-comment { color: #78a36b; }
+.tok-string { color: #e6a46e; }
+.tok-keyword { color: #7db7ef; font-weight: 650; }
+.tok-number { color: #b59bea; }
+
+.relations {
+  flex: 0 0 auto;
+  max-height: 39%;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  padding: 11px 12px 15px;
+}
+
+.relations h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.relation-list {
+  display: grid;
+  gap: 7px;
+}
+
+.relation-card {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-muted);
+}
+
+.relation-card.inferred {
+  border-style: dashed;
+}
+
+.relation-line {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.relation-node-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.relation-claim,
+.relation-location,
+.relation-reason {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.relation-claim {
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.relation-location {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.relation-reason {
+  color: var(--inferred-text);
+  font-size: 10.5px;
+}
+
+.source-backdrop {
+  display: none;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  z-index: 120;
+  max-width: min(90vw, 440px);
+  transform: translate(-50%, 14px);
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: #22262d;
+  color: #ffffff;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.toast.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body.force-source-drawer .codemap-shell {
+  display: block;
+}
+
+body.force-source-drawer .source-panel {
+  position: fixed;
+  top: var(--appbar-height);
+  right: 0;
+  bottom: 0;
+  width: min(92vw, 580px);
+  height: auto;
+  transform: translateX(104%);
+  transition: transform 160ms ease;
+  box-shadow: var(--shadow);
+}
+
+body.force-source-drawer .source-panel.is-open {
+  transform: translateX(0);
+}
+
+body.force-source-drawer .source-backdrop {
+  position: fixed;
+  inset: var(--appbar-height) 0 0;
+  z-index: 25;
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0;
+  background: rgba(0, 0, 0, 0.38);
+  cursor: pointer;
+}
+
+@media (max-width: 1120px) {
+  .codemap-shell {
+    display: block;
+  }
+
+  .source-panel {
+    position: fixed;
+    top: var(--appbar-height);
+    right: 0;
+    bottom: 0;
+    width: min(92vw, 580px);
+    height: auto;
+    transform: translateX(104%);
+    transition: transform 160ms ease;
+    box-shadow: var(--shadow);
+  }
+
+  .source-panel.is-open {
+    transform: translateX(0);
+  }
+
+  .source-backdrop {
+    position: fixed;
+    inset: var(--appbar-height) 0 0;
+    z-index: 25;
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 0;
+    background: rgba(0, 0, 0, 0.38);
+    cursor: pointer;
+  }
+
+  .node-location {
+    max-width: 38vw;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --appbar-height: 50px;
+  }
+
+  .appbar {
+    padding: 0 7px 0 10px;
+  }
+
+  .appbar-brand span:last-child {
+    display: none;
+  }
+
+  .view-button {
+    padding: 4px 8px;
+  }
+
+  .hero {
+    padding: 20px 12px 18px;
+  }
+
+  .codemap-title {
+    font-size: 23px;
+  }
+
+  .meta-value {
+    max-width: calc(100vw - 105px);
+  }
+
+  .section-summary-row {
+    grid-template-columns: 27px minmax(0, 1fr) 19px;
+    padding: 11px 11px;
+  }
+
+  .guide-details > summary,
+  .guide-panel,
+  .trace {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .guide-details > summary {
+    padding-left: 0;
+    padding-right: 0;
+    margin-left: 11px;
+  }
+
+  .guide-panel,
+  .trace {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .node-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+  .node-title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .node-location {
+    max-width: 100%;
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .node-snippet {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .map-view {
+    min-height: 540px;
+    height: calc(100vh - var(--appbar-height));
+  }
+
+  .source-panel {
+    left: 0;
+    width: 100vw;
+    max-width: none;
+    border-left: 0;
+  }
+
+  .relations {
+    max-height: 34%;
+  }
+}
+
+@media (max-width: 420px) {
+  .view-button .button-icon {
+    display: none;
+  }
+
+  .metadata {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .meta-separator {
+    display: none;
+  }
+
+  .meta-item,
+  .meta-value {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .source-header {
+    padding-left: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media print {
+  .appbar,
+  .map-view,
+  .source-panel,
+  .source-backdrop,
+  .toast {
+    display: none !important;
+  }
+
+  .codemap-shell {
+    display: block;
+  }
+
+  .codemap-section,
+  .codemap-section > summary,
+  .section-body,
+  .guide-details,
+  .guide-panel {
+    display: block !important;
+  }
+
+  .codemap-section > summary {
+    break-after: avoid;
+  }
+
+  .node-card {
+    break-inside: avoid;
+  }
+}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#codemap-main">Skip to codemap</a>
+
+  <header class="appbar">
+    <div class="appbar-brand" aria-label="Codemap">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Codemap</span>
+    </div>
+    <div class="appbar-actions">
+      <div class="view-switch" role="group" aria-label="View">
+        <button id="view-guide" class="view-button" type="button" data-view="guide" aria-pressed="true">
+          <span class="button-icon" data-icon="guide" aria-hidden="true"></span>
+          <span id="view-guide-label">Guide</span>
+        </button>
+        <button id="view-map" class="view-button" type="button" data-view="map" aria-pressed="false">
+          <span class="button-icon" data-icon="map" aria-hidden="true"></span>
+          <span id="view-map-label">Map</span>
+        </button>
+      </div>
+      <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme" title="Theme">
+        <span data-icon="theme" aria-hidden="true"></span>
+      </button>
+    </div>
+  </header>
+
+  <div id="codemap-shell" class="codemap-shell">
+    <main id="codemap-main" class="content-pane" tabindex="-1">
+      <section class="hero" aria-labelledby="codemap-title">
+        <h1 id="codemap-title" class="codemap-title"></h1>
+        <div id="codemap-metadata" class="metadata" aria-label="Codemap metadata"></div>
+        <p id="codemap-summary" class="summary"></p>
+        <div id="codemap-uncertainty" class="uncertainty" hidden></div>
+      </section>
+
+      <section id="guide-view" class="guide-view" aria-label="Guide view">
+        <div id="codemap-sections" class="sections"></div>
+      </section>
+
+      <section id="map-view" class="map-view" aria-label="Map view" hidden>
+        <div class="map-toolbar" aria-label="Map controls">
+          <button id="map-zoom-in" class="map-tool" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+          <button id="map-zoom-out" class="map-tool" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+          <button id="map-reset" class="map-tool map-reset" type="button" aria-label="Reset map" title="Reset map">1:1</button>
+        </div>
+        <div id="map-stage" class="map-stage" tabindex="0" aria-label="Interactive codemap canvas">
+          <div id="map-world" class="map-world">
+            <svg id="map-edges" class="map-edges" aria-hidden="true"></svg>
+            <div id="map-groups" class="map-groups" aria-hidden="true"></div>
+            <div id="map-nodes" class="map-nodes"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside id="source-panel" class="source-panel" aria-labelledby="source-panel-title">
+      <div class="source-header">
+        <div class="source-heading">
+          <div id="source-panel-kicker" class="source-kicker">Source</div>
+          <h2 id="source-panel-title" class="source-title">Select a node</h2>
+          <div id="source-location" class="source-location"></div>
+        </div>
+        <div class="source-actions">
+          <button id="copy-link" class="icon-button source-action" type="button" aria-label="Copy deep link" title="Copy deep link" hidden>
+            <span data-icon="link" aria-hidden="true"></span>
+          </button>
+          <button id="copy-path" class="icon-button source-action" type="button" aria-label="Copy source path" title="Copy source path" hidden>
+            <span data-icon="copy" aria-hidden="true"></span>
+          </button>
+          <button id="source-close" class="icon-button source-action" type="button" aria-label="Close source" title="Close source" hidden>
+            <span data-icon="close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div id="source-empty" class="source-empty">
+        <span class="empty-icon" data-icon="code" aria-hidden="true"></span>
+        <p id="source-empty-text">Select a reference, guide card, or map node to inspect the exact source range.</p>
+      </div>
+      <div id="source-content" class="source-content" hidden>
+        <div id="source-status-row" class="source-status-row"></div>
+        <ol id="source-code" class="source-code" aria-label="Source code"></ol>
+        <section class="relations" aria-labelledby="relations-title">
+          <h3 id="relations-title">Relations</h3>
+          <div id="source-relations" class="relation-list"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <button id="source-backdrop" class="source-backdrop" type="button" aria-label="Close source panel" hidden></button>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script id="codemap-data" type="application/json">{"schemaVersion":"codeatlas-codemap-presentation/v1","meta":{"id":"codemap:feature-delivery-placeholder","template":true,"title":"Feature Delivery Codemap — Hybrid Placeholder","summary":"This map follows a request from the public boundary [1a], through conversion and validation [1b, 1c], into application and domain behavior [2a, 2c], and finally to durable and externally visible effects [3a, 3c]. Replace the placeholder evidence with anchors from the target repository.","query":"How does <FEATURE> move from entry point to durable side effects?","createdAt":"2026-08-21T21:00:00Z","language":"en","defaultView":"guide","uncertainty":"The exception-flow relation from validation to response mapping is intentionally marked inferred [1c, 1d].","repository":{"name":"example/feature-delivery","revision":"fixture-v1","workingTree":"clean"}},"presentation":{"theme":"system","sourcePanel":"split","map":{"direction":"LR","groupColumns":2,"featuredGroupId":"group-entry","groupOrder":["group-entry","group-application","group-effects"]}},"sections":[{"id":"section-1","number":1,"title":"Request intake and validation","summary":"An external payload becomes a validated internal command before application behavior runs.","defaultOpen":true,"guide":{"motivation":"The first stage establishes the trust boundary. Transport data is accepted at one public entry point [1a], converted into a typed command [1b], and checked before orchestration begins [1c].","details":[{"type":"paragraph","text":"The controller delegates the decoded payload to the adapter [1a, 1b]. The adapter applies command validation [1c] and maps a validation exception into a stable rejected result [1d]."},{"type":"list","items":["Entry points should be concrete controllers, CLI commands, jobs, or event handlers [1a].","Boundary conversion should show where untrusted input becomes a typed value [1b].","Exception propagation must remain inferred when the repository does not expose a direct call edge [1c, 1d]."]}]},"trace":{"title":"Request Entry Pipeline","items":[{"type":"group","label":"Transport boundary","children":[{"type":"node","nodeId":"1a"},{"type":"note","label":"Normalize the payload","children":[{"type":"node","nodeId":"1b"}]}]},{"type":"group","label":"Input safety","children":[{"type":"node","nodeId":"1c"},{"type":"note","label":"Failure branch","children":[{"type":"node","nodeId":"1d"}]}]}]}},{"id":"section-2","number":2,"title":"Application and domain behavior","summary":"The use case loads state, applies the domain rule, and records the resulting event.","defaultOpen":true,"guide":{"motivation":"The application layer should make orchestration visible without absorbing transport or storage details. The use case coordinates dependencies [2a], while the aggregate owns the state transition [2c].","details":[{"type":"paragraph","text":"The adapter invokes the use case [2a]. The use case loads the aggregate [2b], calls the domain operation [2c], and the aggregate records a domain event for later publication [2d]."}]},"trace":{"title":"Use-case Execution","items":[{"type":"group","label":"Application service","children":[{"type":"node","nodeId":"2a"},{"type":"note","label":"Load current state","children":[{"type":"node","nodeId":"2b"}]},{"type":"note","label":"Apply domain behavior","children":[{"type":"node","nodeId":"2c"},{"type":"node","nodeId":"2d"}]}]}]}},{"id":"section-3","number":3,"title":"Persistence and observable effects","summary":"The updated aggregate is saved, committed, published, and checked by a focused integration test.","defaultOpen":false,"guide":{"motivation":"A complete trace ends at durable or externally observable behavior. Persistence [3a], transaction commit [3b], publication [3c], and verification [3d] remain separate anchors.","details":[{"type":"paragraph","text":"The use case saves the aggregate [3a], commits the unit of work [3b], and publishes the pending domain events [3c]. A focused test asserts the persisted identifier, commit count, and published event type [3d]."}]},"trace":{"title":"Commit and Publication Pipeline","items":[{"type":"group","label":"Durability","children":[{"type":"node","nodeId":"3a"},{"type":"node","nodeId":"3b"}]},{"type":"group","label":"Observable result","children":[{"type":"node","nodeId":"3c"},{"type":"node","nodeId":"3d"}]}]}}],"groups":[{"id":"group-entry","label":"Request Intake","sectionId":"section-1","tone":"sand"},{"id":"group-application","label":"Application & Domain","sectionId":"section-2","tone":"rose"},{"id":"group-effects","label":"Persistence & Effects","sectionId":"section-3","tone":"blue"}],"nodes":[{"id":"1a","sectionId":"section-1","groupId":"group-entry","title":"Receive feature request","kind":"entry","status":"verified","source":{"path":"src/interface/feature-controller.ts","startLine":12,"endLine":16,"targetLine":12,"symbol":"handleFeatureRequest","snippet":"export async function handleFeatureRequest(request: RequestLike): Promise<ResponseLike> {"}},{"id":"1b","sectionId":"section-1","groupId":"group-entry","title":"Convert payload to command","kind":"adapter","status":"verified","source":{"path":"src/interface/feature-adapter.ts","startLine":5,"endLine":9,"targetLine":7,"symbol":"toFeatureCommand","snippet":"const command = toFeatureCommand(payload);"}},{"id":"1c","sectionId":"section-1","groupId":"group-entry","title":"Validate command invariants","kind":"validation","status":"verified","source":{"path":"src/application/feature-command.ts","startLine":8,"endLine":13,"targetLine":10,"symbol":"FeatureCommand.validate","snippet":"if (!command.id) throw new ValidationError(\"id is required\");"}},{"id":"1d","sectionId":"section-1","groupId":"group-entry","title":"Map validation failure","kind":"error","status":"verified","source":{"path":"src/interface/feature-adapter.ts","startLine":10,"endLine":15,"targetLine":12,"symbol":"mapValidationError","snippet":"return mapValidationError(error);"}},{"id":"2a","sectionId":"section-2","groupId":"group-application","title":"Run the feature use case","kind":"use-case","status":"verified","source":{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":15,"symbol":"executeFeature.run","snippet":"async run(command: FeatureCommand): Promise<FeatureResult> {"}},{"id":"2b","sectionId":"section-2","groupId":"group-application","title":"Load current aggregate","kind":"repository-read","status":"verified","source":{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":16,"symbol":"featureRepository.find","snippet":"const aggregate = await featureRepository.find(command.id);"}},{"id":"2c","sectionId":"section-2","groupId":"group-application","title":"Apply domain behavior","kind":"domain","status":"verified","source":{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":17,"symbol":"FeatureAggregate.apply","snippet":"this.value = nextValue;"}},{"id":"2d","sectionId":"section-2","groupId":"group-application","title":"Record domain event","kind":"event","status":"verified","source":{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":18,"symbol":"FeatureAggregate.recordEvent","snippet":"this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });"}},{"id":"3a","sectionId":"section-3","groupId":"group-effects","title":"Persist updated aggregate","kind":"repository-write","status":"verified","source":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":22,"targetLine":20,"symbol":"featureRepository.save","snippet":"await featureRepository.save(aggregate);"}},{"id":"3b","sectionId":"section-3","groupId":"group-effects","title":"Commit unit of work","kind":"transaction","status":"verified","source":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":24,"targetLine":22,"symbol":"unitOfWork.commit","snippet":"await unitOfWork.commit();"}},{"id":"3c","sectionId":"section-3","groupId":"group-effects","title":"Publish pending events","kind":"publisher","status":"verified","source":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":25,"targetLine":23,"symbol":"eventPublisher.publish","snippet":"await eventPublisher.publish(pendingEvents);"}},{"id":"3d","sectionId":"section-3","groupId":"group-effects","title":"Verify the complete effect path","kind":"test","status":"verified","source":{"path":"tests/feature-flow.test.ts","startLine":14,"endLine":21,"targetLine":18,"symbol":"feature delivery integration test","snippet":"expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");"}}],"edges":[{"id":"edge-1a-1b","from":"1a","to":"1b","label":"delegates","kind":"temporal","status":"verified","evidence":[{"path":"src/interface/feature-controller.ts","startLine":12,"endLine":16,"targetLine":15,"snippet":"return featureAdapter.execute(payload);","claim":"The controller forwards the decoded payload to the adapter."}]},{"id":"edge-1b-1c","from":"1b","to":"1c","label":"validates","kind":"temporal","status":"verified","evidence":[{"path":"src/interface/feature-adapter.ts","startLine":5,"endLine":10,"targetLine":8,"snippet":"FeatureCommand.validate(command);","claim":"The adapter validates the converted command before invoking the use case."}]},{"id":"edge-1c-1d","from":"1c","to":"1d","label":"maps failure","kind":"temporal","status":"inferred","reason":"The repository shows the validation exception being caught and mapped, but exception propagation is not an explicit call from the guard to the mapper.","evidence":[{"path":"src/interface/feature-adapter.ts","startLine":8,"endLine":13,"targetLine":12,"snippet":"return mapValidationError(error);","claim":"The adapter maps ValidationError instances in its catch branch."}]},{"id":"edge-1b-2a","from":"1b","to":"2a","label":"invokes","kind":"temporal","status":"verified","evidence":[{"path":"src/interface/feature-adapter.ts","startLine":7,"endLine":10,"targetLine":9,"snippet":"return executeFeature.run(command);","claim":"The adapter invokes the application use case with the validated command."}]},{"id":"edge-2a-2b","from":"2a","to":"2b","label":"loads state","kind":"data","status":"verified","evidence":[{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":16,"snippet":"const aggregate = await featureRepository.find(command.id);","claim":"The use case loads the aggregate identified by the command."}]},{"id":"edge-2a-2c","from":"2a","to":"2c","label":"applies","kind":"temporal","status":"verified","evidence":[{"path":"src/application/execute-feature.ts","startLine":15,"endLine":19,"targetLine":17,"snippet":"aggregate.apply(command.value);","claim":"The use case invokes the aggregate behavior with the command value."}]},{"id":"edge-2c-2d","from":"2c","to":"2d","label":"records","kind":"temporal","status":"verified","evidence":[{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":18,"snippet":"this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });","claim":"The aggregate records a FeatureChanged event after changing its value."}]},{"id":"edge-2a-3a","from":"2a","to":"3a","label":"persists","kind":"temporal","status":"verified","evidence":[{"path":"src/application/execute-feature.ts","startLine":18,"endLine":22,"targetLine":20,"snippet":"await featureRepository.save(aggregate);","claim":"The use case hands the updated aggregate to the repository."}]},{"id":"edge-3a-3b","from":"3a","to":"3b","label":"then commits","kind":"temporal","status":"verified","evidence":[{"path":"src/application/execute-feature.ts","startLine":20,"endLine":23,"targetLine":22,"snippet":"await unitOfWork.commit();","claim":"The use case commits after saving the aggregate and staging its pending events."}]},{"id":"edge-3b-3c","from":"3b","to":"3c","label":"then publishes","kind":"temporal","status":"verified","evidence":[{"path":"src/application/execute-feature.ts","startLine":21,"endLine":24,"targetLine":23,"snippet":"await eventPublisher.publish(pendingEvents);","claim":"The use case publishes pending events after the unit of work commits."}]},{"id":"edge-3c-3d","from":"3c","to":"3d","label":"verified by","kind":"structural","status":"verified","evidence":[{"path":"tests/feature-flow.test.ts","startLine":15,"endLine":21,"targetLine":18,"snippet":"expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");","claim":"The integration test asserts that the expected domain event was published."}]}]}</script>
+  <script id="codemap-sources" type="application/json">{"schemaVersion":"codeatlas-codemap-source-snapshot/v1","repository":{"name":"example/feature-delivery","revision":"fixture-v1","workingTree":"clean"},"nodes":{"1a":{"path":"src/interface/feature-controller.ts","startLine":12,"endLine":16,"targetLine":12,"lines":["export async function handleFeatureRequest(request: RequestLike): Promise<ResponseLike> {","  const payload = await request.json();","","  return featureAdapter.execute(payload);","}"]},"1b":{"path":"src/interface/feature-adapter.ts","startLine":5,"endLine":9,"targetLine":7,"lines":["  async execute(payload: unknown): Promise<FeatureResult> {","    try {","      const command = toFeatureCommand(payload);","      FeatureCommand.validate(command);","      return executeFeature.run(command);"]},"1c":{"path":"src/application/feature-command.ts","startLine":8,"endLine":13,"targetLine":10,"lines":["export const FeatureCommand = {","  validate(command: FeatureCommand): void {","    if (!command.id) throw new ValidationError(\"id is required\");","    if (!command.value) throw new ValidationError(\"value is required\");","  },","};"]},"1d":{"path":"src/interface/feature-adapter.ts","startLine":10,"endLine":15,"targetLine":12,"lines":["    } catch (error) {","      if (error instanceof ValidationError) {","        return mapValidationError(error);","      }","      throw error;","    }"]},"2a":{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":15,"lines":["export const executeFeature = {","  async run(command: FeatureCommand): Promise<FeatureResult> {","    const aggregate = await featureRepository.find(command.id);","    aggregate.apply(command.value);","    const pendingEvents = aggregate.pendingEvents();"]},"2b":{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":16,"lines":["export const executeFeature = {","  async run(command: FeatureCommand): Promise<FeatureResult> {","    const aggregate = await featureRepository.find(command.id);","    aggregate.apply(command.value);","    const pendingEvents = aggregate.pendingEvents();"]},"2c":{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":17,"lines":["  apply(nextValue: string): void {","    if (nextValue === this.value) return;","    this.value = nextValue;","    this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });","  }"]},"2d":{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":18,"lines":["  apply(nextValue: string): void {","    if (nextValue === this.value) return;","    this.value = nextValue;","    this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });","  }"]},"3a":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":22,"targetLine":20,"lines":["    const pendingEvents = aggregate.pendingEvents();","","    await featureRepository.save(aggregate);","    await outbox.stage(pendingEvents);","    await unitOfWork.commit();"]},"3b":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":24,"targetLine":22,"lines":["    const pendingEvents = aggregate.pendingEvents();","","    await featureRepository.save(aggregate);","    await outbox.stage(pendingEvents);","    await unitOfWork.commit();","    await eventPublisher.publish(pendingEvents);","    await outbox.markDelivered(pendingEvents);"]},"3c":{"path":"src/application/execute-feature.ts","startLine":18,"endLine":25,"targetLine":23,"lines":["    const pendingEvents = aggregate.pendingEvents();","","    await featureRepository.save(aggregate);","    await outbox.stage(pendingEvents);","    await unitOfWork.commit();","    await eventPublisher.publish(pendingEvents);","    await outbox.markDelivered(pendingEvents);","    aggregate.markEventsDelivered(pendingEvents);"]},"3d":{"path":"tests/feature-flow.test.ts","startLine":14,"endLine":21,"targetLine":18,"lines":["","    expect(result.status).toBe(\"accepted\");","    expect(featureRepository.savedIDs).toContain(\"feature-1\");","    expect(unitOfWork.commits).toBe(1);","    expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");","    expect(outbox.deliveredTypes).toContain(\"FeatureChanged\");","    expect(operationLog).toEqual([\"save\", \"stage\", \"commit\", \"publish\", \"mark-delivered\"]);","  });"]}},"edgeEvidence":{"edge-1a-1b":[{"path":"src/interface/feature-controller.ts","startLine":12,"endLine":16,"targetLine":15,"lines":["export async function handleFeatureRequest(request: RequestLike): Promise<ResponseLike> {","  const payload = await request.json();","","  return featureAdapter.execute(payload);","}"],"claim":"The controller forwards the decoded payload to the adapter."}],"edge-1b-1c":[{"path":"src/interface/feature-adapter.ts","startLine":5,"endLine":10,"targetLine":8,"lines":["  async execute(payload: unknown): Promise<FeatureResult> {","    try {","      const command = toFeatureCommand(payload);","      FeatureCommand.validate(command);","      return executeFeature.run(command);","    } catch (error) {"],"claim":"The adapter validates the converted command before invoking the use case."}],"edge-1c-1d":[{"path":"src/interface/feature-adapter.ts","startLine":8,"endLine":13,"targetLine":12,"lines":["      FeatureCommand.validate(command);","      return executeFeature.run(command);","    } catch (error) {","      if (error instanceof ValidationError) {","        return mapValidationError(error);","      }"],"claim":"The adapter maps ValidationError instances in its catch branch."}],"edge-1b-2a":[{"path":"src/interface/feature-adapter.ts","startLine":7,"endLine":10,"targetLine":9,"lines":["      const command = toFeatureCommand(payload);","      FeatureCommand.validate(command);","      return executeFeature.run(command);","    } catch (error) {"],"claim":"The adapter invokes the application use case with the validated command."}],"edge-2a-2b":[{"path":"src/application/execute-feature.ts","startLine":14,"endLine":18,"targetLine":16,"lines":["export const executeFeature = {","  async run(command: FeatureCommand): Promise<FeatureResult> {","    const aggregate = await featureRepository.find(command.id);","    aggregate.apply(command.value);","    const pendingEvents = aggregate.pendingEvents();"],"claim":"The use case loads the aggregate identified by the command."}],"edge-2a-2c":[{"path":"src/application/execute-feature.ts","startLine":15,"endLine":19,"targetLine":17,"lines":["  async run(command: FeatureCommand): Promise<FeatureResult> {","    const aggregate = await featureRepository.find(command.id);","    aggregate.apply(command.value);","    const pendingEvents = aggregate.pendingEvents();",""],"claim":"The use case invokes the aggregate behavior with the command value."}],"edge-2c-2d":[{"path":"src/domain/feature-aggregate.ts","startLine":15,"endLine":19,"targetLine":18,"lines":["  apply(nextValue: string): void {","    if (nextValue === this.value) return;","    this.value = nextValue;","    this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });","  }"],"claim":"The aggregate records a FeatureChanged event after changing its value."}],"edge-2a-3a":[{"path":"src/application/execute-feature.ts","startLine":18,"endLine":22,"targetLine":20,"lines":["    const pendingEvents = aggregate.pendingEvents();","","    await featureRepository.save(aggregate);","    await outbox.stage(pendingEvents);","    await unitOfWork.commit();"],"claim":"The use case hands the updated aggregate to the repository."}],"edge-3a-3b":[{"path":"src/application/execute-feature.ts","startLine":20,"endLine":23,"targetLine":22,"lines":["    await featureRepository.save(aggregate);","    await outbox.stage(pendingEvents);","    await unitOfWork.commit();","    await eventPublisher.publish(pendingEvents);"],"claim":"The use case commits after saving the aggregate and staging its pending events."}],"edge-3b-3c":[{"path":"src/application/execute-feature.ts","startLine":21,"endLine":24,"targetLine":23,"lines":["    await outbox.stage(pendingEvents);","    await unitOfWork.commit();","    await eventPublisher.publish(pendingEvents);","    await outbox.markDelivered(pendingEvents);"],"claim":"The use case publishes pending events after the unit of work commits."}],"edge-3c-3d":[{"path":"tests/feature-flow.test.ts","startLine":15,"endLine":21,"targetLine":18,"lines":["    expect(result.status).toBe(\"accepted\");","    expect(featureRepository.savedIDs).toContain(\"feature-1\");","    expect(unitOfWork.commits).toBe(1);","    expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");","    expect(outbox.deliveredTypes).toContain(\"FeatureChanged\");","    expect(operationLog).toEqual([\"save\", \"stage\", \"commit\", \"publish\", \"mark-delivered\"]);","  });"],"claim":"The integration test asserts that the expected domain event was published."}]}}</script>
+  <script>(() => {
+  "use strict";
+
+  const dataElement = document.getElementById("codemap-data");
+  const sourceElement = document.getElementById("codemap-sources");
+  if (!dataElement || !sourceElement) {
+    throw new Error("Missing embedded codemap payload");
+  }
+
+  const data = JSON.parse(dataElement.textContent || "{}");
+  const sourceSnapshot = JSON.parse(sourceElement.textContent || "{}");
+  const nodeById = new Map((data.nodes || []).map((node) => [node.id, node]));
+  const sectionById = new Map((data.sections || []).map((section) => [section.id, section]));
+  const groupById = new Map((data.groups || []).map((group) => [group.id, group]));
+  const sectionDetails = new Map();
+  const nodeControls = new Map();
+  const mapLayout = new Map();
+  const traceOrder = new Map();
+
+  const STRINGS = {
+    en: {
+      guide: "Guide",
+      map: "Map",
+      view: "View",
+      created: "Created",
+      repository: "Repository",
+      revision: "Revision",
+      workingTree: "Working tree",
+      uncertainty: "Material uncertainty",
+      seeMore: "See more",
+      seeLess: "See less",
+      generatedGuide: "AI generated guide",
+      motivation: "Motivation",
+      details: "Details",
+      source: "Source",
+      selectNode: "Select a node",
+      sourceEmpty: "Select a reference, guide card, or map node to inspect the exact source range.",
+      relations: "Relations",
+      verified: "Verified",
+      inferred: "Inferred",
+      copyLink: "Copy deep link",
+      copyPath: "Copy source path",
+      closeSource: "Close source",
+      copiedLink: "Deep link copied",
+      copiedPath: "Source path copied",
+      copyFailed: "Could not copy automatically",
+      theme: "Theme",
+      themeSystem: "System theme",
+      themeLight: "Light theme",
+      themeDark: "Dark theme",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      resetMap: "Reset map",
+      interactiveMap: "Interactive codemap canvas",
+      outgoing: "outgoing",
+      incoming: "incoming",
+      evidence: "Evidence",
+      reason: "Why inferred",
+      clean: "clean",
+      dirty: "dirty",
+      unknown: "unknown"
+    },
+    "pt-BR": {
+      guide: "Guia",
+      map: "Mapa",
+      view: "Visualização",
+      created: "Criado em",
+      repository: "Repositório",
+      revision: "Revisão",
+      workingTree: "Árvore de trabalho",
+      uncertainty: "Incerteza material",
+      seeMore: "Ver mais",
+      seeLess: "Ver menos",
+      generatedGuide: "Guia gerado por IA",
+      motivation: "Motivação",
+      details: "Detalhes",
+      source: "Código-fonte",
+      selectNode: "Selecione um nó",
+      sourceEmpty: "Selecione uma referência, um card do guia ou um nó do mapa para inspecionar o intervalo exato de código.",
+      relations: "Relações",
+      verified: "Verificado",
+      inferred: "Inferido",
+      copyLink: "Copiar link direto",
+      copyPath: "Copiar caminho do código",
+      closeSource: "Fechar código-fonte",
+      copiedLink: "Link direto copiado",
+      copiedPath: "Caminho do código copiado",
+      copyFailed: "Não foi possível copiar automaticamente",
+      theme: "Tema",
+      themeSystem: "Tema do sistema",
+      themeLight: "Tema claro",
+      themeDark: "Tema escuro",
+      zoomIn: "Aumentar zoom",
+      zoomOut: "Reduzir zoom",
+      resetMap: "Redefinir mapa",
+      interactiveMap: "Canvas interativo do codemap",
+      outgoing: "saída",
+      incoming: "entrada",
+      evidence: "Evidência",
+      reason: "Motivo da inferência",
+      clean: "limpa",
+      dirty: "alterada",
+      unknown: "desconhecida"
+    }
+  };
+
+  const locale = String(data.meta?.language || "en").toLowerCase().startsWith("pt") ? "pt-BR" : "en";
+  const dictionary = STRINGS[locale] || STRINGS.en;
+  const t = (key) => dictionary[key] || STRINGS.en[key] || key;
+
+  const els = {
+    shell: document.getElementById("codemap-shell"),
+    title: document.getElementById("codemap-title"),
+    metadata: document.getElementById("codemap-metadata"),
+    summary: document.getElementById("codemap-summary"),
+    uncertainty: document.getElementById("codemap-uncertainty"),
+    sections: document.getElementById("codemap-sections"),
+    guideView: document.getElementById("guide-view"),
+    mapView: document.getElementById("map-view"),
+    guideButton: document.getElementById("view-guide"),
+    mapButton: document.getElementById("view-map"),
+    guideLabel: document.getElementById("view-guide-label"),
+    mapLabel: document.getElementById("view-map-label"),
+    themeButton: document.getElementById("theme-toggle"),
+    mapStage: document.getElementById("map-stage"),
+    mapWorld: document.getElementById("map-world"),
+    mapEdges: document.getElementById("map-edges"),
+    mapGroups: document.getElementById("map-groups"),
+    mapNodes: document.getElementById("map-nodes"),
+    zoomIn: document.getElementById("map-zoom-in"),
+    zoomOut: document.getElementById("map-zoom-out"),
+    resetMap: document.getElementById("map-reset"),
+    sourcePanel: document.getElementById("source-panel"),
+    sourceKicker: document.getElementById("source-panel-kicker"),
+    sourceTitle: document.getElementById("source-panel-title"),
+    sourceLocation: document.getElementById("source-location"),
+    sourceEmpty: document.getElementById("source-empty"),
+    sourceEmptyText: document.getElementById("source-empty-text"),
+    sourceContent: document.getElementById("source-content"),
+    sourceStatus: document.getElementById("source-status-row"),
+    sourceCode: document.getElementById("source-code"),
+    relationsTitle: document.getElementById("relations-title"),
+    sourceRelations: document.getElementById("source-relations"),
+    copyLink: document.getElementById("copy-link"),
+    copyPath: document.getElementById("copy-path"),
+    sourceClose: document.getElementById("source-close"),
+    sourceBackdrop: document.getElementById("source-backdrop"),
+    toast: document.getElementById("toast")
+  };
+
+  const state = {
+    view: data.meta?.defaultView === "map" ? "map" : "guide",
+    selectedNodeId: null,
+    theme: loadTheme(),
+    lastFocused: null,
+    keyboardInput: false,
+    toastTimer: null,
+    map: { x: 0, y: 0, scale: 1, worldWidth: 1200, worldHeight: 800 },
+    pan: null,
+    mapInitialized: false
+  };
+
+  const overlayMedia = window.matchMedia("(max-width: 1120px)");
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  function loadTheme() {
+    const configured = data.presentation?.theme || "system";
+    try {
+      const stored = window.localStorage.getItem("codemap-theme");
+      if (["system", "light", "dark"].includes(stored)) return stored;
+    } catch (_) {
+      // Local storage is optional under file:// and privacy modes.
+    }
+    return ["system", "light", "dark"].includes(configured) ? configured : "system";
+  }
+
+  function saveTheme(theme) {
+    try {
+      window.localStorage.setItem("codemap-theme", theme);
+    } catch (_) {
+      // Theme persistence is optional.
+    }
+  }
+
+  function createElement(tag, options = {}) {
+    const element = document.createElement(tag);
+    if (options.className) element.className = options.className;
+    if (options.text !== undefined) element.textContent = String(options.text);
+    if (options.id) element.id = options.id;
+    if (options.type) element.type = options.type;
+    if (options.title) element.title = options.title;
+    if (options.hidden !== undefined) element.hidden = Boolean(options.hidden);
+    if (options.attrs) {
+      for (const [name, value] of Object.entries(options.attrs)) {
+        if (value !== undefined && value !== null) element.setAttribute(name, String(value));
+      }
+    }
+    if (options.dataset) {
+      for (const [name, value] of Object.entries(options.dataset)) {
+        element.dataset[name] = String(value);
+      }
+    }
+    return element;
+  }
+
+  function createSvgElement(tag, attrs = {}) {
+    const element = document.createElementNS(svgNS, tag);
+    for (const [name, value] of Object.entries(attrs)) {
+      element.setAttribute(name, String(value));
+    }
+    return element;
+  }
+
+  const ICONS = {
+    guide: ["M4 5h16", "M4 9h11", "M4 13h16", "M4 17h9", "M18 8v8", "m15 13 3 3 3-3"],
+    map: ["M4 5l5-2 6 2 5-2v16l-5 2-6-2-5 2V5Z", "M9 3v16", "M15 5v16"],
+    theme: ["M12 3a9 9 0 1 0 9 9c0-.5-.04-1-.12-1.47A7 7 0 0 1 13.47 3.1C13 3.04 12.5 3 12 3Z"],
+    link: ["M10 13a5 5 0 0 0 7.54.54l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15", "M14 11a5 5 0 0 0-7.54-.54l-2 2a5 5 0 0 0 7.07 7.07l1.15-1.15"],
+    copy: ["M8 8h11v11H8z", "M16 8V5H5v11h3"],
+    close: ["m6 6 12 12", "M18 6 6 18"],
+    code: ["m8 9-3 3 3 3", "m16 9 3 3-3 3", "m14 5-4 14"],
+    chevron: ["m9 6 6 6-6 6"]
+  };
+
+  function makeIcon(name) {
+    const svg = createSvgElement("svg", {
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "1.7",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      focusable: "false",
+      "aria-hidden": "true"
+    });
+    for (const d of ICONS[name] || []) {
+      svg.appendChild(createSvgElement("path", { d }));
+    }
+    return svg;
+  }
+
+  function initializeIcons() {
+    for (const holder of document.querySelectorAll("[data-icon]")) {
+      holder.replaceChildren(makeIcon(holder.dataset.icon));
+    }
+  }
+
+  function appendReferencedText(container, text, options = {}) {
+    const source = String(text || "");
+    const pattern = /\[([1-9][0-9]*[a-z]+(?:\s*,\s*[1-9][0-9]*[a-z]+)*)\]/g;
+    let cursor = 0;
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      if (match.index > cursor) container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+      const ids = match[1].split(",").map((id) => id.trim());
+      container.appendChild(document.createTextNode("["));
+      ids.forEach((id, index) => {
+        if (index > 0) container.appendChild(document.createTextNode(", "));
+        if (nodeById.has(id) && options.interactive !== false) {
+          const button = createElement("button", {
+            className: "reference-link",
+            text: id,
+            type: "button",
+            attrs: { "aria-label": `${t("source")}: ${id}` },
+            dataset: { refNode: id }
+          });
+          button.addEventListener("click", () => selectNode(id, { focusPanel: state.keyboardInput, scrollGuide: true }));
+          container.appendChild(button);
+        } else {
+          container.appendChild(document.createTextNode(id));
+        }
+      });
+      container.appendChild(document.createTextNode("]"));
+      cursor = pattern.lastIndex;
+    }
+    if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+  }
+
+  function appendHighlightedCode(container, source) {
+    const text = String(source ?? "");
+    const pattern = /(?<comment>\/\/.*$|(?:^|\s)#.*$)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(?<keyword>\b(?:const|let|var|function|export|async|await|return|new|class|static|if|else|for|of|in|while|switch|case|break|continue|try|catch|finally|throw|import|from|extends|implements|public|private|protected|interface|type|struct|enum|protocol|func|guard|defer|package|private|readonly)\b)|(?<number>\b\d+(?:\.\d+)?\b)/gm;
+    let cursor = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (Number(match.index) > cursor) container.appendChild(document.createTextNode(text.slice(cursor, Number(match.index))));
+      const token = createElement("span", { text: match[0] });
+      const kind = Object.entries(match.groups || {}).find(([, value]) => value !== undefined)?.[0];
+      if (kind) token.className = `tok-${kind}`;
+      container.appendChild(token);
+      cursor = Number(match.index) + match[0].length;
+    }
+    if (cursor < text.length) container.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+  function registerNodeControl(id, control) {
+    if (!nodeControls.has(id)) nodeControls.set(id, new Set());
+    nodeControls.get(id).add(control);
+  }
+
+  function renderMetadata() {
+    document.documentElement.lang = locale;
+    document.title = data.meta.title;
+    els.title.textContent = data.meta.title;
+    els.metadata.replaceChildren();
+
+    const created = new Date(data.meta.createdAt);
+    const formattedDate = Number.isNaN(created.getTime())
+      ? data.meta.createdAt
+      : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(created);
+
+    const repository = data.meta.repository || {};
+    const items = [
+      [t("created"), formattedDate],
+      [t("repository"), repository.name || ""],
+      [t("revision"), repository.revision || ""],
+      [t("workingTree"), t(repository.workingTree || "unknown")]
+    ];
+
+    items.forEach(([label, value], index) => {
+      if (index > 0) els.metadata.appendChild(createElement("span", { className: "meta-separator", text: "•", attrs: { "aria-hidden": "true" } }));
+      const item = createElement("span", { className: "meta-item" });
+      item.appendChild(createElement("span", { className: "meta-label", text: label }));
+      const valueElement = createElement("span", { className: "meta-value", text: value, title: value });
+      item.appendChild(valueElement);
+      els.metadata.appendChild(item);
+    });
+
+    els.summary.replaceChildren();
+    appendReferencedText(els.summary, data.meta.summary);
+
+    if (data.meta.uncertainty) {
+      els.uncertainty.hidden = false;
+      els.uncertainty.replaceChildren();
+      const strong = createElement("strong", { text: `${t("uncertainty")}: ` });
+      els.uncertainty.appendChild(strong);
+      appendReferencedText(els.uncertainty, data.meta.uncertainty);
+    }
+  }
+
+  function renderGuideBlock(guide) {
+    const panel = createElement("div", { className: "guide-panel" });
+    panel.appendChild(createElement("div", { className: "guide-kicker", text: t("generatedGuide") }));
+    panel.appendChild(createElement("h3", { text: t("motivation") }));
+    const motivation = createElement("p");
+    appendReferencedText(motivation, guide.motivation);
+    panel.appendChild(motivation);
+    panel.appendChild(createElement("h3", { text: t("details") }));
+
+    for (const block of guide.details || []) {
+      if (block.type === "list") {
+        const list = createElement("ul");
+        for (const item of block.items || []) {
+          const li = createElement("li");
+          appendReferencedText(li, item);
+          list.appendChild(li);
+        }
+        panel.appendChild(list);
+      } else {
+        const paragraph = createElement("p");
+        appendReferencedText(paragraph, block.text || "");
+        panel.appendChild(paragraph);
+      }
+    }
+    return panel;
+  }
+
+  function renderTraceItem(item) {
+    const li = createElement("li", { className: "tree-item" });
+    if (item.type === "node") {
+      const node = nodeById.get(item.nodeId);
+      if (!node) return li;
+      const button = createElement("button", {
+        className: `node-card${node.status === "inferred" ? " is-inferred" : ""}`,
+        type: "button",
+        id: `guide-node-${node.id}`,
+        dataset: { nodeId: node.id },
+        attrs: { "aria-label": `${node.id}: ${node.title}, ${node.source.path}:${node.source.targetLine}` }
+      });
+      button.appendChild(createElement("span", { className: "node-id", text: node.id }));
+      button.appendChild(createElement("span", { className: "node-title", text: node.title, title: node.title }));
+      button.appendChild(createElement("span", {
+        className: "node-location",
+        text: `${node.source.path}:${node.source.targetLine}`,
+        title: `${node.source.path}:${node.source.targetLine}`
+      }));
+      const snippet = createElement("span", { className: "node-snippet", title: node.source.snippet });
+      appendHighlightedCode(snippet, node.source.snippet);
+      button.appendChild(snippet);
+      button.addEventListener("click", () => selectNode(node.id, { focusPanel: state.keyboardInput, scrollGuide: false }));
+      registerNodeControl(node.id, button);
+      li.appendChild(button);
+      return li;
+    }
+
+    const label = createElement("div", {
+      className: item.type === "note" ? "tree-note-label" : "tree-group-label"
+    });
+    appendReferencedText(label, item.label || "");
+    li.appendChild(label);
+    const children = createElement("ul", { className: "tree-children" });
+    for (const child of item.children || []) children.appendChild(renderTraceItem(child));
+    li.appendChild(children);
+    return li;
+  }
+
+  function renderSections() {
+    els.sections.replaceChildren();
+    sectionDetails.clear();
+    nodeControls.clear();
+    traceOrder.clear();
+    let traceIndex = 0;
+
+    function recordTrace(items) {
+      for (const item of items || []) {
+        if (item.type === "node" && !traceOrder.has(item.nodeId)) traceOrder.set(item.nodeId, traceIndex++);
+        if (item.children) recordTrace(item.children);
+      }
+    }
+    for (const section of data.sections || []) recordTrace(section.trace?.items || []);
+
+    for (const section of data.sections || []) {
+      const details = createElement("details", {
+        className: "codemap-section",
+        attrs: { "data-section-id": section.id }
+      });
+      details.open = Boolean(section.defaultOpen);
+      sectionDetails.set(section.id, details);
+
+      const summary = createElement("summary");
+      const row = createElement("div", { className: "section-summary-row" });
+      row.appendChild(createElement("div", { className: "section-number", text: section.number }));
+      const heading = createElement("div", { className: "section-heading" });
+      heading.appendChild(createElement("div", { className: "section-title", text: section.title }));
+      heading.appendChild(createElement("div", { className: "section-description", text: section.summary }));
+      row.appendChild(heading);
+      const chevron = createElement("div", { className: "section-chevron", attrs: { "aria-hidden": "true" } });
+      chevron.appendChild(makeIcon("chevron"));
+      row.appendChild(chevron);
+      summary.appendChild(row);
+      details.appendChild(summary);
+
+      const body = createElement("div", { className: "section-body" });
+      if (section.guide) {
+        const guideDetails = createElement("details", { className: "guide-details" });
+        const guideSummary = createElement("summary", { text: t("seeMore") });
+        guideDetails.addEventListener("toggle", () => {
+          guideSummary.textContent = guideDetails.open ? t("seeLess") : t("seeMore");
+        });
+        guideDetails.appendChild(guideSummary);
+        guideDetails.appendChild(renderGuideBlock(section.guide));
+        body.appendChild(guideDetails);
+      }
+
+      const trace = createElement("div", { className: "trace" });
+      trace.appendChild(createElement("h2", { className: "trace-title", text: section.trace?.title || section.title }));
+      const tree = createElement("ul", { className: "trace-tree" });
+      for (const item of section.trace?.items || []) tree.appendChild(renderTraceItem(item));
+      trace.appendChild(tree);
+      body.appendChild(trace);
+      details.appendChild(body);
+      els.sections.appendChild(details);
+    }
+  }
+
+  function renderSource(node) {
+    if (!node) {
+      els.sourceKicker.textContent = t("source");
+      els.sourceTitle.textContent = t("selectNode");
+      els.sourceLocation.textContent = "";
+      els.sourceEmpty.hidden = false;
+      els.sourceContent.hidden = true;
+      els.copyLink.hidden = true;
+      els.copyPath.hidden = true;
+      els.sourceClose.hidden = true;
+      return;
+    }
+
+    els.sourceKicker.textContent = `${t("source")} · ${node.id}`;
+    els.sourceTitle.textContent = node.title;
+    els.sourceTitle.title = node.title;
+    els.sourceLocation.textContent = `${node.source.path}:${node.source.targetLine}`;
+    els.sourceLocation.title = `${node.source.path}:${node.source.targetLine}`;
+    els.sourceEmpty.hidden = true;
+    els.sourceContent.hidden = false;
+    els.copyLink.hidden = false;
+    els.copyPath.hidden = false;
+    els.sourceClose.hidden = false;
+
+    els.sourceStatus.replaceChildren();
+    els.sourceStatus.appendChild(createElement("span", {
+      className: `status-chip ${node.status}`,
+      text: node.status === "verified" ? t("verified") : t("inferred")
+    }));
+    els.sourceStatus.appendChild(createElement("span", { className: "kind-chip", text: node.kind }));
+    els.sourceStatus.appendChild(createElement("span", { className: "kind-chip", text: node.source.symbol, title: node.source.symbol }));
+
+    const resolved = sourceSnapshot.nodes?.[node.id];
+    const lines = Array.isArray(resolved?.lines) && resolved.lines.length
+      ? resolved.lines
+      : [node.source.snippet];
+    const startLine = Number(resolved?.startLine || node.source.targetLine);
+    const targetLine = Number(resolved?.targetLine || node.source.targetLine);
+    els.sourceCode.replaceChildren();
+    lines.forEach((line, index) => {
+      const lineNumber = startLine + index;
+      const row = createElement("li", {
+        className: `code-row${lineNumber === targetLine ? " is-target" : ""}`,
+        dataset: { lineNumber }
+      });
+      const code = createElement("code");
+      appendHighlightedCode(code, line);
+      row.appendChild(code);
+      els.sourceCode.appendChild(row);
+    });
+
+    els.sourceRelations.replaceChildren();
+    const relations = (data.edges || []).filter((edge) => edge.from === node.id || edge.to === node.id);
+    if (!relations.length) {
+      els.sourceRelations.appendChild(createElement("div", { className: "relation-card", text: "—" }));
+    }
+    for (const edge of relations) {
+      const outgoing = edge.from === node.id;
+      const otherId = outgoing ? edge.to : edge.from;
+      const card = createElement("article", { className: `relation-card${edge.status === "inferred" ? " inferred" : ""}` });
+      const line = createElement("div", { className: "relation-line" });
+      line.appendChild(createElement("span", { text: outgoing ? t("outgoing") : t("incoming") }));
+      line.appendChild(createElement("span", { text: "·" }));
+      line.appendChild(createElement("span", { text: edge.label }));
+      line.appendChild(createElement("span", { text: "·" }));
+      const otherButton = createElement("button", {
+        className: "relation-node-link",
+        type: "button",
+        text: otherId,
+        attrs: { "aria-label": `${otherId}: ${nodeById.get(otherId)?.title || ""}` }
+      });
+      otherButton.addEventListener("click", () => selectNode(otherId, { focusPanel: false, scrollGuide: state.view === "guide" }));
+      line.appendChild(otherButton);
+      line.appendChild(createElement("span", {
+        className: `status-chip ${edge.status}`,
+        text: edge.status === "verified" ? t("verified") : t("inferred")
+      }));
+      card.appendChild(line);
+
+      const evidence = edge.evidence?.[0];
+      if (evidence) {
+        card.appendChild(createElement("div", { className: "relation-claim", text: evidence.claim }));
+        card.appendChild(createElement("div", {
+          className: "relation-location",
+          text: `${evidence.path}:${evidence.targetLine}`,
+          title: `${evidence.path}:${evidence.targetLine}`
+        }));
+      }
+      if (edge.reason) {
+        const reason = createElement("div", { className: "relation-reason" });
+        reason.appendChild(createElement("strong", { text: `${t("reason")}: ` }));
+        reason.appendChild(document.createTextNode(edge.reason));
+        card.appendChild(reason);
+      }
+      els.sourceRelations.appendChild(card);
+    }
+  }
+
+  function updateSelectionClasses() {
+    for (const [id, controls] of nodeControls.entries()) {
+      for (const control of controls) {
+        control.classList.toggle("is-selected", id === state.selectedNodeId);
+        if (id === state.selectedNodeId) control.setAttribute("aria-current", "location");
+        else control.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  function isOverlayMode() {
+    return overlayMedia.matches || data.presentation?.sourcePanel === "drawer";
+  }
+
+  function updatePanelMode() {
+    const overlay = isOverlayMode();
+    const forcedDrawer = data.presentation?.sourcePanel === "drawer";
+    els.shell.classList.toggle("source-drawer-mode", forcedDrawer);
+    document.body.classList.toggle("force-source-drawer", forcedDrawer);
+    if (overlay) {
+      els.sourcePanel.setAttribute("role", "dialog");
+      els.sourcePanel.setAttribute("aria-modal", "true");
+      const open = Boolean(state.selectedNodeId);
+      els.sourcePanel.classList.toggle("is-open", open);
+      els.sourceBackdrop.hidden = !open;
+    } else {
+      els.sourcePanel.setAttribute("role", "region");
+      els.sourcePanel.removeAttribute("aria-modal");
+      els.sourcePanel.classList.remove("is-open");
+      els.sourceBackdrop.hidden = true;
+    }
+  }
+
+  function selectNode(id, options = {}) {
+    const node = nodeById.get(id);
+    if (!node) return;
+    if (document.activeElement instanceof HTMLElement && document.activeElement !== els.sourceClose) {
+      state.lastFocused = document.activeElement;
+    }
+    state.selectedNodeId = id;
+    const section = sectionById.get(node.sectionId);
+    const details = sectionDetails.get(node.sectionId);
+    if (section && details) details.open = true;
+    updateSelectionClasses();
+    renderSource(node);
+    updatePanelMode();
+
+    if (options.updateHash !== false && window.location.hash !== `#${id}`) {
+      history.replaceState(null, "", `#${id}`);
+    }
+
+    if (options.scrollGuide && state.view === "guide") {
+      const control = [...(nodeControls.get(id) || [])].find((candidate) => candidate.classList.contains("node-card"));
+      control?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
+    if (isOverlayMode() || options.focusPanel) {
+      window.requestAnimationFrame(() => els.sourceClose.focus({ preventScroll: true }));
+    }
+  }
+
+  function clearSelection(options = {}) {
+    state.selectedNodeId = null;
+    updateSelectionClasses();
+    renderSource(null);
+    updatePanelMode();
+    if (options.updateHash !== false && window.location.hash) {
+      const cleanUrl = window.location.href.split("#", 1)[0];
+      try {
+        history.replaceState(null, "", cleanUrl);
+      } catch (_) {
+        window.location.hash = "";
+      }
+    }
+    const restore = options.restoreFocus !== false ? state.lastFocused : null;
+    state.lastFocused = null;
+    if (restore && document.contains(restore)) restore.focus({ preventScroll: true });
+  }
+
+  function syncMapViewportHeight() {
+    if (els.mapView.hidden) return;
+    const top = Math.max(0, els.mapView.getBoundingClientRect().top);
+    const available = Math.max(520, window.innerHeight - top);
+    els.mapView.style.height = `${available}px`;
+  }
+
+  function setView(view) {
+    state.view = view === "map" ? "map" : "guide";
+    const map = state.view === "map";
+    els.guideView.hidden = map;
+    els.mapView.hidden = !map;
+    els.guideButton.setAttribute("aria-pressed", String(!map));
+    els.mapButton.setAttribute("aria-pressed", String(map));
+    if (map) {
+      syncMapViewportHeight();
+      window.requestAnimationFrame(() => {
+        resetMap();
+      });
+    }
+  }
+
+  function buildMap() {
+    els.mapGroups.replaceChildren();
+    els.mapNodes.replaceChildren();
+    els.mapEdges.replaceChildren();
+    mapLayout.clear();
+
+    const groupOrderIds = data.presentation?.map?.groupOrder || (data.groups || []).map((group) => group.id);
+    const groups = groupOrderIds.map((id) => groupById.get(id)).filter(Boolean);
+    const remainingGroups = (data.groups || []).filter((group) => !groupOrderIds.includes(group.id));
+    groups.push(...remainingGroups);
+
+    const NODE_WIDTH = 196;
+    const NODE_HEIGHT = 78;
+    const GROUP_PAD_X = 30;
+    const GROUP_PAD_TOP = 48;
+    const GROUP_PAD_BOTTOM = 28;
+    const NODE_GAP_X = 28;
+    const NODE_GAP_Y = 20;
+    const GROUP_GAP_X = 48;
+    const GROUP_GAP_Y = 52;
+    const MARGIN = 40;
+
+    const groupBoxes = new Map();
+    for (const group of groups) {
+      const nodes = (data.nodes || [])
+        .filter((node) => node.groupId === group.id)
+        .sort((a, b) => (traceOrder.get(a.id) ?? 9999) - (traceOrder.get(b.id) ?? 9999));
+      const columns = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(nodes.length || 1))));
+      const rows = Math.max(1, Math.ceil(nodes.length / columns));
+      const width = GROUP_PAD_X * 2 + columns * NODE_WIDTH + Math.max(0, columns - 1) * NODE_GAP_X;
+      const height = GROUP_PAD_TOP + rows * NODE_HEIGHT + Math.max(0, rows - 1) * NODE_GAP_Y + GROUP_PAD_BOTTOM;
+      groupBoxes.set(group.id, { group, nodes, columns, rows, width, height, x: 0, y: 0 });
+    }
+
+    const featuredId = data.presentation?.map?.featuredGroupId;
+    const groupColumns = data.presentation?.map?.direction === "TB"
+      ? 1
+      : Math.max(1, Math.min(4, Number(data.presentation?.map?.groupColumns || 2)));
+    const rows = [];
+    const featured = featuredId ? groupBoxes.get(featuredId) : null;
+    if (featured) rows.push([featured]);
+    const regular = groups
+      .filter((group) => !featured || group.id !== featured.group.id)
+      .map((group) => groupBoxes.get(group.id));
+    for (let index = 0; index < regular.length; index += groupColumns) {
+      rows.push(regular.slice(index, index + groupColumns));
+    }
+    if (!rows.length && groups.length) rows.push(groups.map((group) => groupBoxes.get(group.id)));
+
+    const rowMetrics = rows.map((row) => ({
+      width: row.reduce((sum, box) => sum + box.width, 0) + Math.max(0, row.length - 1) * GROUP_GAP_X,
+      height: Math.max(...row.map((box) => box.height), 0)
+    }));
+    const worldWidth = Math.max(1100, ...rowMetrics.map((metric) => metric.width + MARGIN * 2));
+    let y = MARGIN;
+    rows.forEach((row, rowIndex) => {
+      const metric = rowMetrics[rowIndex];
+      let x = (worldWidth - metric.width) / 2;
+      for (const box of row) {
+        box.x = x;
+        box.y = y;
+        x += box.width + GROUP_GAP_X;
+      }
+      y += metric.height + GROUP_GAP_Y;
+    });
+    const worldHeight = Math.max(700, y - GROUP_GAP_Y + MARGIN);
+    state.map.worldWidth = worldWidth;
+    state.map.worldHeight = worldHeight;
+    els.mapWorld.style.width = `${worldWidth}px`;
+    els.mapWorld.style.height = `${worldHeight}px`;
+    els.mapEdges.setAttribute("viewBox", `0 0 ${worldWidth} ${worldHeight}`);
+    els.mapEdges.setAttribute("width", String(worldWidth));
+    els.mapEdges.setAttribute("height", String(worldHeight));
+
+    for (const box of groupBoxes.values()) {
+      const groupElement = createElement("div", { className: `map-group tone-${box.group.tone || "gray"}` });
+      groupElement.style.left = `${box.x}px`;
+      groupElement.style.top = `${box.y}px`;
+      groupElement.style.width = `${box.width}px`;
+      groupElement.style.height = `${box.height}px`;
+      groupElement.appendChild(createElement("div", { className: "map-group-label", text: box.group.label, title: box.group.label }));
+      els.mapGroups.appendChild(groupElement);
+
+      box.nodes.forEach((node, index) => {
+        const row = Math.floor(index / box.columns);
+        const position = index % box.columns;
+        const column = row % 2 === 0 ? position : box.columns - 1 - position;
+        const x = box.x + GROUP_PAD_X + column * (NODE_WIDTH + NODE_GAP_X);
+        const yNode = box.y + GROUP_PAD_TOP + row * (NODE_HEIGHT + NODE_GAP_Y);
+        mapLayout.set(node.id, { x, y: yNode, width: NODE_WIDTH, height: NODE_HEIGHT });
+
+        const button = createElement("button", {
+          className: `map-node-button${node.status === "inferred" ? " is-inferred" : ""}`,
+          type: "button",
+          id: `map-node-${node.id}`,
+          dataset: { nodeId: node.id },
+          attrs: { "aria-label": `${node.id}: ${node.title}, ${node.source.path}:${node.source.targetLine}` }
+        });
+        button.style.left = `${x}px`;
+        button.style.top = `${yNode}px`;
+        button.appendChild(createElement("span", { className: "map-node-id", text: node.id }));
+        button.appendChild(createElement("span", { className: "map-node-title", text: node.title, title: node.title }));
+        button.appendChild(createElement("span", { className: "map-node-kind", text: node.kind }));
+        button.appendChild(createElement("span", {
+          className: "map-node-path",
+          text: `${node.source.path}:${node.source.targetLine}`,
+          title: `${node.source.path}:${node.source.targetLine}`
+        }));
+        button.addEventListener("click", () => selectNode(node.id, { focusPanel: state.keyboardInput, scrollGuide: false }));
+        registerNodeControl(node.id, button);
+        els.mapNodes.appendChild(button);
+      });
+    }
+
+    const defs = createSvgElement("defs");
+    const marker = createSvgElement("marker", {
+      id: "edge-arrow",
+      markerWidth: 8,
+      markerHeight: 8,
+      refX: 7,
+      refY: 4,
+      orient: "auto",
+      markerUnits: "strokeWidth"
+    });
+    marker.appendChild(createSvgElement("path", { d: "M0,0 L8,4 L0,8 z", fill: "currentColor" }));
+    defs.appendChild(marker);
+    els.mapEdges.appendChild(defs);
+
+    for (const edge of data.edges || []) {
+      const from = mapLayout.get(edge.from);
+      const to = mapLayout.get(edge.to);
+      if (!from || !to) continue;
+      const geometry = edgeGeometry(from, to);
+      const path = createSvgElement("path", {
+        d: geometry.path,
+        class: `edge-path kind-${edge.kind}${edge.status === "inferred" ? " is-inferred" : ""}`
+      });
+      els.mapEdges.appendChild(path);
+
+      const edgeLabel = String(edge.label ?? "");
+      const labelWidth = Math.max(48, Math.min(132, edgeLabel.length * 6.2 + 16));
+      const labelGroup = createSvgElement("g");
+      labelGroup.appendChild(createSvgElement("rect", {
+        x: geometry.labelX - labelWidth / 2,
+        y: geometry.labelY - 9,
+        width: labelWidth,
+        height: 18,
+        rx: 6,
+        class: "edge-label-bg"
+      }));
+      const label = createSvgElement("text", {
+        x: geometry.labelX,
+        y: geometry.labelY + 0.5,
+        class: "edge-label"
+      });
+      label.textContent = edgeLabel;
+      labelGroup.appendChild(label);
+      els.mapEdges.appendChild(labelGroup);
+    }
+
+    updateSelectionClasses();
+  }
+
+  function edgeGeometry(from, to) {
+    const fromCenterX = from.x + from.width / 2;
+    const fromCenterY = from.y + from.height / 2;
+    const toCenterX = to.x + to.width / 2;
+    const toCenterY = to.y + to.height / 2;
+
+    if (to.x >= from.x + from.width + 18) {
+      const startX = from.x + from.width;
+      const startY = fromCenterY;
+      const endX = to.x;
+      const endY = toCenterY;
+      const bend = Math.max(48, (endX - startX) * 0.48);
+      return {
+        path: `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`,
+        labelX: (startX + endX) / 2,
+        labelY: (startY + endY) / 2 - 12
+      };
+    }
+
+    const downward = toCenterY >= fromCenterY;
+    const startX = fromCenterX;
+    const startY = downward ? from.y + from.height : from.y;
+    const endX = toCenterX;
+    const endY = downward ? to.y : to.y + to.height;
+    const direction = downward ? 1 : -1;
+    const bend = Math.max(44, Math.abs(endY - startY) * 0.48);
+    return {
+      path: `M ${startX} ${startY} C ${startX} ${startY + direction * bend}, ${endX} ${endY - direction * bend}, ${endX} ${endY}`,
+      labelX: (startX + endX) / 2,
+      labelY: (startY + endY) / 2 - 11
+    };
+  }
+
+  function applyMapTransform() {
+    const { x, y, scale } = state.map;
+    els.mapWorld.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  }
+
+  function resetMap() {
+    const rect = els.mapStage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const padding = 44;
+    const scale = Math.max(0.2, Math.min(1, (rect.width - padding * 2) / state.map.worldWidth, (rect.height - padding * 2) / state.map.worldHeight));
+    state.map.scale = scale;
+    state.map.x = (rect.width - state.map.worldWidth * scale) / 2;
+    state.map.y = (rect.height - state.map.worldHeight * scale) / 2;
+    state.mapInitialized = true;
+    applyMapTransform();
+  }
+
+  function zoomMap(factor, originX, originY) {
+    const rect = els.mapStage.getBoundingClientRect();
+    const px = originX ?? rect.width / 2;
+    const py = originY ?? rect.height / 2;
+    const oldScale = state.map.scale;
+    const newScale = Math.max(0.2, Math.min(2.2, oldScale * factor));
+    const worldX = (px - state.map.x) / oldScale;
+    const worldY = (py - state.map.y) / oldScale;
+    state.map.scale = newScale;
+    state.map.x = px - worldX * newScale;
+    state.map.y = py - worldY * newScale;
+    applyMapTransform();
+  }
+
+  function initializeMapInteractions() {
+    els.zoomIn.addEventListener("click", () => zoomMap(1.18));
+    els.zoomOut.addEventListener("click", () => zoomMap(1 / 1.18));
+    els.resetMap.addEventListener("click", resetMap);
+
+    els.mapStage.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const rect = els.mapStage.getBoundingClientRect();
+      zoomMap(event.deltaY < 0 ? 1.11 : 1 / 1.11, event.clientX - rect.left, event.clientY - rect.top);
+    }, { passive: false });
+
+    els.mapStage.addEventListener("pointerdown", (event) => {
+      if (event.target.closest("button")) return;
+      els.mapStage.setPointerCapture(event.pointerId);
+      state.pan = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, mapX: state.map.x, mapY: state.map.y };
+      els.mapStage.classList.add("is-panning");
+    });
+    els.mapStage.addEventListener("pointermove", (event) => {
+      if (!state.pan || state.pan.pointerId !== event.pointerId) return;
+      state.map.x = state.pan.mapX + event.clientX - state.pan.startX;
+      state.map.y = state.pan.mapY + event.clientY - state.pan.startY;
+      applyMapTransform();
+    });
+    const endPan = (event) => {
+      if (!state.pan || state.pan.pointerId !== event.pointerId) return;
+      state.pan = null;
+      els.mapStage.classList.remove("is-panning");
+    };
+    els.mapStage.addEventListener("pointerup", endPan);
+    els.mapStage.addEventListener("pointercancel", endPan);
+
+    els.mapStage.addEventListener("keydown", (event) => {
+      const step = event.shiftKey ? 70 : 28;
+      if (event.key === "ArrowLeft") state.map.x += step;
+      else if (event.key === "ArrowRight") state.map.x -= step;
+      else if (event.key === "ArrowUp") state.map.y += step;
+      else if (event.key === "ArrowDown") state.map.y -= step;
+      else if (event.key === "+" || event.key === "=") zoomMap(1.15);
+      else if (event.key === "-") zoomMap(1 / 1.15);
+      else if (event.key === "0") resetMap();
+      else return;
+      event.preventDefault();
+      applyMapTransform();
+    });
+
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(() => {
+        if (state.view === "map" && !state.pan) resetMap();
+      });
+      observer.observe(els.mapStage);
+    }
+  }
+
+  function applyTheme(theme) {
+    state.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    saveTheme(theme);
+    const label = theme === "light" ? t("themeLight") : theme === "dark" ? t("themeDark") : t("themeSystem");
+    els.themeButton.setAttribute("aria-label", label);
+    els.themeButton.title = label;
+  }
+
+  function cycleTheme() {
+    const themes = ["system", "light", "dark"];
+    const index = themes.indexOf(state.theme);
+    applyTheme(themes[(index + 1) % themes.length]);
+  }
+
+  async function copyText(text, successMessage) {
+    const value = String(text ?? "");
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      await navigator.clipboard.writeText(value);
+      showToast(successMessage);
+    } catch (_) {
+      const fallback = window.prompt("Clipboard unavailable. Copy this value manually:", value);
+      showToast(fallback === null ? t("copyFailed") : successMessage);
+    }
+  }
+
+  function showToast(message) {
+    window.clearTimeout(state.toastTimer);
+    els.toast.textContent = message;
+    els.toast.classList.add("is-visible");
+    state.toastTimer = window.setTimeout(() => els.toast.classList.remove("is-visible"), 1800);
+  }
+
+  function currentNode() {
+    return state.selectedNodeId ? nodeById.get(state.selectedNodeId) : null;
+  }
+
+  function focusableInPanel() {
+    return [...els.sourcePanel.querySelectorAll("button:not([hidden]), [href], [tabindex]:not([tabindex='-1'])")]
+      .filter((element) => !element.disabled && element.getClientRects().length > 0);
+  }
+
+  function initializeEvents() {
+    els.guideLabel.textContent = t("guide");
+    els.mapLabel.textContent = t("map");
+    els.guideButton.setAttribute("aria-label", t("guide"));
+    els.mapButton.setAttribute("aria-label", t("map"));
+    els.themeButton.setAttribute("aria-label", t("theme"));
+    els.themeButton.title = t("theme");
+    els.zoomIn.setAttribute("aria-label", t("zoomIn"));
+    els.zoomIn.title = t("zoomIn");
+    els.zoomOut.setAttribute("aria-label", t("zoomOut"));
+    els.zoomOut.title = t("zoomOut");
+    els.resetMap.setAttribute("aria-label", t("resetMap"));
+    els.resetMap.title = t("resetMap");
+    els.mapStage.setAttribute("aria-label", t("interactiveMap"));
+    els.sourceKicker.textContent = t("source");
+    els.sourceTitle.textContent = t("selectNode");
+    els.sourceEmptyText.textContent = t("sourceEmpty");
+    els.relationsTitle.textContent = t("relations");
+    els.copyLink.setAttribute("aria-label", t("copyLink"));
+    els.copyLink.title = t("copyLink");
+    els.copyPath.setAttribute("aria-label", t("copyPath"));
+    els.copyPath.title = t("copyPath");
+    els.sourceClose.setAttribute("aria-label", t("closeSource"));
+    els.sourceClose.title = t("closeSource");
+    els.sourceBackdrop.setAttribute("aria-label", t("closeSource"));
+
+    els.guideButton.addEventListener("click", () => setView("guide"));
+    els.mapButton.addEventListener("click", () => setView("map"));
+    els.themeButton.addEventListener("click", cycleTheme);
+    els.sourceClose.addEventListener("click", () => clearSelection());
+    els.sourceBackdrop.addEventListener("click", () => clearSelection());
+    els.copyLink.addEventListener("click", () => {
+      const node = currentNode();
+      if (!node) return;
+      const url = new URL(window.location.href);
+      url.hash = node.id;
+      copyText(url.toString(), t("copiedLink"));
+    });
+    els.copyPath.addEventListener("click", () => {
+      const node = currentNode();
+      if (!node) return;
+      copyText(`${node.source.path}:${node.source.targetLine}`, t("copiedPath"));
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (["Tab", "Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) state.keyboardInput = true;
+      if (event.key === "Escape" && state.selectedNodeId) {
+        event.preventDefault();
+        clearSelection();
+        return;
+      }
+      if (event.key === "Tab" && isOverlayMode() && state.selectedNodeId) {
+        const focusable = focusableInPanel();
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }, true);
+    document.addEventListener("pointerdown", () => { state.keyboardInput = false; }, true);
+    window.addEventListener("hashchange", handleHash);
+    window.addEventListener("resize", () => {
+      if (state.view !== "map") return;
+      syncMapViewportHeight();
+      resetMap();
+    });
+    overlayMedia.addEventListener?.("change", updatePanelMode);
+  }
+
+  function handleHash() {
+    const id = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+    if (id && nodeById.has(id)) selectNode(id, { updateHash: false, focusPanel: false, scrollGuide: state.view === "guide" });
+    else if (!id && state.selectedNodeId) clearSelection({ updateHash: false, restoreFocus: false });
+  }
+
+  function initialize() {
+    initializeIcons();
+    renderMetadata();
+    renderSections();
+    buildMap();
+    initializeMapInteractions();
+    initializeEvents();
+    applyTheme(state.theme);
+    renderSource(null);
+    updatePanelMode();
+    setView(state.view);
+    handleHash();
+  }
+
+  initialize();
+})();
+</script>
+</body>
+</html>

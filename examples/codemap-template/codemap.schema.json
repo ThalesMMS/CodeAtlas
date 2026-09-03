@@ -1,0 +1,548 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeatlas.local/schema/codeatlas-codemap-presentation-v1.json",
+  "title": "CodeAtlas Codemap Presentation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "meta",
+    "presentation",
+    "sections",
+    "groups",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "codeatlas-codemap-presentation/v1"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "template",
+        "title",
+        "summary",
+        "query",
+        "createdAt",
+        "language",
+        "defaultView",
+        "repository"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^codemap:[A-Za-z0-9._:-]+$"
+        },
+        "template": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 35
+        },
+        "defaultView": {
+          "enum": [
+            "guide",
+            "map"
+          ]
+        },
+        "uncertainty": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "revision",
+            "workingTree"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1
+            },
+            "workingTree": {
+              "enum": [
+                "clean",
+                "dirty",
+                "unknown"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "theme",
+        "sourcePanel",
+        "map"
+      ],
+      "properties": {
+        "theme": {
+          "enum": [
+            "system",
+            "light",
+            "dark"
+          ]
+        },
+        "sourcePanel": {
+          "enum": [
+            "split",
+            "drawer"
+          ]
+        },
+        "map": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "direction",
+            "groupColumns",
+            "groupOrder"
+          ],
+          "properties": {
+            "direction": {
+              "enum": [
+                "LR",
+                "TB"
+              ]
+            },
+            "groupColumns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "featuredGroupId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "groupOrder": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "number",
+          "title",
+          "summary",
+          "defaultOpen",
+          "trace"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^section-[1-9][0-9]*$"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "defaultOpen": {
+            "type": "boolean"
+          },
+          "guide": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "motivation",
+              "details"
+            ],
+            "properties": {
+              "motivation": {
+                "type": "string",
+                "minLength": 1
+              },
+              "details": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "text"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "paragraph"
+                        },
+                        "text": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "items"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "list"
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "trace": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "items"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/traceItem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "sectionId",
+          "tone"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^group-[A-Za-z0-9._-]+$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^section-[1-9][0-9]*$"
+          },
+          "tone": {
+            "enum": [
+              "sand",
+              "rose",
+              "blue",
+              "mint",
+              "lavender",
+              "gray"
+            ]
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sectionId",
+          "groupId",
+          "title",
+          "kind",
+          "status",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*[a-z]+$"
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^section-[1-9][0-9]*$"
+          },
+          "groupId": {
+            "type": "string",
+            "pattern": "^group-[A-Za-z0-9._-]+$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "inferred"
+            ]
+          },
+          "source": {
+            "$ref": "#/$defs/sourceAnchor"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from",
+          "to",
+          "label",
+          "kind",
+          "status",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^edge-[A-Za-z0-9._-]+$"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*[a-z]+$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*[a-z]+$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "temporal",
+              "data",
+              "structural"
+            ]
+          },
+          "status": {
+            "enum": [
+              "verified",
+              "inferred"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/evidence"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![\\s\\S]*[\\r\\n])(?!/)(?![\\s\\S]*(?:^|/)\\.\\.(?:/|$))(?![\\s\\S]*\\\\)[\\s\\S]+$"
+    },
+    "singleLineSnippet": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![\\s\\S]*[\\r\\n])[\\s\\S]+$"
+    },
+    "sourceAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "startLine",
+        "endLine",
+        "targetLine",
+        "symbol",
+        "snippet"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snippet": { "$ref": "#/$defs/singleLineSnippet" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "startLine",
+        "endLine",
+        "targetLine",
+        "snippet",
+        "claim"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": { "$ref": "#/$defs/singleLineSnippet" },
+        "claim": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "traceItem": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "nodeId"
+          ],
+          "properties": {
+            "type": {
+              "const": "node"
+            },
+            "nodeId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[a-z]+$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "label",
+            "children"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "group",
+                "note"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "children": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/traceItem"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

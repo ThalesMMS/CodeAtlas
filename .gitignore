@@ -35,3 +35,6 @@ eval/report.md
 /e2e/node_modules/
 /frontend/.test-dist/
 /backend/internal/webui/dist/
+/docs
+/examples/codemap-template-reference
+VISION.md

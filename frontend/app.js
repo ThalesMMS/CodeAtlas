@@ -51,6 +51,7 @@ const state = {
   wikiStatus: 'not_generated',
   wikiLastError: '',
   activeWikiSlug: null,
+  codemapList: [],
   hoverTimer: null,
   hoverHideTimer: null,
   hoverMoveThrottle: null,
@@ -163,6 +164,7 @@ function boot() {
     codemapForm: $('codemap-form'),
     codemapQuery: $('codemap-query'),
     codemapResult: $('codemap-result'),
+    codemapArtifactSelect: $('codemap-artifact-select'),
     explainContent: $('explain-content'),
     evidenceList: $('evidence-list'),
     navDefinitionButton: $('nav-definition-button'),
@@ -846,6 +848,7 @@ async function runFunctionalBootstrap() {
     applyStats(stats);
     applyTree(tree);
     await loadWiki(); // best-effort; never blocks readiness
+    await loadCodemapList(); // best-effort: reopens previously published maps
     await loadJobs();
     if (!state.appReady) return; // readiness dropped mid-bootstrap
     await restoreCodemapFromLocation();
@@ -992,6 +995,9 @@ function bindUI() {
   elements.reindexButton.addEventListener('click', reindexWorkspace);
   elements.refreshWikiButton.addEventListener('click', refreshWiki);
   elements.wikiPageSelect.addEventListener('change', () => showWikiPage(elements.wikiPageSelect.value));
+  elements.codemapArtifactSelect?.addEventListener('change', () => {
+    void openSavedCodemap(elements.codemapArtifactSelect.value);
+  });
   elements.codemapForm.addEventListener('submit', generateCodemap);
   state.codemap.subscribe(renderCodemapStore);
   elements.seeMoreButton.addEventListener('click', loadSeeMore);
@@ -1091,7 +1097,19 @@ function bindUI() {
   window.addEventListener('pageshow', startDocumentLeaseHeartbeat);
   startDocumentLeaseHeartbeat();
 
-  elements.wikiContent.addEventListener('click', handleCodeReferenceClick);
+  elements.wikiContent.addEventListener('click', (event) => {
+    const wikiLink = event.target.closest('.wiki-reference[data-wiki-slug]');
+    if (wikiLink) {
+      event.preventDefault();
+      const slug = wikiLink.dataset.wikiSlug;
+      if (state.wikiPages.some((page) => page.slug === slug)) {
+        elements.wikiPageSelect.value = slug;
+        showWikiPage(slug);
+      }
+      return;
+    }
+    handleCodeReferenceClick(event);
+  });
   elements.codemapResult?.addEventListener('click', handleCodeReferenceClick);
   elements.hoverObservations.addEventListener('click', (event) => handleEvidenceClick(event, state.hoverExplanation));
   elements.explainContent.addEventListener('click', (event) => {
@@ -4087,6 +4105,27 @@ function applyWikiCollection(collection) {
   // Artifact provenance: input snapshot + sanitized stale reasons (current/stale/generating/failed).
   state.wikiArtifact = (collection && collection.artifact) || null;
   renderWikiSelector();
+  // The DeepWiki presentation layer (deepwiki-report.js) re-renders from this
+  // same collection whenever the workspace refreshes it.
+  globalThis.CodeAtlasDeepWikiPresentation?.update(wikiPresentationModel());
+}
+
+// wikiPresentationModel is the read-only view of the wiki the presentation
+// layer consumes; it never exposes mutable workspace state.
+function wikiPresentationModel() {
+  return {
+    pages: state.wikiPages,
+    status: state.wikiStatus,
+    lastError: state.wikiLastError,
+    artifact: state.wikiArtifact,
+    workspaceLabel: workspaceDisplayName(),
+  };
+}
+
+function workspaceDisplayName() {
+  const root = String(state.stats?.workspaceRoot || state.stats?.workspace || '').replaceAll('\\', '/');
+  const segments = root.split('/').filter(Boolean);
+  return segments.at(-1) || 'workspace';
 }
 
 function wikiStatusLabel(status) {
@@ -4510,7 +4549,10 @@ function normalizeCodemapViewModel(input, config = CODEMAP_CONFIG) {
     staleReasons: normalizeStringList(artifact.staleReasons || input.staleReasons),
     query: cleanText(input.query || ''),
     title: cleanText(input.title || input.query || 'Codemap'),
-    overview: cleanText(input.overview || input.narrative || ''),
+    summary: cleanMultilineText(input.summary || ''),
+    motivation: cleanMultilineText(input.motivation || ''),
+    details: cleanMultilineText(input.details || ''),
+    overview: cleanMultilineText(input.overview || input.narrative || ''),
     nodes,
     edges,
     groups,
@@ -4552,6 +4594,9 @@ function normalizeCodemapFlows(rawFlows, nodes, errors) {
       const labelKey = `${flowIndex}:${label}`;
       if (seenLabels.has(labelKey)) errors.push(`flow ${flowIndex} has duplicate step label ${label}`);
       seenLabels.add(labelKey);
+      const notes = Array.isArray(step && step.notes)
+        ? step.notes.slice(0, 4).map((note) => cleanText(note)).filter(Boolean)
+        : [];
       return {
         label,
         nodeId,
@@ -4559,11 +4604,18 @@ function normalizeCodemapFlows(rawFlows, nodes, errors) {
         path: cleanText((step && step.path) || ''),
         line: Math.max(0, Number(step && step.line) || 0),
         snippet: truncateText((step && step.snippet) || '', 400),
+        depth: Math.max(0, Math.min(6, Number(step && step.depth) || 0)),
+        notes,
       };
     }) : [];
     return {
       title: cleanText(flow.title || `Flow ${flowIndex + 1}`),
       entryNodeId,
+      // Optional per-flow narrative used by the presentation layer. Older
+      // artifacts (codemap-narrative/v2 without section guides) omit these.
+      summary: truncateText((flow.summary || ''), 600),
+      motivation: truncateText((flow.motivation || ''), 4000),
+      details: truncateText((flow.details || ''), 4000),
       steps,
     };
   }).filter(Boolean);
@@ -4903,6 +4955,16 @@ function cleanText(value) {
   return String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
 }
 
+// Narrative fields are Markdown. Preserve their line boundaries so headings,
+// lists and paragraphs remain blocks after normalization while still removing
+// control characters that do not belong in authored text.
+function cleanMultilineText(value) {
+  return String(value == null ? '' : value)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ')
+    .trim();
+}
+
 function normalizeMermaidDiagram(input, errors = []) {
   if (input == null) return null;
   if (typeof input !== 'object' || Array.isArray(input)) {
@@ -4955,14 +5017,14 @@ function isSafeMermaidSource(source) {
       || /^    direction TB$/u.test(line)
       || /^    n\d+\["[^"<>]{1,240}"\]$/u.test(line)
       || /^  end$/u.test(line)
-      || /^  n\d+ -->\|[\p{L}\p{N}\s._/()#-]{1,80}\| n\d+$/u.test(line)
-      || /^  n\d+ -\. [\p{L}\p{N}\s._/()#-]{1,80} \.-> n\d+$/u.test(line)
+      || /^  n\d+ -->\|[\p{L}\p{N}\s._/()#·-]{1,80}\| n\d+$/u.test(line)
+      || /^  n\d+ -\. [\p{L}\p{N}\s._/()#·-]{1,80} \.-> n\d+$/u.test(line)
     ));
   }
   if (lines[0] === 'sequenceDiagram') {
     return lines.length > 2 && lines.slice(1).every((line) => (
-      /^  participant p\d+ as [\p{L}\p{N}\s._/()#-]{1,240}$/u.test(line)
-      || /^  p\d+->>p\d+: calls [\p{L}\p{N}\s._/()#-]{1,160}$/u.test(line)
+      /^  participant p\d+ as [\p{L}\p{N}\s._/()#·-]{1,240}$/u.test(line)
+      || /^  p\d+->>p\d+: calls [\p{L}\p{N}\s._/()#·-]{1,160}$/u.test(line)
     ));
   }
   return false;
@@ -5250,6 +5312,10 @@ function applyCodemapFilterDOM(root, snapshot, filtered) {
 
 function renderCodemapStore(snapshot = state.codemap.snapshot()) {
   if (!elements.codemapResult) return;
+  // The Codemap presentation layer (codemap-report.js) reads the current
+  // snapshot from this property instead of scraping the rendered DOM.
+  elements.codemapResult.__codemapSnapshot = snapshot;
+  renderCodemapArtifactSelect();
   const artifact = snapshot.artifact;
   const previous = state.codemapRenderedSnapshot;
   if (isCodemapFilterOnlyUpdate(previous, snapshot)) {
@@ -5345,6 +5411,11 @@ function buildCodemapHeader(snapshot, filtered) {
   const artifact = snapshot.artifact;
   const header = document.createElement('div');
   header.className = 'codemap-header';
+  header.dataset.codemapQuery = artifact.query || '';
+  header.dataset.codemapGeneratedAt = artifact.generatedAt || '';
+  header.dataset.codemapSchema = artifact.outputSchemaVersion || artifact.policyVersion || '';
+  header.dataset.codemapRevision = String(artifact.artifactRevision || '');
+  header.dataset.codemapSnapshot = artifact.inputSnapshotId || '';
   const title = document.createElement('h3');
   title.textContent = artifact.title;
   const meta = document.createElement('div');
@@ -5362,6 +5433,17 @@ function buildCodemapHeader(snapshot, filtered) {
     meta.appendChild(pill);
   });
   header.append(title, meta);
+  for (const [className, value] of [
+    ['codemap-summary', artifact.summary],
+    ['codemap-motivation', artifact.motivation],
+    ['codemap-details', artifact.details],
+  ]) {
+    if (!value) continue;
+    const narrativePart = document.createElement('div');
+    narrativePart.className = `${className} markdown-content`;
+    renderMarkdownInto(narrativePart, value);
+    header.appendChild(narrativePart);
+  }
   if (artifact.overview) {
     const narrative = document.createElement('div');
     narrative.className = 'codemap-overview markdown-content';
@@ -5370,6 +5452,20 @@ function buildCodemapHeader(snapshot, filtered) {
   }
   if (artifact.flows.length) header.appendChild(buildCodemapFlowWalkthrough(snapshot));
   if (artifact.diagram) header.appendChild(buildMermaidDiagramBlock(artifact.diagram, 'Deterministic diagram'));
+  if (artifact.omissions.length) {
+    const omissions = document.createElement('section');
+    omissions.className = 'codemap-omissions';
+    const omissionsTitle = document.createElement('h4');
+    omissionsTitle.textContent = 'Uncertainties and omissions';
+    const omissionsList = document.createElement('ul');
+    artifact.omissions.forEach((value) => {
+      const item = document.createElement('li');
+      item.textContent = cleanText(value);
+      omissionsList.appendChild(item);
+    });
+    omissions.append(omissionsTitle, omissionsList);
+    header.appendChild(omissions);
+  }
   const warnings = [
     ...(artifact.status === 'stale' ? artifact.staleReasons : []),
     ...(artifact.status === 'transient' ? ['transient artifact not persisted'] : []),
@@ -5462,7 +5558,12 @@ function buildCodemapControls(snapshot, filtered) {
   retryButton.className = 'button secondary small';
   retryButton.textContent = 'Recalculate layout';
   retryButton.addEventListener('click', () => startCodemapLayout(artifact));
-  mode.append(graphButton, textButton, retryButton);
+  const fullPageButton = document.createElement('button');
+  fullPageButton.type = 'button';
+  fullPageButton.className = 'button secondary small';
+  fullPageButton.textContent = 'Full page';
+  fullPageButton.addEventListener('click', () => globalThis.CodeAtlasCodemapPresentation?.enter());
+  mode.append(graphButton, textButton, retryButton, fullPageButton);
 
   const filters = document.createElement('div');
   filters.className = 'codemap-filters';
@@ -6177,6 +6278,56 @@ function updateCodemapRoute(snapshot) {
   window.history.replaceState(window.history.state, '', route);
 }
 
+// Published Codemaps persist server-side; this list lets the UI reopen them
+// after a reload instead of losing every generated map.
+async function loadCodemapList() {
+  if (!elements.codemapArtifactSelect) return;
+  try {
+    const payload = await api('/api/codemaps');
+    state.codemapList = Array.isArray(payload && payload.codemaps) ? payload.codemaps : [];
+  } catch (error) {
+    if (!isAppNotReady(error)) console.warn('codemap list unavailable', error);
+    state.codemapList = [];
+  }
+  renderCodemapArtifactSelect();
+}
+
+function renderCodemapArtifactSelect() {
+  const select = elements.codemapArtifactSelect;
+  if (!select) return;
+  const list = Array.isArray(state.codemapList) ? state.codemapList : [];
+  select.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = list.length ? `Saved codemaps (${list.length})…` : 'No saved codemaps yet';
+  select.appendChild(placeholder);
+  list.forEach((item) => {
+    if (!item || !isSafeCodemapID(item.artifactId)) return;
+    const option = document.createElement('option');
+    option.value = item.artifactId;
+    const label = cleanText(item.title || item.query || item.artifactId);
+    option.textContent = item.status === 'stale' ? `${label} · out of date` : label;
+    option.title = cleanText(item.query || '');
+    select.appendChild(option);
+  });
+  const current = state.codemap?.snapshot?.().artifact?.artifactId || '';
+  select.value = current && list.some((item) => item.artifactId === current) ? current : '';
+  select.disabled = !list.length;
+}
+
+async function openSavedCodemap(artifactId) {
+  if (!artifactId || !isSafeCodemapID(artifactId)) return;
+  activateInspector('codemap');
+  state.codemap.startGeneration({ requestId: `saved:${artifactId}`, inputHash: artifactId });
+  try {
+    const codemap = await api(`/api/codemaps/${encodeURIComponent(artifactId)}`);
+    renderCodemap(codemap, { artifactId });
+  } catch (error) {
+    state.codemap.onFailed(error);
+    toast(error.message, true);
+  }
+}
+
 async function restoreCodemapFromLocation() {
   if (typeof window === 'undefined') return false;
   const request = codemapDeepLinkRequest(`${window.location.pathname}${window.location.search}`);
@@ -6433,6 +6584,7 @@ async function handleCodemapJob(job) {
   try {
     const codemap = await api(`/api/jobs/${encodeURIComponent(job.id)}/result`);
     renderCodemap(codemap);
+    void loadCodemapList();
   } catch (error) {
     state.codemap.onFailed(error);
     toast(error.message, true);
@@ -6983,6 +7135,15 @@ function inlineMarkdown(value) {
   let raw = String(value);
   const sourceTokens = [];
   raw = raw.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (whole, label, target) => {
+    // Backend-owned internal wiki links use the wiki:<slug> scheme.
+    const wikiMatch = String(target).match(/^wiki:([a-z0-9]+(?:[.-][a-z0-9]+)*)$/);
+    if (wikiMatch) {
+      const token = `@@SOURCE${sourceTokens.length}@@`;
+      sourceTokens.push(
+        `<a class="wiki-reference" href="#" data-wiki-slug="${escapeHTML(wikiMatch[1])}">${escapeHTML(label)}</a>`,
+      );
+      return token;
+    }
     const parsed = parseSourceTarget(target);
     if (!parsed) return whole;
     const token = `@@SOURCE${sourceTokens.length}@@`;
@@ -7063,6 +7224,27 @@ function toast(message, isError = false) {
   setTimeout(() => item.remove(), 4200);
 }
 
+// Bridge for the DeepWiki presentation layer (deepwiki-report.js): markdown
+// rendering, source navigation, refresh and page selection reuse the
+// workspace implementations instead of duplicating them.
+globalThis.CodeAtlasWorkspaceBridge = {
+  renderMarkdownInto: (container, markdown) => renderMarkdownInto(container, markdown),
+  openSource(path, line, endLine) {
+    const startLine = Number(line) || 1;
+    const start = editorPosition(startLine, 1);
+    const end = editorPosition(Math.max(startLine, Number(endLine) || startLine), 1);
+    return navigateToKnownLocation({ path, range: { start, end }, snapshotId: state.stats?.snapshotId || '' });
+  },
+  refreshWiki: () => refreshWiki(),
+  wikiModel: () => wikiPresentationModel(),
+  showWikiPage(slug) {
+    if (!state.wikiPages.some((page) => page.slug === slug)) return;
+    if (elements.wikiPageSelect) elements.wikiPageSelect.value = slug;
+    activateInspector('deepwiki');
+    showWikiPage(slug);
+  },
+};
+
 // Expose the pure readiness helpers for Node-based unit tests. In the browser
 // `module` is undefined, so this block is skipped and has no effect.
 if (typeof module !== 'undefined' && module.exports) {
@@ -7091,6 +7273,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CODEMAP_CONFIG,
     MERMAID_DIAGRAM_VERSION,
     normalizeCodemapViewModel,
+    cleanMultilineText,
     normalizeCodemapFlows,
     normalizeMermaidDiagram,
     isSafeMermaidSource,
@@ -7172,3 +7355,4 @@ if (typeof module !== 'undefined' && module.exports) {
     refreshOpenTabAfterExternalChange,
   };
 }
+

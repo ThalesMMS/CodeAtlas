@@ -174,6 +174,74 @@ func ensureWikiSectionEvidence(content *aiout.WikiPageContent, pack contextpack.
 	}
 }
 
+// sanitizeWikiPageReferences removes model-authored references that the backend
+// cannot resolve. Unsupported factual items are dropped instead of being
+// published with invented citations or failing an otherwise usable page.
+func sanitizeWikiPageReferences(content *aiout.WikiPageContent, pack contextpack.ContextPack, allowedRelated map[string]struct{}) {
+	allowedEvidence := packAllowSet(pack)
+	renderableEvidence := make(map[string]struct{}, len(pack.Evidence))
+	for _, evidence := range pack.Evidence {
+		if evidence.Path != "" && evidence.DisplayCode != "" {
+			renderableEvidence[string(evidence.ID)] = struct{}{}
+		}
+	}
+	for sectionIndex := range content.Sections {
+		section := &content.Sections[sectionIndex]
+		section.Claims = groundedWikiClaims(section.Claims, allowedEvidence)
+		section.CodeEvidenceIDs = allowedWikiIDs(section.CodeEvidenceIDs, renderableEvidence)
+		tables := section.Tables[:0]
+		for tableIndex := range section.Tables {
+			table := section.Tables[tableIndex]
+			table.EvidenceIDs = allowedWikiIDs(table.EvidenceIDs, allowedEvidence)
+			if len(table.EvidenceIDs) > 0 {
+				tables = append(tables, table)
+			}
+		}
+		section.Tables = tables
+	}
+	content.RelatedPages = allowedWikiIDs(content.RelatedPages, allowedRelated)
+	inferences := content.Inferences[:0]
+	for inferenceIndex := range content.Inferences {
+		inference := content.Inferences[inferenceIndex]
+		inference.EvidenceIDs = allowedWikiIDs(inference.EvidenceIDs, allowedEvidence)
+		if len(inference.EvidenceIDs) > 0 {
+			inferences = append(inferences, inference)
+		}
+	}
+	content.Inferences = inferences
+	for limitationIndex := range content.Limitations {
+		content.Limitations[limitationIndex].EvidenceIDs = allowedWikiIDs(content.Limitations[limitationIndex].EvidenceIDs, allowedEvidence)
+	}
+}
+
+func groundedWikiClaims(claims []aiout.Claim, allowed map[string]struct{}) []aiout.Claim {
+	grounded := claims[:0]
+	for claimIndex := range claims {
+		claim := claims[claimIndex]
+		claim.EvidenceIDs = allowedWikiIDs(claim.EvidenceIDs, allowed)
+		if len(claim.EvidenceIDs) > 0 {
+			grounded = append(grounded, claim)
+		}
+	}
+	return grounded
+}
+
+func allowedWikiIDs(ids []string, allowed map[string]struct{}) []string {
+	result := ids[:0]
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; !ok {
+			continue
+		}
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
+}
+
 func aioutWikiLinks(links []domain.WikiPageLink) []aiout.WikiLink {
 	result := make([]aiout.WikiLink, 0, len(links))
 	for _, link := range links {

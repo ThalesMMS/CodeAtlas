@@ -1,0 +1,623 @@
+{
+  "schemaVersion": "codeatlas-codemap-presentation/v1",
+  "meta": {
+    "id": "codemap:feature-delivery-placeholder",
+    "template": true,
+    "title": "Feature Delivery Codemap — Hybrid Placeholder",
+    "summary": "This map follows a request from the public boundary [1a], through conversion and validation [1b, 1c], into application and domain behavior [2a, 2c], and finally to durable and externally visible effects [3a, 3c]. Replace the placeholder evidence with anchors from the target repository.",
+    "query": "How does <FEATURE> move from entry point to durable side effects?",
+    "createdAt": "2026-08-21T21:00:00Z",
+    "language": "en",
+    "defaultView": "guide",
+    "uncertainty": "The exception-flow relation from validation to response mapping is intentionally marked inferred [1c, 1d].",
+    "repository": {
+      "name": "example/feature-delivery",
+      "revision": "fixture-v1",
+      "workingTree": "clean"
+    }
+  },
+  "presentation": {
+    "theme": "system",
+    "sourcePanel": "split",
+    "map": {
+      "direction": "LR",
+      "groupColumns": 2,
+      "featuredGroupId": "group-entry",
+      "groupOrder": [
+        "group-entry",
+        "group-application",
+        "group-effects"
+      ]
+    }
+  },
+  "sections": [
+    {
+      "id": "section-1",
+      "number": 1,
+      "title": "Request intake and validation",
+      "summary": "An external payload becomes a validated internal command before application behavior runs.",
+      "defaultOpen": true,
+      "guide": {
+        "motivation": "The first stage establishes the trust boundary. Transport data is accepted at one public entry point [1a], converted into a typed command [1b], and checked before orchestration begins [1c].",
+        "details": [
+          {
+            "type": "paragraph",
+            "text": "The controller delegates the decoded payload to the adapter [1a, 1b]. The adapter applies command validation [1c] and maps a validation exception into a stable rejected result [1d]."
+          },
+          {
+            "type": "list",
+            "items": [
+              "Entry points should be concrete controllers, CLI commands, jobs, or event handlers [1a].",
+              "Boundary conversion should show where untrusted input becomes a typed value [1b].",
+              "Exception propagation must remain inferred when the repository does not expose a direct call edge [1c, 1d]."
+            ]
+          }
+        ]
+      },
+      "trace": {
+        "title": "Request Entry Pipeline",
+        "items": [
+          {
+            "type": "group",
+            "label": "Transport boundary",
+            "children": [
+              {
+                "type": "node",
+                "nodeId": "1a"
+              },
+              {
+                "type": "note",
+                "label": "Normalize the payload",
+                "children": [
+                  {
+                    "type": "node",
+                    "nodeId": "1b"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "label": "Input safety",
+            "children": [
+              {
+                "type": "node",
+                "nodeId": "1c"
+              },
+              {
+                "type": "note",
+                "label": "Failure branch",
+                "children": [
+                  {
+                    "type": "node",
+                    "nodeId": "1d"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "section-2",
+      "number": 2,
+      "title": "Application and domain behavior",
+      "summary": "The use case loads state, applies the domain rule, and records the resulting event.",
+      "defaultOpen": true,
+      "guide": {
+        "motivation": "The application layer should make orchestration visible without absorbing transport or storage details. The use case coordinates dependencies [2a], while the aggregate owns the state transition [2c].",
+        "details": [
+          {
+            "type": "paragraph",
+            "text": "The adapter invokes the use case [2a]. The use case loads the aggregate [2b], calls the domain operation [2c], and the aggregate records a domain event for later publication [2d]."
+          }
+        ]
+      },
+      "trace": {
+        "title": "Use-case Execution",
+        "items": [
+          {
+            "type": "group",
+            "label": "Application service",
+            "children": [
+              {
+                "type": "node",
+                "nodeId": "2a"
+              },
+              {
+                "type": "note",
+                "label": "Load current state",
+                "children": [
+                  {
+                    "type": "node",
+                    "nodeId": "2b"
+                  }
+                ]
+              },
+              {
+                "type": "note",
+                "label": "Apply domain behavior",
+                "children": [
+                  {
+                    "type": "node",
+                    "nodeId": "2c"
+                  },
+                  {
+                    "type": "node",
+                    "nodeId": "2d"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "section-3",
+      "number": 3,
+      "title": "Persistence and observable effects",
+      "summary": "The updated aggregate is saved, committed, published, and checked by a focused integration test.",
+      "defaultOpen": false,
+      "guide": {
+        "motivation": "A complete trace ends at durable or externally observable behavior. Persistence [3a], transaction commit [3b], publication [3c], and verification [3d] remain separate anchors.",
+        "details": [
+          {
+            "type": "paragraph",
+            "text": "The use case saves the aggregate [3a], commits the unit of work [3b], and publishes the pending domain events [3c]. A focused test asserts the persisted identifier, commit count, and published event type [3d]."
+          }
+        ]
+      },
+      "trace": {
+        "title": "Commit and Publication Pipeline",
+        "items": [
+          {
+            "type": "group",
+            "label": "Durability",
+            "children": [
+              {
+                "type": "node",
+                "nodeId": "3a"
+              },
+              {
+                "type": "node",
+                "nodeId": "3b"
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "label": "Observable result",
+            "children": [
+              {
+                "type": "node",
+                "nodeId": "3c"
+              },
+              {
+                "type": "node",
+                "nodeId": "3d"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "id": "group-entry",
+      "label": "Request Intake",
+      "sectionId": "section-1",
+      "tone": "sand"
+    },
+    {
+      "id": "group-application",
+      "label": "Application & Domain",
+      "sectionId": "section-2",
+      "tone": "rose"
+    },
+    {
+      "id": "group-effects",
+      "label": "Persistence & Effects",
+      "sectionId": "section-3",
+      "tone": "blue"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "1a",
+      "sectionId": "section-1",
+      "groupId": "group-entry",
+      "title": "Receive feature request",
+      "kind": "entry",
+      "status": "verified",
+      "source": {
+        "path": "src/interface/feature-controller.ts",
+        "startLine": 12,
+        "endLine": 16,
+        "targetLine": 12,
+        "symbol": "handleFeatureRequest",
+        "snippet": "export async function handleFeatureRequest(request: RequestLike): Promise<ResponseLike> {"
+      }
+    },
+    {
+      "id": "1b",
+      "sectionId": "section-1",
+      "groupId": "group-entry",
+      "title": "Convert payload to command",
+      "kind": "adapter",
+      "status": "verified",
+      "source": {
+        "path": "src/interface/feature-adapter.ts",
+        "startLine": 5,
+        "endLine": 9,
+        "targetLine": 7,
+        "symbol": "toFeatureCommand",
+        "snippet": "const command = toFeatureCommand(payload);"
+      }
+    },
+    {
+      "id": "1c",
+      "sectionId": "section-1",
+      "groupId": "group-entry",
+      "title": "Validate command invariants",
+      "kind": "validation",
+      "status": "verified",
+      "source": {
+        "path": "src/application/feature-command.ts",
+        "startLine": 8,
+        "endLine": 13,
+        "targetLine": 10,
+        "symbol": "FeatureCommand.validate",
+        "snippet": "if (!command.id) throw new ValidationError(\"id is required\");"
+      }
+    },
+    {
+      "id": "1d",
+      "sectionId": "section-1",
+      "groupId": "group-entry",
+      "title": "Map validation failure",
+      "kind": "error",
+      "status": "verified",
+      "source": {
+        "path": "src/interface/feature-adapter.ts",
+        "startLine": 10,
+        "endLine": 15,
+        "targetLine": 12,
+        "symbol": "mapValidationError",
+        "snippet": "return mapValidationError(error);"
+      }
+    },
+    {
+      "id": "2a",
+      "sectionId": "section-2",
+      "groupId": "group-application",
+      "title": "Run the feature use case",
+      "kind": "use-case",
+      "status": "verified",
+      "source": {
+        "path": "src/application/execute-feature.ts",
+        "startLine": 14,
+        "endLine": 18,
+        "targetLine": 15,
+        "symbol": "executeFeature.run",
+        "snippet": "async run(command: FeatureCommand): Promise<FeatureResult> {"
+      }
+    },
+    {
+      "id": "2b",
+      "sectionId": "section-2",
+      "groupId": "group-application",
+      "title": "Load current aggregate",
+      "kind": "repository-read",
+      "status": "verified",
+      "source": {
+        "path": "src/application/execute-feature.ts",
+        "startLine": 14,
+        "endLine": 18,
+        "targetLine": 16,
+        "symbol": "featureRepository.find",
+        "snippet": "const aggregate = await featureRepository.find(command.id);"
+      }
+    },
+    {
+      "id": "2c",
+      "sectionId": "section-2",
+      "groupId": "group-application",
+      "title": "Apply domain behavior",
+      "kind": "domain",
+      "status": "verified",
+      "source": {
+        "path": "src/domain/feature-aggregate.ts",
+        "startLine": 15,
+        "endLine": 19,
+        "targetLine": 17,
+        "symbol": "FeatureAggregate.apply",
+        "snippet": "this.value = nextValue;"
+      }
+    },
+    {
+      "id": "2d",
+      "sectionId": "section-2",
+      "groupId": "group-application",
+      "title": "Record domain event",
+      "kind": "event",
+      "status": "verified",
+      "source": {
+        "path": "src/domain/feature-aggregate.ts",
+        "startLine": 15,
+        "endLine": 19,
+        "targetLine": 18,
+        "symbol": "FeatureAggregate.recordEvent",
+        "snippet": "this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });"
+      }
+    },
+    {
+      "id": "3a",
+      "sectionId": "section-3",
+      "groupId": "group-effects",
+      "title": "Persist updated aggregate",
+      "kind": "repository-write",
+      "status": "verified",
+      "source": {
+        "path": "src/application/execute-feature.ts",
+        "startLine": 18,
+        "endLine": 22,
+        "targetLine": 20,
+        "symbol": "featureRepository.save",
+        "snippet": "await featureRepository.save(aggregate);"
+      }
+    },
+    {
+      "id": "3b",
+      "sectionId": "section-3",
+      "groupId": "group-effects",
+      "title": "Commit unit of work",
+      "kind": "transaction",
+      "status": "verified",
+      "source": {
+        "path": "src/application/execute-feature.ts",
+        "startLine": 18,
+        "endLine": 24,
+        "targetLine": 22,
+        "symbol": "unitOfWork.commit",
+        "snippet": "await unitOfWork.commit();"
+      }
+    },
+    {
+      "id": "3c",
+      "sectionId": "section-3",
+      "groupId": "group-effects",
+      "title": "Publish pending events",
+      "kind": "publisher",
+      "status": "verified",
+      "source": {
+        "path": "src/application/execute-feature.ts",
+        "startLine": 18,
+        "endLine": 25,
+        "targetLine": 23,
+        "symbol": "eventPublisher.publish",
+        "snippet": "await eventPublisher.publish(pendingEvents);"
+      }
+    },
+    {
+      "id": "3d",
+      "sectionId": "section-3",
+      "groupId": "group-effects",
+      "title": "Verify the complete effect path",
+      "kind": "test",
+      "status": "verified",
+      "source": {
+        "path": "tests/feature-flow.test.ts",
+        "startLine": 14,
+        "endLine": 21,
+        "targetLine": 18,
+        "symbol": "feature delivery integration test",
+        "snippet": "expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1a-1b",
+      "from": "1a",
+      "to": "1b",
+      "label": "delegates",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/interface/feature-controller.ts",
+          "startLine": 12,
+          "endLine": 16,
+          "targetLine": 15,
+          "snippet": "return featureAdapter.execute(payload);",
+          "claim": "The controller forwards the decoded payload to the adapter."
+        }
+      ]
+    },
+    {
+      "id": "edge-1b-1c",
+      "from": "1b",
+      "to": "1c",
+      "label": "validates",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/interface/feature-adapter.ts",
+          "startLine": 5,
+          "endLine": 10,
+          "targetLine": 8,
+          "snippet": "FeatureCommand.validate(command);",
+          "claim": "The adapter validates the converted command before invoking the use case."
+        }
+      ]
+    },
+    {
+      "id": "edge-1c-1d",
+      "from": "1c",
+      "to": "1d",
+      "label": "maps failure",
+      "kind": "temporal",
+      "status": "inferred",
+      "reason": "The repository shows the validation exception being caught and mapped, but exception propagation is not an explicit call from the guard to the mapper.",
+      "evidence": [
+        {
+          "path": "src/interface/feature-adapter.ts",
+          "startLine": 8,
+          "endLine": 13,
+          "targetLine": 12,
+          "snippet": "return mapValidationError(error);",
+          "claim": "The adapter maps ValidationError instances in its catch branch."
+        }
+      ]
+    },
+    {
+      "id": "edge-1b-2a",
+      "from": "1b",
+      "to": "2a",
+      "label": "invokes",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/interface/feature-adapter.ts",
+          "startLine": 7,
+          "endLine": 10,
+          "targetLine": 9,
+          "snippet": "return executeFeature.run(command);",
+          "claim": "The adapter invokes the application use case with the validated command."
+        }
+      ]
+    },
+    {
+      "id": "edge-2a-2b",
+      "from": "2a",
+      "to": "2b",
+      "label": "loads state",
+      "kind": "data",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/application/execute-feature.ts",
+          "startLine": 14,
+          "endLine": 18,
+          "targetLine": 16,
+          "snippet": "const aggregate = await featureRepository.find(command.id);",
+          "claim": "The use case loads the aggregate identified by the command."
+        }
+      ]
+    },
+    {
+      "id": "edge-2a-2c",
+      "from": "2a",
+      "to": "2c",
+      "label": "applies",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/application/execute-feature.ts",
+          "startLine": 15,
+          "endLine": 19,
+          "targetLine": 17,
+          "snippet": "aggregate.apply(command.value);",
+          "claim": "The use case invokes the aggregate behavior with the command value."
+        }
+      ]
+    },
+    {
+      "id": "edge-2c-2d",
+      "from": "2c",
+      "to": "2d",
+      "label": "records",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/domain/feature-aggregate.ts",
+          "startLine": 15,
+          "endLine": 19,
+          "targetLine": 18,
+          "snippet": "this.recordEvent({ type: \"FeatureChanged\", featureID: this.id, value: nextValue });",
+          "claim": "The aggregate records a FeatureChanged event after changing its value."
+        }
+      ]
+    },
+    {
+      "id": "edge-2a-3a",
+      "from": "2a",
+      "to": "3a",
+      "label": "persists",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/application/execute-feature.ts",
+          "startLine": 18,
+          "endLine": 22,
+          "targetLine": 20,
+          "snippet": "await featureRepository.save(aggregate);",
+          "claim": "The use case hands the updated aggregate to the repository."
+        }
+      ]
+    },
+    {
+      "id": "edge-3a-3b",
+      "from": "3a",
+      "to": "3b",
+      "label": "then commits",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/application/execute-feature.ts",
+          "startLine": 20,
+          "endLine": 23,
+          "targetLine": 22,
+          "snippet": "await unitOfWork.commit();",
+          "claim": "The use case commits after saving the aggregate and staging its pending events."
+        }
+      ]
+    },
+    {
+      "id": "edge-3b-3c",
+      "from": "3b",
+      "to": "3c",
+      "label": "then publishes",
+      "kind": "temporal",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "src/application/execute-feature.ts",
+          "startLine": 21,
+          "endLine": 24,
+          "targetLine": 23,
+          "snippet": "await eventPublisher.publish(pendingEvents);",
+          "claim": "The use case publishes pending events after the unit of work commits."
+        }
+      ]
+    },
+    {
+      "id": "edge-3c-3d",
+      "from": "3c",
+      "to": "3d",
+      "label": "verified by",
+      "kind": "structural",
+      "status": "verified",
+      "evidence": [
+        {
+          "path": "tests/feature-flow.test.ts",
+          "startLine": 15,
+          "endLine": 21,
+          "targetLine": 18,
+          "snippet": "expect(eventPublisher.publishedTypes).toContain(\"FeatureChanged\");",
+          "claim": "The integration test asserts that the expected domain event was published."
+        }
+      ]
+    }
+  ]
+}

@@ -183,7 +183,9 @@ func TestValidateCodemapTraceMustUseStructuralIDs(t *testing.T) {
 	narr := CodemapNarrative{
 		SchemaVersion: CodemapSchemaVersion,
 		Title:         "Map",
-		Overview:      "flow",
+		Overview:      strings.Repeat("Grounded overview sentence. ", 4),
+		Motivation:    strings.Repeat("The application needs this flow to keep transport and business responsibilities explicit. ", 3),
+		Details:       strings.Repeat("The request crosses a validated sequence of local calls, changes the order state, and reaches the repository through an observed boundary. ", 4),
 		Claims:        []Claim{{Text: "calls", EvidenceIDs: []string{"ev:1"}}},
 		Trace:         []string{"node-1", "edge-1"},
 		Flows:         []CodemapFlow{{Title: "Flow", EntryNodeID: "node-1", Steps: []CodemapFlowStep{{Label: "1a", NodeID: "node-1", Text: "Starts"}}}},
@@ -199,6 +201,35 @@ func TestValidateCodemapTraceMustUseStructuralIDs(t *testing.T) {
 	narr.Flows[0].Steps[0].NodeID = "node-INVENTADO"
 	if err := ValidateCodemap(allowedEvidence, allowedStructure, AllowSet([]string{"node-1"}), narr); err == nil {
 		t.Fatal("flow step with invented node ID accepted")
+	}
+}
+
+func TestValidateCodemapRequiresNarrativeDepth(t *testing.T) {
+	t.Parallel()
+	base := CodemapNarrative{
+		SchemaVersion: CodemapSchemaVersion,
+		Title:         "Order creation",
+		Overview:      strings.Repeat("Grounded overview sentence. ", 4),
+		Motivation:    strings.Repeat("The application needs this flow to keep transport and business responsibilities explicit. ", 3),
+		Details:       strings.Repeat("The request crosses a validated sequence of local calls, changes the order state, and reaches the repository through an observed boundary. ", 4),
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*CodemapNarrative)
+		field  string
+	}{
+		{name: "overview", mutate: func(n *CodemapNarrative) { n.Overview = "Too short." }, field: "overview"},
+		{name: "motivation", mutate: func(n *CodemapNarrative) { n.Motivation = "Too short." }, field: "motivation"},
+		{name: "details", mutate: func(n *CodemapNarrative) { n.Details = "Too short." }, field: "details"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			narrative := base
+			test.mutate(&narrative)
+			err := ValidateCodemap(AllowSet(nil), AllowSet(nil), AllowSet(nil), narrative)
+			if err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("short %s error = %v, want narrative depth rejection", test.field, err)
+			}
+		})
 	}
 }
 

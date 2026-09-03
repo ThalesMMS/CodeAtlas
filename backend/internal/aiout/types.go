@@ -18,18 +18,28 @@ const (
 
 // Field/size limits keep a single response bounded regardless of the provider.
 const (
-	MaxClaims           = 24
-	MaxClaimRunes       = 1200
-	MaxEvidencePerClaim = 8
-	MaxCodeEvidence     = 3
-	MaxSections         = 12
-	MaxTraceSteps       = 16
-	MaxCodemapFlows     = 8
-	MaxFlowSteps        = 16
-	MaxWikiTables       = 6
-	MaxTableColumns     = 6
-	MaxTableRows        = 20
-	MaxRelatedPages     = 12
+	MaxClaims                 = 24
+	MaxClaimRunes             = 1200
+	MaxEvidencePerClaim       = 8
+	MaxCodeEvidence           = 3
+	MaxSections               = 12
+	MaxTraceSteps             = 16
+	MaxCodemapFlows           = 8
+	MaxFlowSteps              = 16
+	MinCodemapOverviewRunes   = 96
+	MinCodemapMotivationRunes = 180
+	MinCodemapDetailsRunes    = 320
+	MaxCodemapNarrativeRunes  = 4000
+	MinFlowSummaryRunes       = 12
+	MinFlowMotivationRunes    = 80
+	MinFlowDetailsRunes       = 120
+	MaxStepNotes              = 4
+	MaxStepNoteRunes          = 200
+	MaxAnchorTextRunes        = 240
+	MaxWikiTables             = 6
+	MaxTableColumns           = 6
+	MaxTableRows              = 20
+	MaxRelatedPages           = 12
 )
 
 // Claim is a factual statement grounded by one or more EvidenceIDs from the pack.
@@ -68,17 +78,28 @@ type Explanation struct {
 
 // CodemapFlowStep is a model-authored label over a backend-owned node. Source
 // anchors and snippets are attached after validation; the model cannot provide
-// paths, lines, or code bytes.
+// paths, lines, or code bytes. AnchorText is an optional verbatim line copied
+// from the step node's provided snippet: the backend re-locates it in the
+// snippet to anchor the step at a specific line inside the symbol, and ignores
+// it when it does not match. Notes are short clarifying leaf labels rendered
+// under the step in the trace tree.
 type CodemapFlowStep struct {
-	Label  string `json:"label"`
-	NodeID string `json:"nodeId"`
-	Text   string `json:"text"`
+	Label      string   `json:"label"`
+	NodeID     string   `json:"nodeId"`
+	Text       string   `json:"text"`
+	AnchorText string   `json:"anchorText,omitempty"`
+	Notes      []string `json:"notes,omitempty"`
 }
 
 // CodemapFlow groups validated steps around one backend-suggested entrypoint.
+// Summary, Motivation and Details are the per-section narrative rendered as
+// each chapter's guide; older outputs may omit them.
 type CodemapFlow struct {
 	Title       string            `json:"title"`
 	EntryNodeID string            `json:"entryNodeId"`
+	Summary     string            `json:"summary,omitempty"`
+	Motivation  string            `json:"motivation,omitempty"`
+	Details     string            `json:"details,omitempty"`
 	Steps       []CodemapFlowStep `json:"steps"`
 }
 

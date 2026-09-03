@@ -87,6 +87,7 @@ test('production entrypoint and tests target one application implementation', ()
     .map((file) => path.relative(path.join(frontendRoot, 'src'), file))
     .sort();
   assert.deepEqual(runtimeModules, [
+    'codemap-presentation-editor.ts',
     'main.ts',
     'mermaid-lite.ts',
     'monaco-editor-adapter.ts',

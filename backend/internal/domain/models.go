@@ -357,19 +357,30 @@ type CodemapEdge struct {
 }
 
 // CodemapFlowStep is a validated narrative step with a source anchor and code
-// line selected by the backend from the factual graph.
+// line selected by the backend from the factual graph. Depth is the derived
+// call nesting level (0 = flow root; a step called by the previous anchored
+// caller is one level deeper). Notes are short model-authored clarifications
+// rendered as leaf labels under the step.
 type CodemapFlowStep struct {
-	Label   string `json:"label"`
-	NodeID  string `json:"nodeId"`
-	Text    string `json:"text"`
-	Path    string `json:"path,omitempty"`
-	Line    int    `json:"line,omitempty"`
-	Snippet string `json:"snippet,omitempty"`
+	Label   string   `json:"label"`
+	NodeID  string   `json:"nodeId"`
+	Text    string   `json:"text"`
+	Path    string   `json:"path,omitempty"`
+	Line    int      `json:"line,omitempty"`
+	Snippet string   `json:"snippet,omitempty"`
+	Depth   int      `json:"depth,omitempty"`
+	Notes   []string `json:"notes,omitempty"`
 }
 
+// CodemapFlow is one presentation section: a titled run of anchored steps with
+// an optional per-section narrative (summary line plus motivation/details
+// guide) authored by the model and validated by the backend.
 type CodemapFlow struct {
 	Title       string            `json:"title"`
 	EntryNodeID string            `json:"entryNodeId"`
+	Summary     string            `json:"summary,omitempty"`
+	Motivation  string            `json:"motivation,omitempty"`
+	Details     string            `json:"details,omitempty"`
 	Steps       []CodemapFlowStep `json:"steps"`
 }
 
@@ -395,6 +406,9 @@ type MermaidDiagram struct {
 type Codemap struct {
 	Query               string           `json:"query"`
 	Title               string           `json:"title"`
+	Summary             string           `json:"summary,omitempty"`
+	Motivation          string           `json:"motivation,omitempty"`
+	Details             string           `json:"details,omitempty"`
 	Overview            string           `json:"overview"`
 	Trace               []string         `json:"trace"`
 	Flows               []CodemapFlow    `json:"flows,omitempty"`
@@ -408,6 +422,23 @@ type Codemap struct {
 	PolicyVersion       string           `json:"policyVersion,omitempty"`
 	OutputSchemaVersion string           `json:"outputSchemaVersion,omitempty"`
 	Artifact            ArtifactMetadata `json:"artifact"`
+}
+
+// CodemapSummary is a lightweight listing entry for a published Codemap head.
+// It lets clients reopen previously generated maps without transferring full
+// payloads; Status/StaleReason mirror the artifact head so outdated maps are
+// never presented as current.
+type CodemapSummary struct {
+	ArtifactID  ArtifactID `json:"artifactId"`
+	Title       string     `json:"title"`
+	Query       string     `json:"query"`
+	Status      string     `json:"status"`
+	StaleReason string     `json:"staleReason,omitempty"`
+	Revision    int        `json:"revision"`
+	NodeCount   int        `json:"nodeCount"`
+	EdgeCount   int        `json:"edgeCount"`
+	Provider    string     `json:"provider,omitempty"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
 type WikiPage struct {

@@ -1,0 +1,738 @@
+/* Codemap presentation layer — Devin-parity artifact page.
+   Tokens and component metrics were extracted from the reference interface:
+   dark #141414 page, #1F1F1F elevated surfaces, white-alpha tints and borders,
+   #4489FF active-tab accent, #a855f7 step-glyph purple, Inter type. */
+
+.codemap-presentation {
+  /* dark theme (default) */
+  --cmp-bg: #141414;
+  --cmp-elevated: #1f1f1f;
+  --cmp-text: rgba(255, 255, 255, 0.9);
+  --cmp-text-soft: rgba(255, 255, 255, 0.52);
+  --cmp-prose: #d1d5db;
+  --cmp-border: rgba(255, 255, 255, 0.08);
+  --cmp-border-faint: rgba(255, 255, 255, 0.04);
+  --cmp-tint-active: rgba(255, 255, 255, 0.08);
+  --cmp-tint: rgba(255, 255, 255, 0.05);
+  --cmp-tint-faint: rgba(255, 255, 255, 0.03);
+  --cmp-accent: #4489ff;
+  --cmp-accent-contrast: #000;
+  --cmp-glyph: #a855f7;
+  --cmp-glyph-line: rgba(187, 109, 255, 0.086);
+  --cmp-glyph-border: rgba(187, 109, 255, 0.565);
+  --cmp-tree-line: rgba(255, 255, 255, 0.08);
+  --cmp-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cmp-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --cmp-mono: Consolas, 'SFMono-Regular', 'Liberation Mono', Menlo, monospace;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: var(--cmp-bg);
+  color: var(--cmp-text);
+  font-family: var(--cmp-sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* display:flex above would otherwise defeat the [hidden] attribute and leave
+   an opaque overlay covering the workspace. */
+.codemap-presentation[hidden] { display: none; }
+
+.codemap-presentation[data-theme='light'] {
+  --cmp-bg: #fcfcfc;
+  --cmp-elevated: #ffffff;
+  --cmp-text: rgba(9, 12, 16, 0.9);
+  --cmp-text-soft: rgba(9, 12, 16, 0.55);
+  --cmp-prose: #374151;
+  --cmp-border: rgba(0, 0, 0, 0.1);
+  --cmp-border-faint: rgba(0, 0, 0, 0.05);
+  --cmp-tint-active: rgba(0, 0, 0, 0.07);
+  --cmp-tint: rgba(0, 0, 0, 0.045);
+  --cmp-tint-faint: rgba(0, 0, 0, 0.028);
+  --cmp-accent: #2f6fe4;
+  --cmp-accent-contrast: #fff;
+  --cmp-glyph: #9333ea;
+  --cmp-glyph-line: rgba(147, 51, 234, 0.1);
+  --cmp-glyph-border: rgba(147, 51, 234, 0.5);
+  --cmp-tree-line: rgba(0, 0, 0, 0.1);
+  --cmp-shadow: 0 1px 2px rgba(15, 22, 34, 0.12);
+}
+
+.codemap-presentation *,
+.codemap-presentation *::before,
+.codemap-presentation *::after { box-sizing: border-box; }
+
+/* :where() keeps the reset at zero class specificity so component rules win. */
+:where(.codemap-presentation) button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.codemap-presentation button:focus-visible,
+.codemap-presentation a:focus-visible {
+  outline: 2px solid var(--cmp-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* While the presentation overlay is up, the workspace shell underneath must
+   not scroll or intercept focus order visually. */
+body.codeatlas-codemap-presentation { overflow: hidden; }
+
+.codemap-presentation-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--cmp-text-soft);
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- header */
+
+.codemap-presentation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--cmp-border);
+  min-height: 53px;
+}
+
+.codemap-presentation-title {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codemap-presentation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.codemap-presentation-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--cmp-border-faint);
+  color: var(--cmp-text-soft);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.codemap-presentation-icon-button:hover {
+  background: var(--cmp-tint);
+  color: var(--cmp-text);
+}
+
+.codemap-presentation-workspace-button {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--cmp-border);
+  background: var(--cmp-tint);
+  color: var(--cmp-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.codemap-presentation-workspace-button:hover { background: var(--cmp-tint-active); }
+
+/* ------------------------------------------------------------------ body */
+
+.codemap-presentation-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.codemap-presentation-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 40%;
+  min-width: 280px;
+  max-width: 60vw;
+  flex-shrink: 0;
+  border-right: 1px solid var(--cmp-border);
+}
+
+.codemap-presentation-resizer {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.codemap-presentation-resizer:hover { background: var(--cmp-border); }
+
+/* ---------------------------------------------------------- sidebar chrome */
+
+.codemap-presentation-sidebar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--cmp-border);
+}
+
+.codemap-presentation-view-switch {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  border-radius: 7px;
+  background: var(--cmp-tint-faint);
+  user-select: none;
+}
+
+.codemap-presentation-view-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  color: var(--cmp-text-soft);
+  cursor: pointer;
+}
+
+.codemap-presentation-view-button:hover { color: var(--cmp-text); }
+
+.codemap-presentation-view-button.active {
+  background: var(--cmp-elevated);
+  color: var(--cmp-text);
+  border-color: var(--cmp-border);
+  box-shadow: var(--cmp-shadow);
+}
+
+.codemap-presentation-sidebar-content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.codemap-presentation-traces {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* -------------------------------------------------------- sidebar content */
+
+.codemap-presentation-map-title {
+  background: var(--cmp-tint);
+  padding: 8px 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.codemap-presentation-prose {
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--cmp-prose);
+}
+
+.codemap-presentation-prose p { margin: 0 0 8px; }
+.codemap-presentation-prose code,
+.codemap-presentation-guide code {
+  font-family: var(--cmp-mono);
+  font-size: 0.92em;
+  background: var(--cmp-tint);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.codemap-presentation-ref {
+  color: var(--cmp-prose);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.codemap-presentation-ref:hover { text-decoration: underline; color: var(--cmp-text); }
+
+.codemap-presentation-map-guide { padding: 0 12px; }
+
+.codemap-presentation-map-guide > .codemap-presentation-guide { display: none; }
+.codemap-presentation-map-guide.open > .codemap-presentation-guide { display: block; }
+
+.codemap-presentation-see-guide {
+  font-size: 12px;
+  color: var(--cmp-text);
+  opacity: 0.9;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.codemap-presentation-see-guide:hover { opacity: 1; }
+
+/* ---------------------------------------------------------------- sections */
+
+.codemap-presentation-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 14px;
+}
+
+.codemap-presentation-section-header {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  background: var(--cmp-tint);
+  cursor: pointer;
+}
+
+.codemap-presentation-section-number {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.codemap-presentation-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.codemap-presentation-section-title { font-weight: 700; }
+
+.codemap-presentation-section-summary {
+  margin: 0;
+  color: var(--cmp-text);
+  font-weight: 400;
+}
+
+.codemap-presentation-see-guide-link {
+  color: inherit;
+  opacity: 0.9;
+  text-decoration: underline;
+}
+
+.codemap-presentation-see-guide-link:hover { opacity: 1; }
+
+.codemap-presentation-section-chevron {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  color: var(--cmp-text-soft);
+  transform: rotate(90deg);
+  transition: transform 150ms ease;
+}
+
+.codemap-presentation-section.collapsed .codemap-presentation-section-chevron { transform: rotate(0deg); }
+
+.codemap-presentation-section-guide,
+.codemap-presentation-section-tree {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 150ms ease-in-out;
+}
+
+.codemap-presentation-section-guide { grid-template-rows: 0fr; }
+.codemap-presentation-section.guide-open .codemap-presentation-section-guide { grid-template-rows: 1fr; border-bottom: 1px solid var(--cmp-border); }
+.codemap-presentation-section.collapsed .codemap-presentation-section-guide,
+.codemap-presentation-section.collapsed .codemap-presentation-section-tree { grid-template-rows: 0fr; }
+
+.codemap-presentation-section-guide > *,
+.codemap-presentation-section-tree > * { overflow: hidden; min-height: 0; }
+
+/* ------------------------------------------------------------------ guide */
+
+.codemap-presentation-guide {
+  padding: 8px 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--cmp-text);
+}
+
+.codemap-presentation-guide-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cmp-text-soft);
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.codemap-presentation-guide h2 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.codemap-presentation-guide h3,
+.codemap-presentation-guide h4 {
+  margin: 8px 0 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.codemap-presentation-guide p { margin: 0 0 7px; }
+.codemap-presentation-guide ul { margin: 0 0 7px; padding-left: 18px; }
+.codemap-presentation-guide li { margin: 0 0 3px; }
+
+/* ------------------------------------------------------------------- tree */
+
+.codemap-presentation-tree {
+  margin: 2px 0 12px;
+  padding: 0 6px;
+}
+
+.codemap-presentation-tree-label {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  padding: 1px 2px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--cmp-text);
+  transition: background-color 120ms ease;
+}
+
+.codemap-presentation-tree-label:hover { background: var(--cmp-tint-faint); }
+
+.codemap-presentation-tree-children {
+  position: relative;
+  margin-top: 2px;
+  padding-left: 15px;
+}
+
+.codemap-presentation-tree-children::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 12px;
+  left: 6px;
+  width: 2px;
+  background: var(--cmp-tree-line);
+}
+
+.codemap-presentation-tree-children > .codemap-presentation-tree-item {
+  position: relative;
+}
+
+.codemap-presentation-tree-children > .codemap-presentation-tree-item::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 12px;
+  width: 8px;
+  border-top: 2px solid var(--cmp-tree-line);
+}
+
+.codemap-presentation-tree-item { margin-top: 2px; }
+
+.codemap-presentation-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: var(--cmp-tint-faint);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.codemap-presentation-step:hover { background: var(--cmp-tint); }
+
+.codemap-presentation-step[data-active='true'] {
+  background: var(--cmp-tint-active);
+  border-color: var(--cmp-border);
+}
+
+.codemap-presentation-step-chip {
+  min-width: 20px;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.codemap-presentation-step[data-active='true'] .codemap-presentation-step-chip { color: var(--cmp-glyph); }
+
+.codemap-presentation-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.codemap-presentation-step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.codemap-presentation-step-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.codemap-presentation-step-location {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--cmp-text-soft);
+}
+
+.codemap-presentation-step[data-active='true'] .codemap-presentation-step-location { color: var(--cmp-glyph); }
+
+.codemap-presentation-step-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--cmp-text-soft);
+  opacity: 0.7;
+}
+
+/* ---------------------------------------------------------------- diagram */
+
+.codemap-presentation-diagram { display: flex; }
+
+.codemap-presentation-diagram-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--cmp-elevated);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.codemap-presentation-diagram-stage.is-panning { cursor: grabbing; }
+
+.codemap-presentation-diagram-world {
+  transform-origin: 0 0;
+  transition: transform 100ms ease-out;
+  padding: 16px;
+}
+
+.codemap-presentation-diagram-world svg {
+  max-width: none;
+  width: 720px;
+}
+
+.codemap-presentation-diagram-empty {
+  padding: 16px;
+  color: var(--cmp-text-soft);
+  font-size: 13px;
+}
+
+.codemap-presentation-diagram-world .cluster rect {
+  fill: #fcc2d7;
+  fill-opacity: 0.9;
+  stroke: none;
+  rx: 10px;
+}
+
+.codemap-presentation-diagram-world .cluster text {
+  fill: #1f1f1f;
+  font-family: var(--cmp-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.codemap-presentation-diagram-world .node rect {
+  fill: var(--cmp-elevated);
+  stroke: var(--cmp-text);
+  stroke-width: 1px;
+}
+
+.codemap-presentation-diagram-world .node text {
+  fill: var(--cmp-text);
+  font-family: var(--cmp-sans);
+  font-size: 11px;
+}
+
+.codemap-presentation-diagram-world .node.has-source { cursor: pointer; }
+.codemap-presentation-diagram-world .node.has-source:hover rect { stroke: var(--cmp-glyph); stroke-width: 1.5px; }
+
+.codemap-presentation-diagram-world .edgePath path {
+  fill: none;
+  stroke: var(--cmp-text);
+  stroke-width: 1px;
+}
+
+.codemap-presentation-diagram-world .edgePath text,
+.codemap-presentation-diagram-world .message text {
+  fill: var(--cmp-text);
+  font-family: var(--cmp-sans);
+  font-size: 10px;
+}
+
+.codemap-presentation-diagram-world marker path { fill: var(--cmp-text); }
+
+.codemap-presentation-diagram-world .actor rect { fill: var(--cmp-elevated); stroke: var(--cmp-text); }
+.codemap-presentation-diagram-world .actor text { fill: var(--cmp-text); font-family: var(--cmp-sans); font-size: 11px; }
+.codemap-presentation-diagram-world .actor-line { stroke: var(--cmp-tree-line); }
+.codemap-presentation-diagram-world .message line { stroke: var(--cmp-text); }
+
+/* -------------------------------------------------------------- code pane */
+
+.codemap-presentation-code-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--cmp-bg);
+}
+
+.codemap-presentation-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--cmp-tint-faint);
+  border-bottom: 1px solid var(--cmp-border);
+  scrollbar-width: thin;
+}
+
+.codemap-presentation-tab {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: var(--cmp-elevated);
+  color: var(--cmp-text);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+  white-space: nowrap;
+}
+
+.codemap-presentation-tab:hover { background: var(--cmp-tint); }
+
+.codemap-presentation-tab[data-active='true'],
+.codemap-presentation-tab[data-active='true']:hover {
+  background: var(--cmp-accent);
+  color: var(--cmp-accent-contrast);
+}
+
+.codemap-presentation-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  background: var(--cmp-elevated);
+  border-bottom: 1px solid var(--cmp-border-faint);
+  color: var(--cmp-text-soft);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.codemap-presentation-breadcrumb-divider { display: inline-flex; opacity: 0.6; }
+
+.codemap-presentation-editor-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.codemap-presentation-editor-notice {
+  padding: 16px;
+  font-size: 13px;
+  color: var(--cmp-text-soft);
+}
+
+/* Monaco decorations owned by the presentation viewer. */
+.codemap-presentation-selected-line { background: var(--cmp-glyph-line, rgba(187, 109, 255, 0.086)); }
+
+.codemap-presentation-step-zone { overflow: hidden; }
+
+.codemap-presentation-step-zone-card {
+  margin-left: 4px;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--cmp-sans, Inter, system-ui, sans-serif);
+  background: var(--cmp-glyph-line, rgba(187, 109, 255, 0.086));
+  border-left: 2px solid var(--cmp-glyph-border, rgba(187, 109, 255, 0.565));
+  color: var(--cmp-text-soft, rgba(255, 255, 255, 0.52));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .codemap-presentation-body { flex-direction: column; }
+  .codemap-presentation-sidebar {
+    width: 100% !important;
+    max-width: none;
+    min-width: 0;
+    height: 55%;
+    border-right: 0;
+    border-bottom: 1px solid var(--cmp-border);
+  }
+  .codemap-presentation-resizer { display: none; }
+  .codemap-presentation-code-pane { height: 45%; }
+}
+
+/* ------------------------------------------------------------------ print */
+
+@media print {
+  body.codeatlas-codemap-presentation { overflow: visible; }
+  .codemap-presentation {
+    position: static;
+    background: #fff;
+    color: #111827;
+  }
+  .codemap-presentation-header-actions,
+  .codemap-presentation-resizer,
+  .codemap-presentation-code-pane,
+  .codemap-presentation-sidebar-toolbar { display: none !important; }
+  .codemap-presentation-sidebar {
+    width: 100% !important;
+    max-width: none;
+    border: 0;
+  }
+  .codemap-presentation-sidebar-content { overflow: visible; }
+  .codemap-presentation-section-guide,
+  .codemap-presentation-section-tree { grid-template-rows: 1fr !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codemap-presentation *,
+  .codemap-presentation *::before,
+  .codemap-presentation *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

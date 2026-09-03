@@ -123,9 +123,9 @@ func offlineCodemapResponse(userPrompt string) (string, error) {
 	}
 	return marshalJSON(aiout.CodemapNarrative{
 		SchemaVersion: aiout.CodemapSchemaVersion, Title: "Order handler flow",
-		Overview:   "The handler flow connects dependency wiring, request processing, validation, and persistence.",
-		Motivation: "Separate transport, service, and repository responsibilities.",
-		Details:    "Validated steps follow backend-owned nodes and call sites.", Trace: trace, Flows: flows,
+		Overview:   strings.Repeat("The handler flow connects dependency wiring, request processing, validation, and persistence using grounded repository evidence. ", 2),
+		Motivation: strings.Repeat("The application separates transport, service, and repository responsibilities so each observed layer owns a clear part of order creation. ", 2),
+		Details:    strings.Repeat("The generated guide follows backend-suggested entrypoints and validates every step against an indexed node. Source locations and snippets come from backend-owned bytes after the model response passes grounding checks. ", 3), Trace: trace, Flows: flows,
 		Claims: claims, Inferences: []aiout.Inference{}, Uncertainties: []aiout.Uncertainty{},
 	})
 }

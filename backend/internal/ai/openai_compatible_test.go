@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -96,6 +98,45 @@ func TestNewOpenAICompatibleConfiguresProviderConnectionPool(t *testing.T) {
 	defaultTransport := http.DefaultTransport.(*http.Transport)
 	if transport == defaultTransport || transport.Proxy == nil || transport.DialContext == nil {
 		t.Fatal("provider transport must clone the standard transport defaults")
+	}
+}
+
+func TestOpenAICompatibleBoundsConcurrentEndpointRequestsToTwo(t *testing.T) {
+	t.Parallel()
+	var current atomic.Int32
+	var maximum atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		active := current.Add(1)
+		defer current.Add(-1)
+		for observed := maximum.Load(); active > observed && !maximum.CompareAndSwap(observed, active); observed = maximum.Load() {
+		}
+		time.Sleep(75 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL)
+	const calls = 6
+	errorsSeen := make(chan error, calls)
+	var group sync.WaitGroup
+	for range calls {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, err := provider.Complete(context.Background(), "system", "user", 100)
+			errorsSeen <- err
+		}()
+	}
+	group.Wait()
+	close(errorsSeen)
+	for err := range errorsSeen {
+		if err != nil {
+			t.Fatalf("Complete() error = %v", err)
+		}
+	}
+	if got := maximum.Load(); got != 2 {
+		t.Fatalf("maximum concurrent endpoint requests = %d, want 2", got)
 	}
 }
 
@@ -357,6 +398,68 @@ func TestCompleteStructuredRetriesToPlainTextOnUnsupportedSchema(t *testing.T) {
 	}
 }
 
+func TestCompleteStructuredRetriesWithoutSchemaWhenProviderCannotProduceSchemaValidOutput(t *testing.T) {
+	t.Parallel()
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if _, hasFormat := body["response_format"]; hasFormat {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":{"message":"DiffusionGemma failed to produce a schema-valid structured response after 3 attempt(s)"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"fallback\":true}"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	p := newTestProvider(t, server.URL)
+	result, err := p.CompleteStructured(context.Background(), GenerationRequest{
+		UserPrompt:   "user",
+		OutputSchema: json.RawMessage(`{"type":"object"}`),
+	})
+	if err != nil {
+		t.Fatalf("CompleteStructured = %v, want prompt-enforced JSON fallback", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want schema request plus one fallback", attempts)
+	}
+	if string(result.RawJSON) != `{"fallback":true}` {
+		t.Fatalf("RawJSON = %q", result.RawJSON)
+	}
+}
+
+func TestSchemaGenerationFailureClassificationIsNarrow(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "gateway schema generation failure",
+			err: &providerHTTPError{StatusCode: http.StatusBadGateway,
+				Message: "DiffusionGemma failed to produce a schema-valid structured response after 3 attempt(s)"},
+			want: true,
+		},
+		{name: "ordinary bad gateway", err: &providerHTTPError{StatusCode: http.StatusBadGateway, Message: "upstream unavailable"}, want: false},
+		{name: "plain error impersonation", err: errors.New("schema-valid structured response"), want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isSchemaGenerationFailure(tc.err); got != tc.want {
+				t.Fatalf("isSchemaGenerationFailure(%#v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestCompleteStructuredNoSchemaSkipsResponseFormat verifies that when no schema
 // is provided the request body does not include response_format.
 func TestCompleteStructuredNoSchemaSkipsResponseFormat(t *testing.T) {
@@ -428,6 +531,11 @@ func TestCompleteStructuredSetsJSONInstructionOnFallback(t *testing.T) {
 	}
 	if !strings.HasSuffix(userContent, jsonOnlyInstruction) {
 		t.Errorf("fallback user prompt does not end with JSON-only instruction: %q", userContent)
+	}
+	if !strings.Contains(userContent, "<CODEATLAS_OUTPUT_SCHEMA>") ||
+		!strings.Contains(userContent, `{"type":"object"}`) ||
+		!strings.Contains(userContent, "</CODEATLAS_OUTPUT_SCHEMA>") {
+		t.Errorf("fallback user prompt does not carry the exact output schema: %q", userContent)
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ThalesMMS/CodeAtlas/internal/ai"
+	"github.com/ThalesMMS/CodeAtlas/internal/aiout"
 	"github.com/ThalesMMS/CodeAtlas/internal/apperror"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
@@ -185,6 +187,18 @@ func TestDeepWikiReturnsProviderErrorInsteadOfDraftPage(t *testing.T) {
 	}
 }
 
+func TestDeepWikiCanRecoverOnFifthPageResponse(t *testing.T) {
+	t.Parallel()
+	store := seededWikiStore(t)
+	provider := &recoveringWikiProvider{}
+	if _, err := NewDeepWikiService(store, provider).Generate(context.Background()); err != nil {
+		t.Fatalf("Generate() error = %v, want recovery on fifth page response", err)
+	}
+	if provider.pageCalls < 5 {
+		t.Fatalf("page calls = %d, want at least 5", provider.pageCalls)
+	}
+}
+
 func TestDeepWikiCollectionStateTransitions(t *testing.T) {
 	t.Parallel()
 	repository := seededWikiStore(t)
@@ -316,4 +330,29 @@ func TestOrderWikiPagesPlacesParentsBeforeChildren(t *testing.T) {
 	if strings.Join(slugs, ",") != strings.Join(want, ",") {
 		t.Fatalf("ordered slugs = %#v, want %#v", slugs, want)
 	}
+}
+
+type recoveringWikiProvider struct {
+	mu        sync.Mutex
+	pageCalls int
+}
+
+func (*recoveringWikiProvider) Name() string    { return "recovering-wiki" }
+func (*recoveringWikiProvider) Available() bool { return true }
+
+func (p *recoveringWikiProvider) Complete(_ context.Context, systemPrompt, _ string, _ int) (string, error) {
+	if strings.Contains(systemPrompt, aiout.WikiPageSchemaVersion) {
+		p.mu.Lock()
+		p.pageCalls++
+		call := p.pageCalls
+		p.mu.Unlock()
+		if call < 5 {
+			return `{}`, nil
+		}
+	}
+	return structuredStub(systemPrompt, "Grounded page"), nil
+}
+
+func (*recoveringWikiProvider) Embed(context.Context, []string) ([][]float64, error) {
+	return nil, ai.ErrUnavailable
 }

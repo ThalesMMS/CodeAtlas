@@ -128,20 +128,63 @@ function createSettingsController(options = {}) {
     },
   });
 
+  const isSnapshot = (value) => Boolean(value)
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Number.isInteger(value.revision)
+    && value.revision >= 0
+    && Boolean(value.groups)
+    && typeof value.groups === 'object'
+    && !Array.isArray(value.groups);
+
   const setSnapshot = (next) => {
-    if (!next || typeof next !== 'object') return;
+    if (!isSnapshot(next)) return false;
     snapshot = next;
     view.render(snapshot);
+    return true;
   };
 
-  const showFailure = (error) => {
+  const pendingEditDelta = () => {
+    if (!snapshot) return {};
+    const edits = view.readEdits();
+    const update = buildUpdateRequest(snapshot, edits);
+    const changed = new Set(Object.keys(update.overrides || {}));
+    for (const [key, operation] of Object.entries(update.secrets || {})) {
+      if (operation.operation !== 'preserve') changed.add(key);
+    }
+    return Object.fromEntries(Object.entries(edits).filter(([key]) => changed.has(key)));
+  };
+
+  const rejectSnapshot = () => {
+    view.setStatus('Settings response was invalid. Reload settings before applying again.', 'error');
+    options.announce?.('Settings could not be loaded. Reload is required.', 'assertive');
+  };
+
+  const showFailure = async (error) => {
     const details = (error && error.details) || {};
-    if (details.snapshot) setSnapshot(details.snapshot);
     if (error && error.code === 'SETTINGS_REVISION_CONFLICT') {
+      const pendingEdits = pendingEditDelta();
+      let latest = isSnapshot(details.snapshot) ? details.snapshot : null;
+      if (!latest) {
+        try {
+          latest = await request('/api/settings');
+        } catch (_) {
+          view.setStatus('Settings changed in another window. Reload settings before applying again.', 'error');
+          options.announce?.('Settings changed. Reload is required.', 'assertive');
+          return;
+        }
+      }
+      if (!setSnapshot(latest)) {
+        rejectSnapshot();
+        return;
+      }
+      view.restoreEdits?.(pendingEdits, true);
       view.setStatus('Settings changed in another window. The latest values were loaded; review and apply again.', 'warning');
       options.announce?.('Settings changed. Latest values loaded.', 'assertive');
       return;
     }
+    // Other failures keep the form untouched so the user can fix and retry.
+    if (isSnapshot(details.snapshot)) snapshot = details.snapshot;
     if (error && (error.code === 'SETTINGS_VALIDATION_FAILED' || error.code === 'SETTINGS_PREPARE_FAILED')) {
       view.setFieldErrors(fieldErrorMap(details.fields));
       view.setStatus('Some settings are invalid. Review the highlighted fields.', 'error');
@@ -168,10 +211,13 @@ function createSettingsController(options = {}) {
       view.setFieldErrors({});
       view.setStatus('Loading settings…', 'neutral');
       try {
-        setSnapshot(await request('/api/settings'));
+        if (!setSnapshot(await request('/api/settings'))) {
+          rejectSnapshot();
+          return;
+        }
         view.setStatus('', 'neutral');
       } catch (error) {
-        showFailure(error);
+        await showFailure(error);
       } finally {
         view.clearSecrets();
         view.setBusy(false);
@@ -192,7 +238,11 @@ function createSettingsController(options = {}) {
           method: 'PUT',
           body: JSON.stringify(buildUpdateRequest(snapshot, view.readEdits())),
         });
-        setSnapshot(result.snapshot);
+        if (!result || !setSnapshot(result.snapshot)) {
+          rejectSnapshot();
+          return;
+        }
+        view.clearSecrets();
         view.markApplied?.(result.applied);
         const applied = Array.isArray(result.applied) && result.applied.length
           ? `Applied: ${result.applied.join(', ')}.${result.embeddingJobId ? ` Rebuild job: ${result.embeddingJobId}.` : ''}`
@@ -201,9 +251,9 @@ function createSettingsController(options = {}) {
         options.announce?.(applied);
         options.onApplied?.(result);
       } catch (error) {
-        showFailure(error);
+        // Keep typed values (including secrets) so a failed attempt can be corrected and retried.
+        await showFailure(error);
       } finally {
-        view.clearSecrets();
         view.setBusy(false);
       }
     },
@@ -219,14 +269,17 @@ function createSettingsController(options = {}) {
           method: 'DELETE',
           body: JSON.stringify({ revision: snapshot.revision }),
         });
-        setSnapshot(result.snapshot);
+        if (!result || !setSnapshot(result.snapshot)) {
+          rejectSnapshot();
+          return;
+        }
+        view.clearSecrets();
         view.setStatus('Overrides reset. Values now come from .env or defaults.', 'success');
         options.announce?.('Settings overrides reset.');
         options.onApplied?.(result);
       } catch (error) {
-        showFailure(error);
+        await showFailure(error);
       } finally {
-        view.clearSecrets();
         view.setBusy(false);
       }
     },
@@ -396,6 +449,28 @@ function createDOMSettingsView(options = {}) {
         };
       }
       return edits;
+    },
+    restoreEdits(edits, markForReview = false) {
+      for (const descriptor of settingsFieldInventory) {
+        const edit = edits && edits[descriptor.key];
+        if (!edit) continue;
+        const input = doc.querySelector(`[data-settings-input="${descriptor.key}"]`);
+        const mode = doc.querySelector(`[data-settings-mode="${descriptor.key}"]`);
+        if (!input || !mode) continue;
+        mode.value = edit.mode;
+        if (descriptor.kind === 'boolean') input.checked = edit.value === true;
+        else input.value = edit.value == null ? '' : String(edit.value);
+        const enabledMode = descriptor.kind === 'secret' ? 'replace' : 'set';
+        input.disabled = mode.value !== enabledMode;
+        if (!markForReview) continue;
+        const row = input.closest('[data-settings-field]');
+        if (!row || row.querySelector('.settings-review')) continue;
+        row.dataset.settingsReview = 'true';
+        const badge = doc.createElement('span');
+        badge.className = 'settings-review';
+        badge.textContent = 'Review pending edit';
+        row.querySelector('.settings-field-metadata')?.appendChild(badge);
+      }
     },
     clearSecrets() {
       for (const descriptor of settingsFieldInventory.filter((item) => item.kind === 'secret')) {

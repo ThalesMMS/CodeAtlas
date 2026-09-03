@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="__CODEMAP_CSP__">
+  <title>Codemap</title>
+  <style>__CODEMAP_CSS__</style>
+</head>
+<body>
+  <a class="skip-link" href="#codemap-main">Skip to codemap</a>
+
+  <header class="appbar">
+    <div class="appbar-brand" aria-label="Codemap">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Codemap</span>
+    </div>
+    <div class="appbar-actions">
+      <div class="view-switch" role="group" aria-label="View">
+        <button id="view-guide" class="view-button" type="button" data-view="guide" aria-pressed="true">
+          <span class="button-icon" data-icon="guide" aria-hidden="true"></span>
+          <span id="view-guide-label">Guide</span>
+        </button>
+        <button id="view-map" class="view-button" type="button" data-view="map" aria-pressed="false">
+          <span class="button-icon" data-icon="map" aria-hidden="true"></span>
+          <span id="view-map-label">Map</span>
+        </button>
+      </div>
+      <button id="theme-toggle" class="icon-button" type="button" aria-label="Theme" title="Theme">
+        <span data-icon="theme" aria-hidden="true"></span>
+      </button>
+    </div>
+  </header>
+
+  <div id="codemap-shell" class="codemap-shell">
+    <main id="codemap-main" class="content-pane" tabindex="-1">
+      <section class="hero" aria-labelledby="codemap-title">
+        <h1 id="codemap-title" class="codemap-title"></h1>
+        <div id="codemap-metadata" class="metadata" aria-label="Codemap metadata"></div>
+        <p id="codemap-summary" class="summary"></p>
+        <div id="codemap-uncertainty" class="uncertainty" hidden></div>
+      </section>
+
+      <section id="guide-view" class="guide-view" aria-label="Guide view">
+        <div id="codemap-sections" class="sections"></div>
+      </section>
+
+      <section id="map-view" class="map-view" aria-label="Map view" hidden>
+        <div class="map-toolbar" aria-label="Map controls">
+          <button id="map-zoom-in" class="map-tool" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+          <button id="map-zoom-out" class="map-tool" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+          <button id="map-reset" class="map-tool map-reset" type="button" aria-label="Reset map" title="Reset map">1:1</button>
+        </div>
+        <div id="map-stage" class="map-stage" tabindex="0" aria-label="Interactive codemap canvas">
+          <div id="map-world" class="map-world">
+            <svg id="map-edges" class="map-edges" aria-hidden="true"></svg>
+            <div id="map-groups" class="map-groups" aria-hidden="true"></div>
+            <div id="map-nodes" class="map-nodes"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside id="source-panel" class="source-panel" aria-labelledby="source-panel-title">
+      <div class="source-header">
+        <div class="source-heading">
+          <div id="source-panel-kicker" class="source-kicker">Source</div>
+          <h2 id="source-panel-title" class="source-title">Select a node</h2>
+          <div id="source-location" class="source-location"></div>
+        </div>
+        <div class="source-actions">
+          <button id="copy-link" class="icon-button source-action" type="button" aria-label="Copy deep link" title="Copy deep link" hidden>
+            <span data-icon="link" aria-hidden="true"></span>
+          </button>
+          <button id="copy-path" class="icon-button source-action" type="button" aria-label="Copy source path" title="Copy source path" hidden>
+            <span data-icon="copy" aria-hidden="true"></span>
+          </button>
+          <button id="source-close" class="icon-button source-action" type="button" aria-label="Close source" title="Close source" hidden>
+            <span data-icon="close" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div id="source-empty" class="source-empty">
+        <span class="empty-icon" data-icon="code" aria-hidden="true"></span>
+        <p id="source-empty-text">Select a reference, guide card, or map node to inspect the exact source range.</p>
+      </div>
+      <div id="source-content" class="source-content" hidden>
+        <div id="source-status-row" class="source-status-row"></div>
+        <ol id="source-code" class="source-code" aria-label="Source code"></ol>
+        <section class="relations" aria-labelledby="relations-title">
+          <h3 id="relations-title">Relations</h3>
+          <div id="source-relations" class="relation-list"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <button id="source-backdrop" class="source-backdrop" type="button" aria-label="Close source panel" hidden></button>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script id="codemap-data" type="application/json">__CODEMAP_DATA__</script>
+  <script id="codemap-sources" type="application/json">__CODEMAP_SOURCES__</script>
+  <script>__CODEMAP_JS__</script>
+</body>
+</html>

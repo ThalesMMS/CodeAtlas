@@ -32,12 +32,15 @@ const explanationSchema = `{
 
 const codemapSchema = `{
 "type":"object","additionalProperties":false,
-"required":["schemaVersion","title","overview","trace","flows","claims","inferences","uncertainties"],
+"required":["schemaVersion","title","overview","motivation","details","trace","flows","claims","inferences","uncertainties"],
 "properties":{
 "schemaVersion":{"const":"codemap-narrative/v2"},
-"title":{"type":"string"},"overview":{"type":"string"},"motivation":{"type":"string"},"details":{"type":"string"},
+"title":{"type":"string"},
+"overview":{"type":"string","minLength":96,"maxLength":4000},
+"motivation":{"type":"string","minLength":180,"maxLength":4000},
+"details":{"type":"string","minLength":320,"maxLength":4000},
 "trace":{"type":"array","items":{"type":"string"}},
-"flows":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["title","entryNodeId","steps"],"properties":{"title":{"type":"string"},"entryNodeId":{"type":"string"},"steps":{"type":"array","maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["label","nodeId","text"],"properties":{"label":{"type":"string"},"nodeId":{"type":"string"},"text":{"type":"string"}}}}}}},
+"flows":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["title","entryNodeId","summary","motivation","details","steps"],"properties":{"title":{"type":"string"},"entryNodeId":{"type":"string"},"summary":{"type":"string","minLength":12,"maxLength":400},"motivation":{"type":"string","minLength":80,"maxLength":2500},"details":{"type":"string","minLength":120,"maxLength":3500},"steps":{"type":"array","maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["label","nodeId","text","anchorText","notes"],"properties":{"label":{"type":"string"},"nodeId":{"type":"string"},"text":{"type":"string"},"anchorText":{"type":"string","maxLength":240},"notes":{"type":"array","maxItems":4,"items":{"type":"string","minLength":1,"maxLength":200}}}}}}}},
 "claims":{"type":"array","items":{"$ref":"#/$defs/claim"}},
 "inferences":{"type":"array","items":{"$ref":"#/$defs/inference"}},
 "uncertainties":{"type":"array","items":{"$ref":"#/$defs/uncertainty"}}},
@@ -90,6 +93,15 @@ func WikiSchemaForPage(allowedEvidence, allowedRelated []string) json.RawMessage
 		constrainStringArray(evidenceIDs, allowedEvidence)
 	}
 	sections := mustSchemaObject(properties["sections"], "properties.sections")
+	// Density floor for generated pages: at least two sections, and claim text
+	// long enough to be a documentation paragraph rather than a label. The
+	// local validator stays lenient; these bounds steer schema-enforcing
+	// providers.
+	sections["minItems"] = 2
+	claimDefinition := mustSchemaObject(definitions["claim"], "$defs.claim")
+	claimProperties := mustSchemaObject(claimDefinition["properties"], "$defs.claim.properties")
+	claimText := mustSchemaObject(claimProperties["text"], "$defs.claim.properties.text")
+	claimText["minLength"] = 40
 	sectionItems := mustSchemaObject(sections["items"], "properties.sections.items")
 	sectionProperties := mustSchemaObject(sectionItems["properties"], "properties.sections.items.properties")
 	codeEvidenceIDs := mustSchemaObject(sectionProperties["codeEvidenceIds"], "properties.sections.items.properties.codeEvidenceIds")

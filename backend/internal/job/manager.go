@@ -64,7 +64,9 @@ func DefaultConfig() Config {
 		EventBuffer:        32,
 		DefaultTimeout:     5 * time.Minute,
 		TypeTimeouts: map[string]time.Duration{
-			"deepwiki.refresh": 15 * time.Minute,
+			// A full DeepWiki run generates up to 25 documentation-density pages
+			// serially on a possibly local provider; give it real headroom.
+			"deepwiki.refresh": 30 * time.Minute,
 		},
 	}
 }

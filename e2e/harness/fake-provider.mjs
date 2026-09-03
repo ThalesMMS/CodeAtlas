@@ -168,9 +168,9 @@ function chatContentFor(body) {
     return JSON.stringify({
       schemaVersion: 'codemap-narrative/v2',
       title: 'Fake deterministic Codemap',
-      overview: 'The factual graph is organized into entrypoint flows by the backend.',
-      motivation: 'Separate dependency wiring from request processing.',
-      details: 'Each validated step is anchored to backend-owned source bytes.',
+      overview: 'The factual graph is organized into entrypoint flows by the backend. The guide names the observed components and stays within indexed repository evidence.',
+      motivation: 'The application separates dependency wiring from request processing so each component keeps one visible responsibility. This makes the generated path easier to verify against the selected source nodes and their observed relationships.',
+      details: 'The generated guide starts at backend-suggested entrypoints and follows validated local calls through the indexed graph. Each flow step references an allowlisted node before the backend attaches its source location and snippet. The result explains the request path while keeping source bytes outside the model response. Rejected node identifiers trigger one controlled correction attempt.',
       trace: flows.flatMap((flow) => flow.steps.map((step) => step.nodeId)).slice(0, 16),
       flows,
       claims: [],

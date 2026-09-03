@@ -1,0 +1,579 @@
+/* DeepWiki presentation layer — Devin-parity documentation site.
+   Same extracted token family as the Codemap presentation: #141414 page,
+   #1F1F1F elevated, white-alpha tints/borders, Inter type, blue source
+   chips (#3EB8ED), 672px prose column. */
+
+.deepwiki-presentation {
+  --dwp-bg: #141414;
+  --dwp-elevated: #1f1f1f;
+  --dwp-text: rgba(255, 255, 255, 0.9);
+  --dwp-text-soft: rgba(255, 255, 255, 0.52);
+  --dwp-border: rgba(255, 255, 255, 0.08);
+  --dwp-border-faint: rgba(255, 255, 255, 0.04);
+  --dwp-tint-active: rgba(255, 255, 255, 0.08);
+  --dwp-tint: rgba(255, 255, 255, 0.05);
+  --dwp-tint-faint: rgba(255, 255, 255, 0.03);
+  --dwp-link: rgba(62, 184, 237, 0.85);
+  --dwp-chip-bg: rgba(31, 31, 31, 0.94);
+  --dwp-code-bg: #1e1e1e;
+  --dwp-warning: #eab308;
+  --dwp-danger: #ef4444;
+  --dwp-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  --dwp-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --dwp-mono: 'SF Mono', 'Roboto Mono', ui-monospace, Consolas, Menlo, monospace;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  background: var(--dwp-bg);
+  color: var(--dwp-text);
+  font-family: var(--dwp-sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.deepwiki-presentation[data-theme='light'] {
+  --dwp-bg: #fcfcfc;
+  --dwp-elevated: #ffffff;
+  --dwp-text: rgba(9, 12, 16, 0.9);
+  --dwp-text-soft: rgba(9, 12, 16, 0.55);
+  --dwp-border: rgba(0, 0, 0, 0.1);
+  --dwp-border-faint: rgba(0, 0, 0, 0.05);
+  --dwp-tint-active: rgba(0, 0, 0, 0.07);
+  --dwp-tint: rgba(0, 0, 0, 0.045);
+  --dwp-tint-faint: rgba(0, 0, 0, 0.028);
+  --dwp-link: #1273a8;
+  --dwp-chip-bg: rgba(0, 0, 0, 0.05);
+  --dwp-code-bg: #f4f5f7;
+  --dwp-shadow: 0 6px 24px rgba(15, 22, 34, 0.16);
+}
+
+/* display:flex above would otherwise defeat the [hidden] attribute and leave
+   the inactive overlay covering the workspace as a black page. */
+.deepwiki-presentation[hidden] { display: none; }
+
+.deepwiki-presentation *,
+.deepwiki-presentation *::before,
+.deepwiki-presentation *::after { box-sizing: border-box; }
+
+:where(.deepwiki-presentation) button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.deepwiki-presentation button:focus-visible,
+.deepwiki-presentation a:focus-visible,
+.deepwiki-presentation input:focus-visible {
+  outline: 2px solid var(--dwp-link);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+body.codeatlas-deepwiki-presentation { overflow: hidden; }
+
+.deepwiki-presentation-placeholder {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  flex: 1;
+  color: var(--dwp-text-soft);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}
+
+.deepwiki-presentation-refresh-button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--dwp-border);
+  background: var(--dwp-tint);
+  color: var(--dwp-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.deepwiki-presentation-refresh-button:hover { background: var(--dwp-tint-active); }
+
+/* ----------------------------------------------------------------- topbar */
+
+.deepwiki-presentation-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--dwp-border);
+}
+
+.deepwiki-presentation-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.deepwiki-presentation-brand-name { font-size: 14px; font-weight: 600; }
+
+.deepwiki-presentation-brand-repo {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dwp-text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deepwiki-presentation-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deepwiki-presentation-updated { font-size: 13px; color: var(--dwp-text-soft); white-space: nowrap; }
+
+.deepwiki-presentation-status {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--dwp-border);
+  color: var(--dwp-text-soft);
+}
+
+.deepwiki-presentation-status.status-stale { color: var(--dwp-warning); border-color: var(--dwp-warning); }
+.deepwiki-presentation-status.status-failed { color: var(--dwp-danger); border-color: var(--dwp-danger); }
+
+.deepwiki-presentation-search {
+  width: 200px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dwp-border-faint);
+  background: var(--dwp-tint-faint);
+  color: var(--dwp-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.deepwiki-presentation-search::placeholder { color: var(--dwp-text-soft); }
+
+.deepwiki-presentation-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--dwp-border-faint);
+  color: var(--dwp-text-soft);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.deepwiki-presentation-icon-button:hover { background: var(--dwp-tint); color: var(--dwp-text); }
+
+.deepwiki-presentation-workspace-button {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dwp-border);
+  background: var(--dwp-tint);
+  color: var(--dwp-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deepwiki-presentation-workspace-button:hover { background: var(--dwp-tint-active); }
+
+/* ------------------------------------------------------------------- body */
+
+.deepwiki-presentation-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.deepwiki-presentation-sidebar {
+  width: 284px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--dwp-border);
+  padding: 12px 10px;
+}
+
+.deepwiki-presentation-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deepwiki-presentation-nav-item { margin: 0; }
+
+.deepwiki-presentation-nav-link {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--dwp-text);
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.deepwiki-presentation-nav-link:hover { background: var(--dwp-tint-faint); }
+
+.deepwiki-presentation-nav-link[data-active='true'] { background: var(--dwp-tint); }
+
+.deepwiki-presentation-nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- content */
+
+.deepwiki-presentation-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.deepwiki-presentation-scroller {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.deepwiki-presentation-article {
+  max-width: 672px;
+  margin: 0 auto;
+  padding: 32px 24px 120px;
+}
+
+.deepwiki-presentation-page-title {
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Markdown body — overrides the workspace .markdown-content defaults with the
+   reference documentation look. */
+.deepwiki-presentation-markdown {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--dwp-text);
+}
+
+.deepwiki-presentation-markdown p { margin: 0 0 12px; }
+
+.deepwiki-presentation-markdown h2 {
+  margin: 26px 0 10px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--dwp-text);
+  border: 0;
+}
+
+.deepwiki-presentation-markdown h3 {
+  margin: 20px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.deepwiki-presentation-markdown h4 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dwp-text-soft);
+}
+
+.deepwiki-presentation-markdown ul,
+.deepwiki-presentation-markdown ol {
+  margin: 0 0 12px;
+  padding-left: 28px;
+}
+
+.deepwiki-presentation-markdown li { margin: 0 0 4px; }
+
+.deepwiki-presentation-markdown code {
+  font-family: var(--dwp-mono);
+  font-size: 13px;
+  background: var(--dwp-tint);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.deepwiki-presentation-markdown pre {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--dwp-border-faint);
+  background: var(--dwp-code-bg);
+  overflow-x: auto;
+}
+
+.deepwiki-presentation-markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.deepwiki-presentation-markdown table {
+  width: 100%;
+  margin: 0 0 14px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--dwp-border-faint);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.deepwiki-presentation-markdown th {
+  background: var(--dwp-tint);
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 16px;
+}
+
+.deepwiki-presentation-markdown td {
+  padding: 8px 16px;
+  border-top: 1px solid var(--dwp-border-faint);
+  vertical-align: top;
+}
+
+.deepwiki-presentation-markdown details {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--dwp-text-soft);
+}
+
+.deepwiki-presentation-markdown details summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+}
+
+.deepwiki-presentation-markdown details summary:hover { color: var(--dwp-text); }
+
+.deepwiki-presentation-markdown details[open] {
+  border: 1px solid var(--dwp-border-faint);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+/* Source chips: `path#L1-L10` anchors produced by the markdown renderer. */
+.deepwiki-presentation-markdown a.code-reference,
+.deepwiki-presentation-markdown code.code-reference {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dwp-chip-bg);
+  border: 1px solid var(--dwp-border-faint);
+  color: var(--dwp-link);
+  font-family: var(--dwp-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  word-break: break-all;
+}
+
+.deepwiki-presentation-markdown a.code-reference:hover,
+.deepwiki-presentation-markdown code.code-reference:hover { background: var(--dwp-tint-active); }
+
+.deepwiki-presentation-markdown a.wiki-reference {
+  color: var(--dwp-link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.deepwiki-presentation-markdown strong { font-weight: 600; }
+
+/* Mermaid diagrams from the markdown renderer. The workspace stylesheet
+   paints .mermaid-diagram as a light card; the presentation flattens it. */
+.deepwiki-presentation-markdown .mermaid-diagram,
+.deepwiki-presentation-markdown figure {
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+.deepwiki-presentation-markdown .mermaid-diagram details,
+.deepwiki-presentation-markdown .mermaid-diagram details summary { color: var(--dwp-text-soft); }
+
+.deepwiki-presentation-markdown svg text { fill: var(--dwp-text); font-family: var(--dwp-sans); font-size: 12px; }
+
+.deepwiki-presentation-markdown .mermaid-diagram svg,
+.deepwiki-presentation-markdown figure svg {
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+}
+
+.deepwiki-presentation-markdown svg .cluster rect { fill: #fcc2d7; fill-opacity: 0.9; stroke: none; }
+.deepwiki-presentation-markdown svg .cluster text { fill: #1f1f1f; font-family: var(--dwp-sans); font-size: 12px; font-weight: 600; }
+.deepwiki-presentation-markdown svg .node rect,
+.deepwiki-presentation-markdown svg .actor rect { fill: var(--dwp-elevated); stroke: var(--dwp-text); stroke-width: 1px; }
+.deepwiki-presentation-markdown svg .node text,
+.deepwiki-presentation-markdown svg .actor text { fill: var(--dwp-text); font-family: var(--dwp-sans); font-size: 11px; }
+.deepwiki-presentation-markdown svg .edgePath path { fill: none; stroke: var(--dwp-text); stroke-width: 1px; }
+.deepwiki-presentation-markdown svg .edgePath text,
+.deepwiki-presentation-markdown svg .message text { fill: var(--dwp-text); font-family: var(--dwp-sans); font-size: 10px; }
+.deepwiki-presentation-markdown svg marker path { fill: var(--dwp-text); }
+.deepwiki-presentation-markdown svg .actor-line { stroke: var(--dwp-border); }
+.deepwiki-presentation-markdown svg .message line { stroke: var(--dwp-text); }
+
+/* --------------------------------------------------------------- toc rail */
+
+.deepwiki-presentation-toc-rail {
+  position: relative;
+  width: 48px;
+  flex-shrink: 0;
+  padding-top: 20px;
+}
+
+.deepwiki-presentation-toc-ticks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-right: 14px;
+}
+
+.deepwiki-presentation-toc-tick {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dwp-border);
+  transition: background-color 120ms ease;
+}
+
+.deepwiki-presentation-toc-tick.level-h3 { width: 10px; }
+.deepwiki-presentation-toc-tick.active { background: var(--dwp-text); }
+
+.deepwiki-presentation-toc-card {
+  position: absolute;
+  top: 16px;
+  right: 8px;
+  width: 256px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--dwp-border);
+  background: var(--dwp-elevated);
+  box-shadow: var(--dwp-shadow);
+  opacity: 0;
+  transform: scale(0.98);
+  transform-origin: top right;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+  z-index: 5;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+
+.deepwiki-presentation-toc-rail:hover .deepwiki-presentation-toc-card,
+.deepwiki-presentation-toc-rail:focus-within .deepwiki-presentation-toc-card {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.deepwiki-presentation-toc-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dwp-text-soft);
+  padding: 4px 8px;
+}
+
+.deepwiki-presentation-toc-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deepwiki-presentation-toc-link {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--dwp-text-soft);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deepwiki-presentation-toc-link.level-h3 { padding-left: 20px; }
+.deepwiki-presentation-toc-link:hover { background: var(--dwp-tint); color: var(--dwp-text); }
+.deepwiki-presentation-toc-link.active { color: var(--dwp-text); }
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .deepwiki-presentation-body { flex-direction: column; }
+  .deepwiki-presentation-sidebar {
+    width: 100%;
+    max-height: 38%;
+    border-right: 0;
+    border-bottom: 1px solid var(--dwp-border);
+  }
+  .deepwiki-presentation-toc-rail { display: none; }
+  .deepwiki-presentation-search { width: 130px; }
+}
+
+/* ------------------------------------------------------------------ print */
+
+@media print {
+  body.codeatlas-deepwiki-presentation { overflow: visible; }
+  .deepwiki-presentation { position: static; background: #fff; color: #111827; }
+  .deepwiki-presentation-topbar-actions,
+  .deepwiki-presentation-sidebar,
+  .deepwiki-presentation-toc-rail { display: none !important; }
+  .deepwiki-presentation-scroller { overflow: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deepwiki-presentation *,
+  .deepwiki-presentation *::before,
+  .deepwiki-presentation *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

@@ -204,6 +204,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/jobs/{jobId}/cancel", s.handleCancelJob)
 	mux.HandleFunc("GET /api/jobs/{jobId}/result", s.handleJobResult)
 	mux.HandleFunc("POST /api/codemaps", s.handleCodemap)
+	mux.HandleFunc("GET /api/codemaps", s.handleListCodemaps)
 	mux.HandleFunc("GET /api/codemaps/{artifactId}", s.handleGetCodemap)
 	mux.HandleFunc("GET /api/deepwiki", s.handleWikiPages)
 	mux.HandleFunc("POST /api/deepwiki/refresh", s.handleWikiRefresh)
@@ -498,6 +499,17 @@ func (s *Server) handleCodemap(response http.ResponseWriter, request *http.Reque
 	writeJSON(response, http.StatusAccepted, map[string]any{"job": snapshot})
 }
 
+// handleListCodemaps enumerates the published Codemap heads so clients can
+// reopen previously generated maps after a reload.
+func (s *Server) handleListCodemaps(response http.ResponseWriter, request *http.Request) {
+	summaries, err := s.store.ListCodemapsContext(request.Context())
+	if err != nil {
+		s.writeAppError(response, request, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"codemaps": summaries})
+}
+
 func (s *Server) handleGetCodemap(response http.ResponseWriter, request *http.Request) {
 	codemap, err := s.store.CodemapByArtifactIDContext(request.Context(), domain.ArtifactID(request.PathValue("artifactId")))
 	if err != nil {
@@ -732,12 +744,28 @@ func (s *Server) submitCodemapJob(ctx context.Context, payload domain.CodemapReq
 			_ = reporter.Report("generate", "generating narrative", domain.Progress{Completed: 4, Total: 6, Unit: "stage"})
 			codemap, err := s.codemaps.Generate(jobCtx, payload)
 			if err != nil {
+				s.logCodemapFailure(jobCtx, err)
 				return job.Result{}, err
 			}
 			_ = reporter.Report("publish", "publishing artifact", domain.Progress{Completed: 6, Total: 6, Unit: "stage"})
 			return job.Result{ArtifactID: string(codemap.Artifact.ID), SnapshotID: codemap.SnapshotID, Payload: codemap}, nil
 		},
 	})
+}
+
+func (s *Server) logCodemapFailure(ctx context.Context, err error) {
+	if s.logger == nil || err == nil {
+		return
+	}
+	cause := err
+	code := "JOB_FAILED"
+	if appErr, ok := apperror.As(err); ok {
+		code = string(appErr.Code)
+		if appErr.Cause != nil {
+			cause = appErr.Cause
+		}
+	}
+	s.logger.ErrorContext(ctx, "Codemap generation failed", "code", code, "cause", cause)
 }
 
 func (s *Server) submitDeepWikiJob(ctx context.Context, clientRequestID string) (domain.JobSnapshot, error) {

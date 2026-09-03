@@ -229,12 +229,29 @@ test('codemap view model derives artifact metadata, groups and structured traces
   assert.strictEqual(result.viewModel.contextPackHash, 'sha256:pack');
   assert.strictEqual(result.viewModel.status, 'stale');
   assert.deepStrictEqual(result.viewModel.staleReasons, ['snapshot_changed']);
+  assert.strictEqual(result.viewModel.summary, 'A grounded summary of the request lifecycle.');
+  assert.strictEqual(result.viewModel.motivation, 'Why the order flow exists and why its boundaries matter.');
+  assert.strictEqual(result.viewModel.details, 'How request data crosses the handler, service, and repository.');
   assert.deepStrictEqual(result.viewModel.groups.map((group) => group.id), ['api', 'domain']);
   assert.deepStrictEqual(result.viewModel.flows[0].steps.map((step) => step.label), ['1a', '1b']);
   assert.strictEqual(result.viewModel.flows[0].steps[1].path, 'domain/service.go');
   assert.deepStrictEqual(result.viewModel.traceCandidates[0].steps.map((step) => step.id), ['trace:legacy:0:0']);
   assert.strictEqual(result.viewModel.diagram.version, 'mermaid/v1');
   assert.strictEqual(result.viewModel.diagram.sources[0].path, 'api/handler.go');
+});
+
+test('codemap narrative normalization preserves Markdown block boundaries', () => {
+  const result = app.normalizeCodemapViewModel(sampleCodemap({
+    overview: 'Summary.\r\n\r\n### Evidence\r\n\r\n- First\r\n- Second\u0007',
+  }));
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.viewModel.overview, 'Summary.\n\n### Evidence\n\n- First\n- Second');
+  assert.deepStrictEqual(app.markdownToHTMLBlocks(result.viewModel.overview), [
+    '<p>Summary.</p>',
+    '<h3>Evidence</h3>',
+    '<ul>\n<li>First</li>\n<li>Second</li>\n</ul>',
+  ]);
 });
 
 test('codemap rejects flow steps that invent node ids', () => {
@@ -1555,6 +1572,9 @@ function sampleCodemap(overrides = {}) {
     query: 'checkout handler',
     title: 'Checkout handler',
     overview: 'Factual overview.',
+    summary: 'A grounded summary of the request lifecycle.',
+    motivation: 'Why the order flow exists and why its boundaries matter.',
+    details: 'How request data crosses the handler, service, and repository.',
     trace: ['Handler -calls-> Service'],
     flows: [{
       title: 'Request processing',

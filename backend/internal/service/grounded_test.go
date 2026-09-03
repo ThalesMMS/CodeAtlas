@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -228,8 +229,26 @@ func TestGenerateGroundedRetriesUnknownCodeEvidenceID(t *testing.T) {
 
 func TestGenerateGroundedRetriesInvalidCodemapFlowNodeID(t *testing.T) {
 	t.Parallel()
-	invalid := `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":"Flow","trace":[],"flows":[{"title":"Request","entryNodeId":"node:entry","steps":[{"label":"1a","nodeId":"node:invented","text":"Start"}]}],"claims":[],"inferences":[],"uncertainties":[]}`
-	valid := `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":"Flow","trace":[],"flows":[{"title":"Request","entryNodeId":"node:entry","steps":[{"label":"1a","nodeId":"node:entry","text":"Start"}]}],"claims":[],"inferences":[],"uncertainties":[]}`
+	base := aiout.CodemapNarrative{
+		SchemaVersion: aiout.CodemapSchemaVersion,
+		Title:         "Map",
+		Overview:      strings.Repeat("This overview explains the grounded request flow and its observed scope. ", 2),
+		Motivation:    strings.Repeat("The code separates transport, business logic, and persistence so every responsibility remains visible in the execution path. ", 2),
+		Details:       strings.Repeat("The request starts at the selected entrypoint and follows validated calls through each local component. The backend owns every source anchor and snippet attached after validation. ", 3),
+		Flows:         []aiout.CodemapFlow{{Title: "Request", EntryNodeID: "node:entry", Steps: []aiout.CodemapFlowStep{{Label: "1a", NodeID: "node:entry", Text: "Start"}}}},
+		Claims:        []aiout.Claim{}, Inferences: []aiout.Inference{}, Uncertainties: []aiout.Uncertainty{},
+	}
+	validBytes, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidNarrative := base
+	invalidNarrative.Flows = []aiout.CodemapFlow{{Title: "Request", EntryNodeID: "node:entry", Steps: []aiout.CodemapFlowStep{{Label: "1a", NodeID: "node:invented", Text: "Start"}}}}
+	invalidBytes, err := json.Marshal(invalidNarrative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid, valid := string(invalidBytes), string(validBytes)
 	provider := &scriptedProvider{responses: []string{invalid, valid}}
 	validate := func(raw []byte) error {
 		var out aiout.CodemapNarrative

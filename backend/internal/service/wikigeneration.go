@@ -9,7 +9,10 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 )
 
-const deepWikiWorkerCount = 3
+// DeepWiki runs in the background against providers that may expose only two
+// concurrent generation slots. One worker leaves the other slot available to
+// Hover, See More, or Codemap instead of letting a refresh monopolize the model.
+const deepWikiWorkerCount = 1
 
 func requiredWikiPageCount(manifest domain.WikiManifest) int {
 	total := 0

@@ -1,4 +1,4 @@
-// A deliberately small, local renderer for the exact Mermaid subset emitted by
+﻿// A deliberately small, local renderer for the exact Mermaid subset emitted by
 // backend/internal/diagram. It is lazy-loaded, accepts no directives/styles/
 // links, and emits CSP-safe SVG without inline CSS or event handlers.
 
@@ -41,12 +41,12 @@ function renderFlowchart(lines: string[], renderId: string): string {
       current = null;
       continue;
     }
-    match = line.match(/^  (n\d+) -->\|([\p{L}\p{N}\s._/()#-]{1,80})\| (n\d+)$/u);
+    match = line.match(/^  (n\d+) -->\|([\p{L}\p{N}\s._/()#·-]{1,80})\| (n\d+)$/u);
     if (match) {
       edges.push({ source: match[1]!, target: match[3]!, label: match[2]!.trim(), dashed: false });
       continue;
     }
-    match = line.match(/^  (n\d+) -\. ([\p{L}\p{N}\s._/()#-]{1,80}) \.-> (n\d+)$/u);
+    match = line.match(/^  (n\d+) -\. ([\p{L}\p{N}\s._/()#·-]{1,80}) \.-> (n\d+)$/u);
     if (match) {
       edges.push({ source: match[1]!, target: match[3]!, label: match[2]!.trim(), dashed: true });
       continue;
@@ -98,12 +98,12 @@ function renderSequence(lines: string[], renderId: string): string {
   const participants: Array<{ id: string; label: string }> = [];
   const messages: Array<{ source: string; target: string; label: string }> = [];
   for (const line of lines) {
-    let match = line.match(/^  participant (p\d+) as ([\p{L}\p{N}\s._/()#-]{1,240})$/u);
+    let match = line.match(/^  participant (p\d+) as ([\p{L}\p{N}\s._/()#·-]{1,240})$/u);
     if (match) {
       participants.push({ id: match[1]!, label: match[2]!.trim() });
       continue;
     }
-    match = line.match(/^  (p\d+)->>(p\d+): calls ([\p{L}\p{N}\s._/()#-]{1,160})$/u);
+    match = line.match(/^  (p\d+)->>(p\d+): calls ([\p{L}\p{N}\s._/()#·-]{1,160})$/u);
     if (match) {
       messages.push({ source: match[1]!, target: match[2]!, label: `calls ${match[3]!.trim()}` });
       continue;
@@ -154,3 +154,4 @@ function safeIdentifier(value: string): string {
   const normalized = value.replace(/[^a-z0-9_-]/gi, '-').slice(0, 120);
   return normalized || 'codeatlas-mermaid';
 }
+

@@ -152,6 +152,35 @@ func Save() {}
 	}
 }
 
+func TestCodemapCanRecoverOnThirdGroundingAttempt(t *testing.T) {
+	t.Parallel()
+	store, err := repository.OpenSQLite(context.Background(), repository.SQLiteConfig{WorkspaceRoot: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	engine := codeparser.New()
+	indexSource(t, store, engine, "internal/order/service.go", `package order
+
+type Service struct{}
+func (s *Service) Submit() { Save() }
+func Save() {}
+`)
+
+	valid := structuredStub(codemapSystemPrompt, "Grounded map")
+	provider := &scriptedProvider{responses: []string{`{}`, `{}`, valid}}
+	retriever := retrieval.NewHybrid(store, ai.Disabled{}, false)
+	service := NewCodemapService(store, retriever, provider)
+	if _, err := service.Generate(context.Background(), domain.CodemapRequest{
+		Query: "submit service save", MaxNodes: 8,
+	}); err != nil {
+		t.Fatalf("Generate() error = %v, want recovery on third grounded response", err)
+	}
+	if provider.calls != 3 {
+		t.Fatalf("provider calls = %d, want 3", provider.calls)
+	}
+}
+
 func TestCodemapProviderPromptIncludesFlowGuideEvidence(t *testing.T) {
 	t.Parallel()
 	repository, err := repository.OpenSQLite(context.Background(), repository.SQLiteConfig{WorkspaceRoot: t.TempDir()})
@@ -265,21 +294,37 @@ func (r *MemoryRepository) Save(_ context.Context, order Order) error {
 	narrative := aiout.CodemapNarrative{
 		SchemaVersion: aiout.CodemapSchemaVersion,
 		Title:         "Handler in the HTTP flow",
-		Overview:      "main configures dependencies and the handler processes the request.",
-		Motivation:    "Separar wiring e request processing.",
-		Details:       "The steps follow observed local calls.",
+		Overview:      strings.Repeat("The order handler connects dependency setup to validated request processing and persistence. ", 2),
+		Motivation:    strings.Repeat("The application separates HTTP transport, business validation, and repository access so each layer owns one observable responsibility. ", 2),
+		Details:       strings.Repeat("The entrypoint creates the repository, injects it into the service, and gives that service to the HTTP handler. The request path decodes the payload, delegates validation to Submit, timestamps the order, and saves it through the repository interface. ", 2),
 		Flows: []aiout.CodemapFlow{
-			{Title: "Configuration", EntryNodeID: ids["main"], Steps: []aiout.CodemapFlowStep{
-				{Label: "1a", NodeID: ids["main"], Text: "Inicia o wiring"},
-				{Label: "1b", NodeID: ids["NewMemoryRepository"], Text: "Cria o repository"},
-				{Label: "1c", NodeID: ids["NewService"], Text: "Injeta o service"},
-				{Label: "1d", NodeID: ids["NewHandler"], Text: "Builds the handler"},
-			}},
-			{Title: "Request processing", EntryNodeID: ids["Create"], Steps: []aiout.CodemapFlowStep{
-				{Label: "2a", NodeID: ids["Create"], Text: "Decodes the request"},
-				{Label: "2b", NodeID: ids["Submit"], Text: "Validates and submits the order"},
-				{Label: "2c", NodeID: ids["Save"], Text: "Persists the order"},
-			}},
+			{
+				Title: "Configuration", EntryNodeID: ids["main"],
+				Summary:    "Wires the repository, service, and handler.",
+				Motivation: "The entrypoint has to assemble the dependency chain before any request arrives, so each layer receives its collaborator explicitly.",
+				Details:    "The main function creates the repository [1b], injects it into the service [1c], and hands that service to the HTTP handler [1d] so transport code never touches storage directly.",
+				Steps: []aiout.CodemapFlowStep{
+					{Label: "1a", NodeID: ids["main"], Text: "Inicia o wiring"},
+					{Label: "1b", NodeID: ids["NewMemoryRepository"], Text: "Cria o repository"},
+					{Label: "1c", NodeID: ids["NewService"], Text: "Injeta o service"},
+					{Label: "1d", NodeID: ids["NewHandler"], Text: "Builds the handler"},
+				},
+			},
+			{
+				Title: "Request processing", EntryNodeID: ids["Create"],
+				Summary:    "Decodes, validates, and persists an order.",
+				Motivation: "The request path must reject malformed and invalid orders before persistence so the repository only ever stores validated entities.",
+				Details:    "The handler decodes the payload [2a], the service validates and timestamps the order [2b], and the repository stores it under its ID [2c], keeping HTTP concerns out of the storage layer.",
+				Steps: []aiout.CodemapFlowStep{
+					{Label: "2a", NodeID: ids["Create"], Text: "Decodes the request"},
+					{
+						Label: "2b", NodeID: ids["Submit"], Text: "Validates and submits the order",
+						AnchorText: "order.CreatedAt = s.clock().UTC()",
+						Notes:      []string{"validate before persisting", "stamp UTC creation time"},
+					},
+					{Label: "2c", NodeID: ids["Save"], Text: "Persists the order"},
+				},
+			},
 		},
 	}
 	rawNarrative, err := json.Marshal(narrative)
@@ -298,6 +343,12 @@ func (r *MemoryRepository) Save(_ context.Context, order Order) error {
 	}
 	if result.Provider != provider.Name() {
 		t.Fatalf("provider = %q, want %q", result.Provider, provider.Name())
+	}
+	for _, guidance := range []string{"40-90 words", "80-150 words", "150-350 words", "specific action and consequence", "anchorText", "4-8 steps per flow", "### "} {
+		assertContains(t, provider.systemPrompt, guidance)
+	}
+	if strings.Contains(provider.systemPrompt, "short \"text\"") || strings.Contains(provider.systemPrompt, "Be concise") {
+		t.Fatalf("Codemap prompt still asks for sparse prose:\n%s", provider.systemPrompt)
 	}
 	if result.OutputSchemaVersion != "codemap-narrative/v2" {
 		t.Fatalf("output schema = %q, want codemap-narrative/v2", result.OutputSchemaVersion)
@@ -334,11 +385,30 @@ func (r *MemoryRepository) Save(_ context.Context, order Order) error {
 	if step := result.Flows[0].Steps[2]; step.Path != "cmd/api/main.go" || step.Line != 12 || !strings.Contains(step.Snippet, "order.NewService") {
 		t.Fatalf("anchored service wiring step = %+v", step)
 	}
-	if step := result.Flows[1].Steps[1]; step.Path != "internal/order/http.go" || !strings.Contains(step.Snippet, "h.service.Submit") {
-		t.Fatalf("anchored Submit step = %+v", step)
+	if flow := result.Flows[1]; flow.Summary == "" || !strings.Contains(flow.Motivation, "reject malformed") || !strings.Contains(flow.Details, "[2b]") {
+		t.Fatalf("per-flow guide was not materialized: %+v", flow)
+	}
+	// The verified anchorText re-anchors 2b inside Submit itself instead of the
+	// call site, at the exact snippet line the model copied.
+	if step := result.Flows[1].Steps[1]; step.Path != "internal/order/service.go" || step.Line != 22 || step.Snippet != "order.CreatedAt = s.clock().UTC()" {
+		t.Fatalf("anchorText-anchored Submit step = %+v", step)
+	}
+	if step := result.Flows[1].Steps[1]; len(step.Notes) != 2 || step.Notes[0] != "validate before persisting" || step.Notes[1] != "stamp UTC creation time" {
+		t.Fatalf("step notes = %+v", step.Notes)
 	}
 	if step := result.Flows[1].Steps[2]; step.Path != "internal/order/service.go" || !strings.Contains(step.Snippet, "s.repository.Save") {
 		t.Fatalf("anchored Save step = %+v", step)
+	}
+	// Depth is derived from factual call edges: entry at 0, callees nested.
+	for i, want := range []int{0, 1, 1, 1} {
+		if got := result.Flows[0].Steps[i].Depth; got != want {
+			t.Fatalf("flow 0 step %d depth = %d, want %d", i, got, want)
+		}
+	}
+	for i, want := range []int{0, 1, 2} {
+		if got := result.Flows[1].Steps[i].Depth; got != want {
+			t.Fatalf("flow 1 step %d depth = %d, want %d", i, got, want)
+		}
 	}
 	for _, node := range result.Nodes {
 		for _, forbidden := range []string{"make", "s.clock", "err.Error", "UTC"} {
@@ -473,9 +543,12 @@ func structuredStub(systemPrompt, response string) string {
 	case strings.Contains(systemPrompt, "codemap-narrative/v2"):
 		overview := response
 		if overview == "" {
-			overview = "flow"
+			overview = "The generated map explains the grounded execution flow and its observed source boundaries."
 		}
-		return `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":` + strconv.Quote(overview) + `,"motivation":"","details":"","trace":[],"flows":[],"claims":[],"inferences":[],"uncertainties":[]}`
+		overview += " It names the participating components, the observed boundaries, and the scope supported by indexed evidence."
+		motivation := strings.Repeat("The application keeps transport, business rules, and persistence responsibilities separate so callers can follow each boundary in the observed code. ", 2)
+		details := strings.Repeat("The grounded path starts at the selected entrypoint, follows validated local calls, records state changes supported by snippets, and ends at the observed repository boundary. Each step remains tied to backend-owned source bytes. ", 2)
+		return `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":` + strconv.Quote(overview) + `,"motivation":` + strconv.Quote(motivation) + `,"details":` + strconv.Quote(details) + `,"trace":[],"flows":[],"claims":[],"inferences":[],"uncertainties":[]}`
 	case strings.Contains(systemPrompt, "wiki-page/v4"):
 		text := response
 		if text == "" {

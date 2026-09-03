@@ -269,10 +269,21 @@ func RenderWiki(page WikiPageContent, resolve Resolver, options ...RenderOptions
 			b.WriteString("\n\n")
 		}
 		for _, claim := range section.Claims {
-			b.WriteString("- ")
-			b.WriteString(SafeText(claim.Text))
-			b.WriteString(citations(resolve, claim.EvidenceIDs))
-			b.WriteString("\n")
+			// Claims render as documentation prose, not as a bullet inventory:
+			// a claim is a paragraph unless the model authored it as a bullet
+			// list ("- " lines), which is kept verbatim. Citations follow the
+			// block either way.
+			text := SafeText(claim.Text)
+			if strings.HasPrefix(strings.TrimSpace(text), "- ") {
+				// The section-level **Sources:** block already aggregates this
+				// claim's evidence; inline citations would break the list.
+				b.WriteString(strings.TrimSpace(text))
+				b.WriteString("\n\n")
+			} else {
+				b.WriteString(text)
+				b.WriteString(citations(resolve, claim.EvidenceIDs))
+				b.WriteString("\n\n")
+			}
 		}
 		writeCodeBlocks(&b, "", section.CodeEvidenceIDs, config.CodeResolver)
 		writeWikiTables(&b, section.Tables)

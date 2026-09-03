@@ -26,8 +26,9 @@ test('mermaid-lite renders deterministic flowchart SVG without inline styles', (
 test('mermaid-lite renders sequence SVG and rejects dangling participants', () => {
   const source = [
     'sequenceDiagram',
-    '  participant p0 as main main.go',
-    '  participant p1 as Save repository.go',
+    // The backend labels participants "symbol · file" with a middle dot.
+    '  participant p0 as main · main.go',
+    '  participant p1 as Save · repository.go',
     '  p0->>p1: calls Save',
   ].join('\n');
   const svg = renderMermaidSubset(source, 'sequence-1');

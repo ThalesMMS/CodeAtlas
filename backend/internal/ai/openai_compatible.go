@@ -24,6 +24,7 @@ type OpenAICompatible struct {
 	structuredProbe  json.RawMessage
 	probeTimeout     time.Duration
 	client           *http.Client
+	requestSlots     chan struct{}
 }
 
 // Options configures an OpenAI-compatible provider. ProbeTimeout drives the
@@ -51,6 +52,8 @@ const (
 	maxProviderErrorBodyBytes = int64(16 << 20)
 	providerMaxIdleConns      = 20
 	providerMaxIdlePerHost    = 10
+	// Chat, embeddings, probes, and schema fallbacks share the endpoint budget.
+	providerMaxConcurrency = 2
 )
 
 func NewOpenAICompatible(opts Options) Provider {
@@ -87,6 +90,7 @@ func NewOpenAICompatible(opts Options) Provider {
 		enableEmbeddings: opts.EnableEmbeddings,
 		structuredProbe:  append(json.RawMessage(nil), opts.StructuredProbeSchema...),
 		probeTimeout:     probeTimeout,
+		requestSlots:     make(chan struct{}, providerMaxConcurrency),
 		client: &http.Client{
 			Timeout:   requestTimeout,
 			Transport: transport,
@@ -164,7 +168,7 @@ func (p *OpenAICompatible) CompleteStructured(ctx context.Context, req Generatio
 				},
 			}
 		} else {
-			userPrompt += jsonOnlyInstruction
+			userPrompt += promptSchemaInstruction(req.OutputSchema)
 		}
 		body["messages"] = []map[string]string{
 			{"role": "system", "content": req.SystemPrompt},
@@ -175,8 +179,10 @@ func (p *OpenAICompatible) CompleteStructured(ctx context.Context, req Generatio
 
 	useSchema := len(req.OutputSchema) > 0
 	result, err := p.chatJSON(ctx, build(useSchema))
-	if err != nil && useSchema && isUnsupportedRequest(err) {
-		// The endpoint does not support json_schema; degrade to prompt-enforced JSON.
+	if err != nil && useSchema && (isUnsupportedRequest(err) || isSchemaGenerationFailure(err)) {
+		// The endpoint either does not support json_schema or accepted the schema
+		// but could not produce a constrained response. Retry once with
+		// prompt-enforced JSON; the service still decodes and validates it locally.
 		result, err = p.chatJSON(ctx, build(false))
 	}
 	return result, err
@@ -294,6 +300,21 @@ func isUnsupportedRequest(err error) bool {
 	return false
 }
 
+// isSchemaGenerationFailure recognizes gateways that accept json_schema but
+// return a server error when their constrained decoder cannot produce a valid
+// response. This is distinct from a general 5xx: only typed HTTP errors with an
+// explicit schema-generation message are safe to replay without response_format.
+func isSchemaGenerationFailure(err error) bool {
+	var httpError *providerHTTPError
+	if !errors.As(err, &httpError) || httpError.StatusCode < 500 || httpError.StatusCode > 599 {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(httpError.Message))
+	return strings.Contains(message, "failed to produce") &&
+		(strings.Contains(message, "schema-valid structured response") ||
+			strings.Contains(message, "schema valid structured response"))
+}
+
 func (p *OpenAICompatible) Embed(ctx context.Context, texts []string) ([][]float64, error) {
 	if p.embeddingModel == "" {
 		return nil, fmt.Errorf("embedding model is not configured")
@@ -329,6 +350,12 @@ func (p *OpenAICompatible) postJSON(ctx context.Context, endpoint, apiKey string
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
+	}
+	select {
+	case p.requestSlots <- struct{}{}:
+		defer func() { <-p.requestSlots }()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {

@@ -93,4 +93,20 @@ func TestSQLitePublishCodemapCreatesArtifactHead(t *testing.T) {
 	if loaded.SnapshotID != store.SnapshotID() || loaded.Artifact.InputSnapshotID != store.SnapshotID() {
 		t.Fatalf("loaded snapshot = %q artifact snapshot = %q", loaded.SnapshotID, loaded.Artifact.InputSnapshotID)
 	}
+
+	summaries, err := store.ListCodemapsContext(context.Background())
+	if err != nil {
+		t.Fatalf("ListCodemapsContext: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %+v, want one entry", summaries)
+	}
+	summary := summaries[0]
+	if summary.ArtifactID != metadata.ID || summary.Title != "Payments" || summary.Query != "pay" ||
+		summary.Status != string(domain.ArtifactCurrent) || summary.Revision != 1 || summary.Provider != "test-provider" {
+		t.Fatalf("summary = %+v", summary)
+	}
+	if summary.NodeCount != 0 || summary.EdgeCount != 0 {
+		t.Fatalf("summary counts = %+v, want zero for an empty graph", summary)
+	}
 }

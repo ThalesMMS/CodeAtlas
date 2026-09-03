@@ -112,7 +112,7 @@ func Save() {}
 	if len(codemap.Nodes) < 4 || len(codemap.Nodes) > 12 || len(codemap.Edges) == 0 {
 		t.Fatalf("unexpected codemap size: nodes=%d edges=%d", len(codemap.Nodes), len(codemap.Edges))
 	}
-	if codemap.Provider != provider.Name() || codemap.Overview != provider.response {
+	if codemap.Provider != provider.Name() || !strings.Contains(codemap.Overview, provider.response) || codemap.Motivation == "" || codemap.Details == "" {
 		t.Fatalf("unexpected codemap provider/overview: %#v", codemap)
 	}
 	var restored domain.Codemap
@@ -168,7 +168,10 @@ func (p staticProvider) Complete(_ context.Context, systemPrompt, _ string, _ in
 		return `{"schemaVersion":"explanation/v2","summary":` + strconv.Quote(p.response) + `,"observations":[],"inferences":[],"uncertainties":[],"changeImpact":[]}`, nil
 	}
 	if strings.Contains(systemPrompt, "codemap-narrative/v2") {
-		return `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":` + strconv.Quote(p.response) + `,"motivation":"","details":"","trace":[],"flows":[],"claims":[],"inferences":[],"uncertainties":[]}`, nil
+		overview := p.response + " The map names the observed components, their grounded boundaries, and the execution scope supported by indexed evidence."
+		motivation := strings.Repeat("The application separates transport, business behavior, and persistence so each responsibility stays explicit in the grounded flow. ", 2)
+		details := strings.Repeat("The request begins at an indexed entrypoint and follows validated local calls through the selected components. The backend attaches every source path, line, and snippet after validating the model response. ", 3)
+		return `{"schemaVersion":"codemap-narrative/v2","title":"Map","overview":` + strconv.Quote(overview) + `,"motivation":` + strconv.Quote(motivation) + `,"details":` + strconv.Quote(details) + `,"trace":[],"flows":[],"claims":[],"inferences":[],"uncertainties":[]}`, nil
 	}
 	if strings.Contains(systemPrompt, "wiki-page/v4") {
 		return `{"schemaVersion":"wiki-page/v4","title":` + strconv.Quote(p.response) + `,"sections":[{"heading":` + strconv.Quote(p.response) + `,"claims":[]}],"relatedPages":[],"inferences":[],"limitations":[]}`, nil

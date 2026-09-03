@@ -121,6 +121,7 @@ test('renderFieldStatus uses exact source, apply, and secret labels', () => {
 
 test('controller refreshes on conflicts, clears secrets, and maps validation by key', async () => {
   const rendered = [];
+  const restored = [];
   const statuses = [];
   const fieldErrors = [];
   let cleared = 0;
@@ -130,6 +131,7 @@ test('controller refreshes on conflicts, clears secrets, and maps validation by 
     bind() {}, open() {}, close() {}, setBusy() {},
     render(value) { rendered.push(value); },
     readEdits() { return { CODEATLAS_LLM_API_KEY: { mode: 'replace', value: 'transient-secret' } }; },
+    restoreEdits(edits, markForReview) { restored.push([edits, markForReview]); },
     clearSecrets() { cleared += 1; },
     setStatus(message, tone) { statuses.push([message, tone]); },
     setFieldErrors(errors) { fieldErrors.push(errors); },
@@ -150,10 +152,15 @@ test('controller refreshes on conflicts, clears secrets, and maps validation by 
   await controller.open();
   await controller.apply();
   assert.equal(rendered.at(-1).revision, 8);
+  assert.deepEqual(restored.at(-1), [{
+    CODEATLAS_LLM_API_KEY: { mode: 'replace', value: 'transient-secret' },
+  }, true]);
   assert.ok(cleared >= 1);
   assert.match(statuses.at(-1)[0], /changed/i);
 
   controller.setSnapshot(fresh);
+  const renderedBefore = rendered.length;
+  const clearedBefore = cleared;
   controller.setAPI(async () => {
     const error = new Error('invalid');
     error.code = 'SETTINGS_VALIDATION_FAILED';
@@ -163,6 +170,116 @@ test('controller refreshes on conflicts, clears secrets, and maps validation by 
   await controller.apply();
   assert.deepEqual(fieldErrors.at(-1), { CODEATLAS_LLM_MODEL: 'Model is required.' });
   assert.match(statuses.at(-1)[0], /invalid/i);
+  assert.equal(rendered.length, renderedBefore, 'validation failure must not re-render (would wipe typed values)');
+  assert.equal(cleared, clearedBefore, 'validation failure must not clear typed secrets');
+});
+
+test('controller keeps typed values and secrets after prepare failures, clears secrets on success', async () => {
+  const rendered = [];
+  const fieldErrors = [];
+  let cleared = 0;
+  const edits = { CODEATLAS_LLM_API_KEY: { mode: 'replace', value: 'typed-secret' } };
+  const view = {
+    bind() {}, open() {}, close() {}, setBusy() {}, setStatus() {},
+    setFieldErrors(errors) { fieldErrors.push(errors); },
+    render(value) { rendered.push(value); },
+    readEdits() { return edits; },
+    clearSecrets() { cleared += 1; },
+  };
+  const snapshot = sampleSnapshot();
+  const controller = settings.createSettingsController({
+    token: 'token', view,
+    api: async () => {
+      const error = new Error('probe failed');
+      error.code = 'SETTINGS_PREPARE_FAILED';
+      error.details = { fields: [{ field: 'CODEATLAS_LLM_BASE_URL', message: 'Probe failed.' }], snapshot: sampleSnapshot() };
+      throw error;
+    },
+  });
+  controller.setSnapshot(snapshot);
+  rendered.length = 0;
+  await controller.apply();
+  assert.equal(rendered.length, 0, 'prepare failure must not re-render the form');
+  assert.equal(cleared, 0, 'prepare failure must not clear typed secrets');
+  assert.deepEqual(fieldErrors.at(-1), { CODEATLAS_LLM_BASE_URL: 'Probe failed.' });
+  assert.equal(edits.CODEATLAS_LLM_API_KEY.value, 'typed-secret');
+
+  controller.setAPI(async () => ({ snapshot: { ...sampleSnapshot(), revision: 8 }, applied: ['llm'] }));
+  await controller.apply();
+  assert.equal(cleared, 1, 'successful apply clears typed secrets');
+  assert.equal(rendered.at(-1).revision, 8, 'successful apply re-renders the fresh snapshot');
+});
+
+test('controller fetches a fresh snapshot when a conflict omits one', async () => {
+  const rendered = [];
+  const statuses = [];
+  const snapshot = sampleSnapshot();
+  const fresh = { ...sampleSnapshot(), revision: 8 };
+  const view = {
+    bind() {}, open() {}, close() {}, setBusy() {}, clearSecrets() {}, setFieldErrors() {},
+    render(value) { rendered.push(value); },
+    readEdits() { return {}; },
+    setStatus(message, tone) { statuses.push([message, tone]); },
+  };
+  let call = 0;
+  const controller = settings.createSettingsController({
+    token: 'token', view,
+    api: async (_path, options) => {
+      call += 1;
+      if (call === 1) return snapshot;
+      if (call === 2 && options.method === 'PUT') {
+        const error = new Error('conflict');
+        error.code = 'SETTINGS_REVISION_CONFLICT';
+        error.details = {};
+        throw error;
+      }
+      return fresh;
+    },
+  });
+  await controller.open();
+  await controller.apply();
+  assert.equal(call, 3);
+  assert.equal(rendered.at(-1).revision, 8);
+  assert.match(statuses.at(-1)[0], /latest values were loaded/i);
+});
+
+test('controller rejects malformed snapshots without claiming success or clearing edits', async () => {
+  const rendered = [];
+  const statuses = [];
+  let cleared = 0;
+  let applied = 0;
+  const view = {
+    bind() {}, open() {}, close() {}, setBusy() {}, setFieldErrors() {},
+    render(value) { rendered.push(value); },
+    readEdits() { return { CODEATLAS_LLM_API_KEY: { mode: 'replace', value: 'typed-secret' } }; },
+    clearSecrets() { cleared += 1; },
+    setStatus(message, tone) { statuses.push([message, tone]); },
+  };
+  const controller = settings.createSettingsController({
+    token: 'token', view, onApplied: () => { applied += 1; },
+    confirmReset: async () => true,
+    api: async () => ({ error: 'malformed snapshot' }),
+  });
+
+  await controller.open();
+  assert.equal(rendered.length, 0);
+  assert.equal(controller.snapshot(), null);
+  assert.equal(statuses.at(-1)[1], 'error');
+  assert.equal(controller.setSnapshot({}), false);
+  assert.equal(controller.setSnapshot(sampleSnapshot()), true);
+
+  const clearedAfterOpen = cleared;
+  controller.setAPI(async () => ({ snapshot: {}, applied: ['llm'] }));
+  await controller.apply();
+  assert.equal(cleared, clearedAfterOpen);
+  assert.equal(applied, 0);
+  assert.equal(statuses.at(-1)[1], 'error');
+
+  controller.setAPI(async () => ({ snapshot: {} }));
+  await controller.reset();
+  assert.equal(cleared, clearedAfterOpen);
+  assert.equal(applied, 0);
+  assert.equal(statuses.at(-1)[1], 'error');
 });
 
 test('controller sends no-store token requests and restarts readiness after success', async () => {
