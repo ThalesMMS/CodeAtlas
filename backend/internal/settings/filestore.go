@@ -11,11 +11,19 @@ import (
 	"path/filepath"
 )
 
-const SettingsSchemaVersion = 1
+// SettingsSchemaVersion is the version this build writes. Version 2 (#163)
+// retired dense retrieval's four fields and its credential reference; a
+// version-1 document is upgraded on load by dropping keys the catalog no longer
+// documents, so an existing install never fails to start on a field this build
+// stopped knowing about.
+const SettingsSchemaVersion = 2
+
+// oldestUpgradableSchemaVersion is the oldest persisted document this build can
+// read. Anything older is rejected rather than silently reinterpreted.
+const oldestUpgradableSchemaVersion = 1
 
 type CredentialReferences struct {
-	LLMAPIKeyGeneration        string `json:"llmApiKeyGeneration,omitempty"`
-	EmbeddingsAPIKeyGeneration string `json:"embeddingsApiKeyGeneration,omitempty"`
+	LLMAPIKeyGeneration string `json:"llmApiKeyGeneration,omitempty"`
 }
 
 type Document struct {
@@ -53,6 +61,35 @@ func (s *FileStore) Load(ctx context.Context) (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("read settings: %w", err)
 	}
+	version, err := peekSchemaVersion(data)
+	if err != nil {
+		return Document{}, err
+	}
+	switch {
+	case version == SettingsSchemaVersion:
+		return decodeCurrentDocument(data)
+	case version >= oldestUpgradableSchemaVersion && version < SettingsSchemaVersion:
+		return upgradeDocument(data)
+	default:
+		return Document{}, fmt.Errorf("unsupported settings schema version %d", version)
+	}
+}
+
+// peekSchemaVersion reads only schemaVersion so the decoder strictness applied
+// afterwards can depend on which version wrote the file.
+func peekSchemaVersion(data []byte) (int, error) {
+	var header struct {
+		SchemaVersion int `json:"schemaVersion"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
+		return 0, fmt.Errorf("decode settings: %w", err)
+	}
+	return header.SchemaVersion, nil
+}
+
+// decodeCurrentDocument is the strict path for a document this build wrote:
+// an unknown key is a bug or hand-editing mistake, not a version difference.
+func decodeCurrentDocument(data []byte) (Document, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document Document
@@ -62,11 +99,46 @@ func (s *FileStore) Load(ctx context.Context) (Document, error) {
 	if err := requireJSONEOF(decoder); err != nil {
 		return Document{}, err
 	}
-	if document.SchemaVersion != SettingsSchemaVersion {
-		return Document{}, fmt.Errorf("unsupported settings schema version %d", document.SchemaVersion)
-	}
 	if document.Overrides == nil {
 		document.Overrides = Overrides{}
+	}
+	return document, nil
+}
+
+// upgradeDocument reads a document written by an older build. Overrides and
+// credential references the current catalog no longer documents are dropped
+// rather than rejected, and the result is stamped with the current version so
+// the next Save persists the upgraded shape. A retired key is never re-applied.
+func upgradeDocument(data []byte) (Document, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	var legacy struct {
+		Revision    uint64                     `json:"revision"`
+		Overrides   map[string]json.RawMessage `json:"overrides"`
+		Credentials CredentialReferences       `json:"credentials"`
+	}
+	if err := decoder.Decode(&legacy); err != nil {
+		return Document{}, fmt.Errorf("decode settings: %w", err)
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return Document{}, err
+	}
+	document := Document{
+		SchemaVersion: SettingsSchemaVersion,
+		Revision:      legacy.Revision,
+		Overrides:     make(Overrides, len(legacy.Overrides)),
+		Credentials:   legacy.Credentials,
+	}
+	for rawKey, raw := range legacy.Overrides {
+		key := FieldKey(rawKey)
+		definition, ok := Definition(key)
+		if !ok || definition.Secret {
+			continue
+		}
+		value, err := decodeOverrideValue(definition, raw)
+		if err != nil {
+			return Document{}, fmt.Errorf("decode %s: %w", rawKey, err)
+		}
+		document.Overrides[key] = value
 	}
 	return document, nil
 }

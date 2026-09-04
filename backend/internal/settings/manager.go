@@ -33,8 +33,7 @@ type PreparedRuntime interface {
 }
 
 type ActivationResult struct {
-	Applied        []Group `json:"applied,omitempty"`
-	EmbeddingJobID string  `json:"embeddingJobId,omitempty"`
+	Applied []Group `json:"applied,omitempty"`
 }
 
 type ChangeSet struct {
@@ -75,7 +74,6 @@ type UpdateResult struct {
 	Snapshot        SanitizedSnapshot `json:"snapshot"`
 	Applied         []Group           `json:"applied,omitempty"`
 	RestartRequired []FieldKey        `json:"restartRequired"`
-	EmbeddingJobID  string            `json:"embeddingJobId,omitempty"`
 }
 
 type ManagerError struct {
@@ -226,7 +224,6 @@ func (m *Manager) Update(ctx context.Context, request UpdateRequest) (UpdateResu
 		Snapshot:        cloneSnapshot(snapshot),
 		Applied:         append([]Group(nil), activation.Applied...),
 		RestartRequired: append([]FieldKey(nil), snapshot.RestartRequired...),
-		EmbeddingJobID:  activation.EmbeddingJobID,
 	}, nil
 }
 
@@ -394,7 +391,7 @@ func preparationFieldErrors(err error) []FieldError {
 
 func loadSavedCredentials(ctx context.Context, store CredentialStore, references CredentialReferences) (SecretValues, error) {
 	result := make(SecretValues)
-	for _, key := range []FieldKey{FieldLLMAPIKey, FieldEmbeddingsAPIKey} {
+	for _, key := range []FieldKey{FieldLLMAPIKey} {
 		generation := currentGeneration(references, key)
 		if generation == "" {
 			continue
@@ -439,7 +436,7 @@ func LoadStartup(ctx context.Context, environment Environment, store DocumentSto
 
 func environmentSecrets(environment Environment) SecretValues {
 	result := make(SecretValues)
-	for _, key := range []FieldKey{FieldLLMAPIKey, FieldEmbeddingsAPIKey} {
+	for _, key := range []FieldKey{FieldLLMAPIKey} {
 		if value := environment[key]; value != "" {
 			result[key] = value
 		}
@@ -449,7 +446,7 @@ func environmentSecrets(environment Environment) SecretValues {
 
 func savedCredentialValues(values SecretValues, references CredentialReferences) SecretValues {
 	result := make(SecretValues)
-	for _, key := range []FieldKey{FieldLLMAPIKey, FieldEmbeddingsAPIKey} {
+	for _, key := range []FieldKey{FieldLLMAPIKey} {
 		if currentGeneration(references, key) != "" {
 			result[key] = values[key]
 		}

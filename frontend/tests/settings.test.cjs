@@ -24,15 +24,12 @@ function sampleSnapshot() {
     groups: {
       general: [
         { key: 'CODEATLAS_WORKSPACE', kind: 'string', value: '.', runningValue: '.', source: 'default', applyMode: 'restart' },
+        { key: 'CODEATLAS_LISTEN', kind: 'string', value: '127.0.0.1:43127', runningValue: '127.0.0.1:43127', source: 'default', applyMode: 'restart' },
         { key: 'CODEATLAS_MAX_FILE_BYTES', kind: 'integer', value: 1500000, runningValue: 1500000, source: 'default', applyMode: 'restart' },
       ],
       llm: [
         { key: 'CODEATLAS_LLM_MODEL', kind: 'string', value: 'old-model', source: 'env', applyMode: 'live' },
         { key: 'CODEATLAS_LLM_API_KEY', kind: 'secret', configured: true, source: 'settings', applyMode: 'live' },
-      ],
-      embeddings: [
-        { key: 'CODEATLAS_ENABLE_EMBEDDINGS', kind: 'boolean', value: false, source: 'default', applyMode: 'live' },
-        { key: 'CODEATLAS_EMBEDDINGS_API_KEY', kind: 'secret', configured: true, source: 'env', applyMode: 'live' },
       ],
       languageServers: [],
     },
@@ -48,7 +45,7 @@ test('Settings controls are discreet, accessible, and available during bootstrap
   assert.match(html, /id="settings-button"[^>]+aria-label="Settings"/);
   assert.match(html, /class="bootstrap-actions"[\s\S]*id="bootstrap-settings-button"/);
   assert.match(html, /id="settings-drawer"[^>]+role="dialog"[^>]+aria-modal="true"/);
-  for (const group of ['general', 'llm', 'embeddings', 'languageServers']) {
+  for (const group of ['general', 'llm', 'languageServers']) {
     assert.match(html, new RegExp(`data-settings-group="${group}"`));
   }
   assert.match(styles, /\.bootstrap-overlay\s*\{[^}]*overflow:\s*auto;/s, 'a short window must scroll the startup overlay');
@@ -58,11 +55,11 @@ test('Settings controls are discreet, accessible, and available during bootstrap
 test('Settings inventory matches every .env.example key exactly once', () => {
   const expected = envKeys().sort();
   const actual = settings.settingsFieldInventory.map((field) => field.key).sort();
-  assert.equal(actual.length, 23);
+  assert.equal(actual.length, 19);
   assert.deepEqual(actual, expected);
   assert.equal(new Set(actual).size, actual.length);
   assert.deepEqual([...new Set(settings.settingsFieldInventory.map((field) => field.group))].sort(), [
-    'embeddings', 'general', 'languageServers', 'llm',
+    'general', 'languageServers', 'llm',
   ]);
   for (const field of settings.settingsFieldInventory.filter((item) => item.kind === 'secret')) {
     assert.equal(field.prefill, false);
@@ -77,7 +74,6 @@ test('buildUpdateRequest omits unchanged normal values and preserves untouched s
     revision: 7,
     secrets: {
       CODEATLAS_LLM_API_KEY: { operation: 'preserve' },
-      CODEATLAS_EMBEDDINGS_API_KEY: { operation: 'preserve' },
     },
   });
 });
@@ -85,12 +81,13 @@ test('buildUpdateRequest omits unchanged normal values and preserves untouched s
 test('buildUpdateRequest preserves types and represents inherit explicitly', () => {
   const result = settings.buildUpdateRequest(sampleSnapshot(), {
     CODEATLAS_MAX_FILE_BYTES: { mode: 'set', value: '2048' },
-    CODEATLAS_ENABLE_EMBEDDINGS: { mode: 'set', value: true },
+    CODEATLAS_LISTEN: { mode: 'set', value: '127.0.0.1:8080' },
+    CODEATLAS_WORKSPACE: { mode: 'set', value: '.' },
     CODEATLAS_LLM_MODEL: { mode: 'inherit', value: 'ignored' },
   });
   assert.deepEqual(result.overrides, {
     CODEATLAS_MAX_FILE_BYTES: { operation: 'replace', value: 2048 },
-    CODEATLAS_ENABLE_EMBEDDINGS: { operation: 'replace', value: true },
+    CODEATLAS_LISTEN: { operation: 'replace', value: '127.0.0.1:8080' },
     CODEATLAS_LLM_MODEL: { operation: 'inherit' },
   });
 });
@@ -98,11 +95,15 @@ test('buildUpdateRequest preserves types and represents inherit explicitly', () 
 test('buildUpdateRequest replaces secrets only from non-empty local input', () => {
   const replaced = settings.buildUpdateRequest(sampleSnapshot(), {
     CODEATLAS_LLM_API_KEY: { mode: 'replace', value: 'local-secret' },
-    CODEATLAS_EMBEDDINGS_API_KEY: { mode: 'replace', value: '' },
   });
   assert.deepEqual(replaced.secrets, {
     CODEATLAS_LLM_API_KEY: { operation: 'replace', value: 'local-secret' },
-    CODEATLAS_EMBEDDINGS_API_KEY: { operation: 'preserve' },
+  });
+  const blank = settings.buildUpdateRequest(sampleSnapshot(), {
+    CODEATLAS_LLM_API_KEY: { mode: 'replace', value: '' },
+  });
+  assert.deepEqual(blank.secrets, {
+    CODEATLAS_LLM_API_KEY: { operation: 'preserve' },
   });
   const inherited = settings.buildUpdateRequest(sampleSnapshot(), {
     CODEATLAS_LLM_API_KEY: { mode: 'inherit', value: 'must-not-be-sent' },

@@ -14,29 +14,19 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 )
 
-const (
-	capabilityLLMChat       capabilities.CapabilityID = "llm-chat"
-	capabilityLLMEmbeddings capabilities.CapabilityID = "llm-embeddings"
-)
+const capabilityLLMChat capabilities.CapabilityID = "llm-chat"
 
 // bootstrapDeps are the seams the startup sequence depends on.
 type bootstrapDeps struct {
-	logger           *slog.Logger
-	coordinator      *readiness.Coordinator
-	registry         *capabilities.Registry
-	probes           []capabilities.Probe
-	providerProbe    ai.CapabilityProbe
-	enableEmbeddings bool
-	migrateStore     func(context.Context) error
-	initialIndex     func(context.Context) error
-	runIndexer       func(context.Context)
-	// reconcileEmbeddings validates the dense index against the configuration
-	// without generating vectors; it reports whether a background rebuild is
-	// required once the process is READY.
-	reconcileEmbeddings func(context.Context) (bool, error)
-	// scheduleEmbeddingRebuild submits the coalescing embeddings.rebuild job.
-	scheduleEmbeddingRebuild func(context.Context)
-	recoveryError            error
+	logger        *slog.Logger
+	coordinator   *readiness.Coordinator
+	registry      *capabilities.Registry
+	probes        []capabilities.Probe
+	providerProbe ai.CapabilityProbe
+	migrateStore  func(context.Context) error
+	initialIndex  func(context.Context) error
+	runIndexer    func(context.Context)
+	recoveryError error
 }
 
 // runBootstrap drives the readiness lifecycle:
@@ -71,11 +61,11 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		return
 	}
 
-	// Open the repository before waiting for provider configuration. Settings can
-	// enable embeddings while the process is in AWAITING_CONFIGURATION, and that
-	// live preparation needs access to the persisted embedding metadata. Delaying
-	// store migration until after the provider probe made first-run configuration
-	// fail with EMBEDDING_STORE_UNAVAILABLE even when the endpoint probe passed.
+	// Open the repository before waiting for provider configuration: settings can
+	// be applied while the process is in AWAITING_CONFIGURATION, and that live
+	// preparation needs the store open. Delaying store migration until after the
+	// provider probe made first-run configuration fail even when the endpoint
+	// probe passed.
 	if deps.migrateStore != nil {
 		deps.coordinator.SetStep("migrating store")
 		if err := deps.coordinator.Transition(readiness.StateMigratingStore, "migrating store"); err != nil {
@@ -118,25 +108,6 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		}
 	}
 
-	// Reconcile the dense index before indexing: a compatible index stays live
-	// and incremental scans keep embedding their deltas, while a legacy or
-	// incompatible index puts the runtime into the rebuilding state so the
-	// initial scan commits without vectors and READY is never blocked on the
-	// embedding provider. The actual rebuild runs as a background job.
-	needsEmbeddingRebuild := false
-	if deps.reconcileEmbeddings != nil {
-		deps.coordinator.SetStep("reconciling embeddings")
-		rebuild, err := deps.reconcileEmbeddings(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			_ = deps.coordinator.Fail("EMBEDDING_REBUILD_FAILED", "embeddings reconciliation failed")
-			deps.logger.Error("embeddings reconciliation failed", "error", err)
-			return
-		}
-		needsEmbeddingRebuild = rebuild
-	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -163,11 +134,6 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 	}
 	deps.logger.Info("CodeAtlas READY")
 
-	if needsEmbeddingRebuild && deps.scheduleEmbeddingRebuild != nil {
-		deps.logger.Info("scheduling background embeddings rebuild")
-		deps.scheduleEmbeddingRebuild(ctx)
-	}
-
 	if deps.runIndexer != nil {
 		deps.runIndexer(ctx) // blocks until ctx is cancelled
 	}
@@ -185,25 +151,13 @@ func probeLocalMandatory(ctx context.Context, deps bootstrapDeps) (capabilities.
 
 func probeProviderMandatory(ctx context.Context, deps bootstrapDeps) (capabilities.Result, bool) {
 	chatProbe := ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: "PROVIDER_UNCONFIGURED", Message: "provider is not configured"}
-	embeddingProbe := ai.ProviderProbeResult{Status: ai.ProbeDisabled, Message: "embeddings are disabled"}
 	if deps.providerProbe != nil {
 		chatProbe = deps.providerProbe.ProbeChat(ctx)
-		embeddingProbe = deps.providerProbe.ProbeEmbeddings(ctx)
 	}
 	chat := providerCapability(capabilityLLMChat, capabilities.Required, chatProbe)
 	deps.registry.UpdateCapability(chat)
-
-	embeddingRequirement := capabilities.Optional
-	if deps.enableEmbeddings {
-		embeddingRequirement = capabilities.Required
-	}
-	embeddings := providerCapability(capabilityLLMEmbeddings, embeddingRequirement, embeddingProbe)
-	deps.registry.UpdateCapability(embeddings)
-
-	for _, result := range []capabilities.Result{chat, embeddings} {
-		if result.Requirement == capabilities.Required && result.State != capabilities.CapabilityAvailable {
-			return result, true
-		}
+	if chat.State != capabilities.CapabilityAvailable {
+		return chat, true
 	}
 	return capabilities.Result{}, false
 }
@@ -212,11 +166,8 @@ func probeProviderMandatory(ctx context.Context, deps bootstrapDeps) (capabiliti
 // result so it can be recorded in the same registry as the local probes.
 func providerCapability(id capabilities.CapabilityID, requirement capabilities.Requirement, result ai.ProviderProbeResult) capabilities.Result {
 	state := capabilities.CapabilityUnavailable
-	switch result.Status {
-	case ai.ProbeSuccess:
+	if result.Status == ai.ProbeSuccess {
 		state = capabilities.CapabilityAvailable
-	case ai.ProbeDisabled:
-		state = capabilities.CapabilityDisabled
 	}
 	return capabilities.Result{
 		ID:          id,

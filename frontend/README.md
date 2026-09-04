@@ -2,7 +2,7 @@
 
 This package owns the production frontend build. It wraps the app in a
 Vite/TypeScript entry point and writes generated assets directly to
-`backend/internal/webui/dist/` for Go embedding.
+`backend/internal/webui/dist/` so the Go binary can embed them.
 
 ## Commands
 

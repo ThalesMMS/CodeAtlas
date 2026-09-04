@@ -58,18 +58,15 @@ func (p fakeProbe) Run(context.Context) capabilities.Result {
 
 type fakeProviderProbe struct {
 	chat ai.ProviderProbeResult
-	emb  ai.ProviderProbeResult
 }
 
-func (p fakeProviderProbe) ProbeChat(context.Context) ai.ProviderProbeResult       { return p.chat }
-func (p fakeProviderProbe) ProbeEmbeddings(context.Context) ai.ProviderProbeResult { return p.emb }
+func (p fakeProviderProbe) ProbeChat(context.Context) ai.ProviderProbeResult { return p.chat }
 
 func availableProbe(id capabilities.CapabilityID) fakeProbe {
 	return fakeProbe{id: id, req: capabilities.Required, state: capabilities.CapabilityAvailable}
 }
 
 func okChat() ai.ProviderProbeResult { return ai.ProviderProbeResult{Status: ai.ProbeSuccess} }
-func okEmb() ai.ProviderProbeResult  { return ai.ProviderProbeResult{Status: ai.ProbeDisabled} }
 
 func failProbe(id capabilities.CapabilityID, code string) fakeProbe {
 	return fakeProbe{id: id, req: capabilities.Required, state: capabilities.CapabilityUnavailable, code: code}
@@ -98,7 +95,7 @@ func newHarness(t *testing.T, deps app.RuntimeDeps, listenFails bool) *harness {
 	deps.Logger = logger
 	deps.Coordinator = coordinator
 	deps.Registry = registry
-	deps.Server = &http.Server{Handler: httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coordinator, registry, logger).Handler()}
+	deps.Server = &http.Server{Handler: httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, coordinator, registry, logger).Handler()}
 	deps.ShutdownTimeout = 3 * time.Second
 	if deps.RunIndexer == nil {
 		deps.RunIndexer = func(ctx context.Context) {
@@ -189,91 +186,72 @@ func capabilityState(t *testing.T, registry *capabilities.Registry, id capabilit
 func TestStartupFailureMatrix(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name             string
-		probes           []capabilities.Probe
-		provider         fakeProviderProbe
-		enableEmbeddings bool
-		initialIndex     func(context.Context) error
-		failingID        capabilities.CapabilityID // capability expected unavailable in registry
-		recoverable      bool
+		name         string
+		probes       []capabilities.Probe
+		provider     fakeProviderProbe
+		initialIndex func(context.Context) error
+		failingID    capabilities.CapabilityID // capability expected unavailable in registry
+		recoverable  bool
 	}{
 		{
 			name:     "workspace illegible",
 			probes:   []capabilities.Probe{failProbe(capabilities.CapabilityWorkspace, "WORKSPACE_UNREADABLE")},
-			provider: fakeProviderProbe{chat: okChat(), emb: okEmb()}, failingID: capabilities.CapabilityWorkspace,
+			provider: fakeProviderProbe{chat: okChat()}, failingID: capabilities.CapabilityWorkspace,
 		},
 		{
 			name:     "state area not writable",
 			probes:   []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace), failProbe(capabilities.CapabilityStateArea, "STATE_AREA_UNWRITABLE")},
-			provider: fakeProviderProbe{chat: okChat(), emb: okEmb()}, failingID: capabilities.CapabilityStateArea,
+			provider: fakeProviderProbe{chat: okChat()}, failingID: capabilities.CapabilityStateArea,
 		},
 		{
 			name:     "snapshot corrupted",
 			probes:   []capabilities.Probe{failProbe(capabilities.CapabilityStore, "STORE_CORRUPTED")},
-			provider: fakeProviderProbe{chat: okChat(), emb: okEmb()}, failingID: capabilities.CapabilityStore,
+			provider: fakeProviderProbe{chat: okChat()}, failingID: capabilities.CapabilityStore,
 		},
 		{
 			name:     "tree-sitter go fails",
 			probes:   []capabilities.Probe{failProbe(capabilities.CapabilityTreeSitterGo, "TREE_SITTER_PARSE_FAILED")},
-			provider: fakeProviderProbe{chat: okChat(), emb: okEmb()}, failingID: capabilities.CapabilityTreeSitterGo,
+			provider: fakeProviderProbe{chat: okChat()}, failingID: capabilities.CapabilityTreeSitterGo,
 		},
 		{
 			name:     "tree-sitter tsx fails",
 			probes:   []capabilities.Probe{failProbe(capabilities.CapabilityTreeSitterTSX, "TREE_SITTER_UNEXPECTED_ROOT")},
-			provider: fakeProviderProbe{chat: okChat(), emb: okEmb()}, failingID: capabilities.CapabilityTreeSitterTSX,
+			provider: fakeProviderProbe{chat: okChat()}, failingID: capabilities.CapabilityTreeSitterTSX,
 		},
 		{
 			name:      "chat endpoint unreachable",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnreachable}, emb: okEmb()},
+			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnreachable}},
 			failingID: "llm-chat", recoverable: true,
 		},
 		{
 			name:      "llm auth invalid",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnauthorized}, emb: okEmb()},
+			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnauthorized}},
 			failingID: "llm-chat", recoverable: true,
 		},
 		{
 			name:      "chat model invalid",
 			probes:    []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeChatModelInvalid}, emb: okEmb()},
+			provider:  fakeProviderProbe{chat: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeChatModelInvalid}},
 			failingID: "llm-chat", recoverable: true,
-		},
-		{
-			name:             "embeddings enabled without model",
-			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingModelMissing}},
-			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
-		},
-		{
-			name:             "embeddings endpoint invalid",
-			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingModelInvalid}},
-			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
-		},
-		{
-			name:             "embedding dimension invalid",
-			probes:           []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:         fakeProviderProbe{chat: okChat(), emb: ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeEmbeddingResponseInvalid}},
-			enableEmbeddings: true, failingID: "llm-embeddings", recoverable: true,
 		},
 		{
 			name:         "initial index read error",
 			probes:       []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:     fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			provider:     fakeProviderProbe{chat: okChat()},
 			initialIndex: func(context.Context) error { return errors.New("read error") },
 		},
 		{
 			name:         "initial index parse error",
 			probes:       []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:     fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			provider:     fakeProviderProbe{chat: okChat()},
 			initialIndex: func(context.Context) error { return errors.New("parse error") },
 		},
 		{
 			name:         "initial persist failing",
 			probes:       []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			provider:     fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			provider:     fakeProviderProbe{chat: okChat()},
 			initialIndex: func(context.Context) error { return errors.New("persist failed") },
 		},
 	}
@@ -287,10 +265,9 @@ func TestStartupFailureMatrix(t *testing.T) {
 				index = func(context.Context) error { return nil }
 			}
 			h := newHarness(t, app.RuntimeDeps{
-				Probes:           tc.probes,
-				ProviderProbe:    tc.provider,
-				EnableEmbeddings: tc.enableEmbeddings,
-				InitialIndex:     index,
+				Probes:        tc.probes,
+				ProviderProbe: tc.provider,
+				InitialIndex:  index,
 			}, false)
 			defer h.stop(t)
 
@@ -335,7 +312,7 @@ func TestStartupBindErrorIsFatal(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, app.RuntimeDeps{
 		Probes:        []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		InitialIndex:  func(context.Context) error { return nil },
 	}, true)
 	select {
@@ -371,7 +348,7 @@ func TestRunNotifiesActualListenerBeforeServing(t *testing.T) {
 			Coordinator:     readiness.NewCoordinator(),
 			Registry:        capabilities.NewRegistry(),
 			Probes:          []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			ProviderProbe:   fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			ProviderProbe:   fakeProviderProbe{chat: okChat()},
 			MigrateStore:    func(context.Context) error { return nil },
 			InitialIndex:    func(context.Context) error { return nil },
 			RunIndexer:      func(runCtx context.Context) { <-runCtx.Done() },
@@ -405,7 +382,7 @@ func TestStartupRunsStoreMigrationBetweenProbesAndIndexing(t *testing.T) {
 	var indexed int32
 	h := newHarness(t, app.RuntimeDeps{
 		Probes:        []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		MigrateStore: func(ctx context.Context) error {
 			close(migrationStarted)
 			select {
@@ -428,9 +405,9 @@ func TestStartupRunsStoreMigrationBetweenProbesAndIndexing(t *testing.T) {
 		t.Fatal("migration hook did not start")
 	}
 	h.waitForState(t, readiness.StateMigratingStore)
-	status, body := httpGet(t, h.baseURL+"/api/search")
+	status, body := httpGet(t, h.baseURL+"/api/tree")
 	if status != http.StatusServiceUnavailable || !strings.Contains(string(body), `"state":"MIGRATING_STORE"`) {
-		t.Fatalf("/api/search during migration status=%d body=%s, want 503 MIGRATING_STORE", status, body)
+		t.Fatalf("/api/tree during migration status=%d body=%s, want 503 MIGRATING_STORE", status, body)
 	}
 	if atomic.LoadInt32(&indexed) != 0 {
 		t.Fatal("initial index ran before store migration completed")
@@ -451,7 +428,7 @@ func TestStartupHappyPathReachesReady(t *testing.T) {
 			availableProbe(capabilities.CapabilityWorkspace),
 			availableProbe(capabilities.CapabilityStore),
 		},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		InitialIndex:  func(context.Context) error { atomic.StoreInt32(&indexed, 1); return nil },
 	}, false)
 	defer h.stop(t)
@@ -461,6 +438,15 @@ func TestStartupHappyPathReachesReady(t *testing.T) {
 
 	if atomic.LoadInt32(&indexed) != 1 {
 		t.Fatal("reached READY without running the initial index")
+	}
+	// llm-chat is the only provider capability the bootstrap registers.
+	if got := capabilityState(t, h.registry, "llm-chat"); got != capabilities.CapabilityAvailable {
+		t.Fatalf("llm-chat capability state = %q, want available", got)
+	}
+	for _, result := range h.registry.Results() {
+		if strings.HasPrefix(string(result.ID), "llm-") && result.ID != "llm-chat" {
+			t.Fatalf("unexpected provider capability %q registered", result.ID)
+		}
 	}
 	if status, _ := httpGet(t, h.baseURL+"/api/health/ready"); status != http.StatusOK {
 		t.Fatalf("/ready status = %d, want 200", status)
@@ -477,7 +463,7 @@ func TestStartupCancellationDuringProbe(t *testing.T) {
 	probeStarted := make(chan struct{})
 	h := newHarness(t, app.RuntimeDeps{
 		Probes:        []capabilities.Probe{&blockingProbe{started: probeStarted}},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		InitialIndex:  func(context.Context) error { return nil },
 	}, false)
 	<-probeStarted
@@ -497,7 +483,7 @@ func TestStartupCancellationDuringIndexing(t *testing.T) {
 	indexStarted := make(chan struct{})
 	h := newHarness(t, app.RuntimeDeps{
 		Probes:        []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		InitialIndex: func(ctx context.Context) error {
 			close(indexStarted)
 			<-ctx.Done()
@@ -513,103 +499,6 @@ func TestStartupCancellationDuringIndexing(t *testing.T) {
 	}
 	if h.coordinator.CurrentState() == readiness.StateReady {
 		t.Fatal("reached READY despite cancellation during indexing")
-	}
-}
-
-// A failing embedding reconciliation (e.g. an incompatible dense index that
-// cannot be rebuilt) must drive readiness to FAILED rather than READY, so dense
-// retrieval is never promised over a mismatched index.
-func TestStartupReconcileFailureIsFatal(t *testing.T) {
-	t.Parallel()
-	var reconciled int32
-	h := newHarness(t, app.RuntimeDeps{
-		Probes: []capabilities.Probe{
-			availableProbe(capabilities.CapabilityWorkspace),
-			availableProbe(capabilities.CapabilityStore),
-		},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
-		InitialIndex:  func(context.Context) error { return nil },
-		ReconcileEmbeddings: func(context.Context) (bool, error) {
-			atomic.StoreInt32(&reconciled, 1)
-			return false, errors.New("incompatible dense index")
-		},
-	}, false)
-	defer h.stop(t)
-
-	h.waitForState(t, readiness.StateFailed)
-	if atomic.LoadInt32(&reconciled) != 1 {
-		t.Fatal("reconcile seam was not invoked before FAILED")
-	}
-	if h.coordinator.CurrentState() == readiness.StateReady {
-		t.Fatal("reached READY despite a failed embedding reconciliation")
-	}
-}
-
-// A successful reconciliation runs before the initial index so the scan can
-// skip embeddings when a rebuild is pending, and READY never waits for vectors.
-func TestStartupReconcileSuccessReachesReady(t *testing.T) {
-	t.Parallel()
-	var indexed, reconciled, scheduled int32
-	h := newHarness(t, app.RuntimeDeps{
-		Probes: []capabilities.Probe{
-			availableProbe(capabilities.CapabilityWorkspace),
-			availableProbe(capabilities.CapabilityStore),
-		},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
-		InitialIndex: func(context.Context) error {
-			if atomic.LoadInt32(&reconciled) != 1 {
-				t.Error("initial index ran before the embedding reconciliation")
-			}
-			atomic.StoreInt32(&indexed, 1)
-			return nil
-		},
-		ReconcileEmbeddings: func(context.Context) (bool, error) {
-			atomic.StoreInt32(&reconciled, 1)
-			return false, nil
-		},
-		ScheduleEmbeddingRebuild: func(context.Context) { atomic.StoreInt32(&scheduled, 1) },
-	}, false)
-	defer h.stop(t)
-
-	h.waitForState(t, readiness.StateReady)
-	if atomic.LoadInt32(&reconciled) != 1 || atomic.LoadInt32(&indexed) != 1 {
-		t.Fatal("reached READY without reconciling embeddings and indexing")
-	}
-	if atomic.LoadInt32(&scheduled) != 0 {
-		t.Fatal("a compatible dense index must not schedule a rebuild")
-	}
-}
-
-// A pending rebuild is scheduled as a background job only after READY, so a slow
-// embedding provider can never keep the workspace on the bootstrap screen.
-func TestStartupSchedulesEmbeddingRebuildAfterReady(t *testing.T) {
-	t.Parallel()
-	var scheduledState atomic.Value
-	scheduled := make(chan struct{})
-	var h *harness
-	h = newHarness(t, app.RuntimeDeps{
-		Probes: []capabilities.Probe{
-			availableProbe(capabilities.CapabilityWorkspace),
-			availableProbe(capabilities.CapabilityStore),
-		},
-		ProviderProbe:       fakeProviderProbe{chat: okChat(), emb: okEmb()},
-		InitialIndex:        func(context.Context) error { return nil },
-		ReconcileEmbeddings: func(context.Context) (bool, error) { return true, nil },
-		ScheduleEmbeddingRebuild: func(context.Context) {
-			scheduledState.Store(h.coordinator.CurrentState())
-			close(scheduled)
-		},
-	}, false)
-	defer h.stop(t)
-
-	h.waitForState(t, readiness.StateReady)
-	select {
-	case <-scheduled:
-	case <-time.After(5 * time.Second):
-		t.Fatal("embeddings rebuild was not scheduled after READY")
-	}
-	if got := scheduledState.Load(); got != readiness.StateReady {
-		t.Fatalf("rebuild scheduled in state %v, want READY", got)
 	}
 }
 
@@ -634,7 +523,7 @@ func TestReadyQueriedDuringTransitionsIsConsistent(t *testing.T) {
 	release := make(chan struct{})
 	h := newHarness(t, app.RuntimeDeps{
 		Probes:        []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		ProviderProbe: fakeProviderProbe{chat: okChat()},
 		InitialIndex: func(context.Context) error {
 			<-release // hold the bootstrap in INDEXING while /ready is polled
 			return nil

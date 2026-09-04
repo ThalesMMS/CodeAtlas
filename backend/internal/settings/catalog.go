@@ -28,10 +28,6 @@ const (
 	FieldPythonLSPPath      FieldKey = "CODEATLAS_PYTHON_LSP_PATH"
 	FieldRustLSPMode        FieldKey = "CODEATLAS_RUST_LSP"
 	FieldRustLSPPath        FieldKey = "CODEATLAS_RUST_LSP_PATH"
-	FieldEnableEmbeddings   FieldKey = "CODEATLAS_ENABLE_EMBEDDINGS"
-	FieldEmbeddingModel     FieldKey = "CODEATLAS_EMBEDDING_MODEL"
-	FieldEmbeddingBaseURL   FieldKey = "CODEATLAS_EMBEDDING_BASE_URL"
-	FieldEmbeddingsAPIKey   FieldKey = "CODEATLAS_EMBEDDINGS_API_KEY"
 )
 
 type Group string
@@ -39,7 +35,6 @@ type Group string
 const (
 	GroupGeneral         Group = "general"
 	GroupLLM             Group = "llm"
-	GroupEmbeddings      Group = "embeddings"
 	GroupLanguageServers Group = "languageServers"
 )
 
@@ -90,10 +85,6 @@ var documentedFields = []FieldDefinition{
 	{Key: FieldPythonLSPPath, Group: GroupLanguageServers, ApplyMode: ApplyLive, Default: "pyright-langserver", Kind: KindString},
 	{Key: FieldRustLSPMode, Group: GroupLanguageServers, ApplyMode: ApplyLive, Default: "auto", Kind: KindString},
 	{Key: FieldRustLSPPath, Group: GroupLanguageServers, ApplyMode: ApplyLive, Default: "rust-analyzer", Kind: KindString},
-	{Key: FieldEnableEmbeddings, Group: GroupEmbeddings, ApplyMode: ApplyLive, Default: "false", Kind: KindBoolean},
-	{Key: FieldEmbeddingModel, Group: GroupEmbeddings, ApplyMode: ApplyLive, Kind: KindString, AllowEmpty: true},
-	{Key: FieldEmbeddingBaseURL, Group: GroupEmbeddings, ApplyMode: ApplyLive, Kind: KindString, AllowEmpty: true},
-	{Key: FieldEmbeddingsAPIKey, Group: GroupEmbeddings, Secret: true, ApplyMode: ApplyLive, Kind: KindSecret, AllowEmpty: true},
 }
 
 func DocumentedFields() []FieldDefinition {

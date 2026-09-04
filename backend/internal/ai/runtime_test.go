@@ -33,30 +33,19 @@ func (p *blockingRuntimeProvider) CompleteStructured(context.Context, Generation
 	p.wait("structured")
 	return GenerationResult{RawJSON: []byte(fmt.Sprintf(`{"provider":%q}`, p.id)), Provider: p.id}, nil
 }
-func (p *blockingRuntimeProvider) Embed(context.Context, []string) ([][]float64, error) {
-	p.wait("embed")
-	if p.id == "old" {
-		return [][]float64{{1}}, nil
-	}
-	return [][]float64{{2}}, nil
-}
 func (p *blockingRuntimeProvider) ProbeChat(context.Context) ProviderProbeResult {
 	p.wait("probe-chat")
-	return ProviderProbeResult{Status: ProbeSuccess, Metadata: map[string]string{"provider": p.id}}
-}
-func (p *blockingRuntimeProvider) ProbeEmbeddings(context.Context) ProviderProbeResult {
-	p.wait("probe-embeddings")
 	return ProviderProbeResult{Status: ProbeSuccess, Metadata: map[string]string{"provider": p.id}}
 }
 
 func TestRuntimeProviderInFlightCallsKeepOneImmutableSnapshot(t *testing.T) {
 	release := make(chan struct{})
-	old := &blockingRuntimeProvider{id: "old", entered: make(chan string, 5), release: release}
+	old := &blockingRuntimeProvider{id: "old", entered: make(chan string, 3), release: release}
 	newProvider := &blockingRuntimeProvider{id: "new"}
 	runtime := NewRuntime()
 	runtime.Swap(RuntimeCandidate{Provider: old, Probe: old})
 
-	results := make(chan string, 5)
+	results := make(chan string, 3)
 	go func() {
 		value, _ := runtime.Complete(context.Background(), "system", "user", 1)
 		results <- value
@@ -65,27 +54,20 @@ func TestRuntimeProviderInFlightCallsKeepOneImmutableSnapshot(t *testing.T) {
 		value, _ := runtime.CompleteStructured(context.Background(), GenerationRequest{OutputSchema: json.RawMessage(`{"type":"object"}`)})
 		results <- value.Provider + ":structured"
 	}()
-	go func() {
-		value, _ := runtime.Embed(context.Background(), []string{"x"})
-		results <- fmt.Sprintf("old:embed:%v", value[0][0])
-	}()
 	go func() { results <- runtime.ProbeChat(context.Background()).Metadata["provider"] + ":probe-chat" }()
-	go func() {
-		results <- runtime.ProbeEmbeddings(context.Background()).Metadata["provider"] + ":probe-embeddings"
-	}()
 
 	entered := map[string]bool{}
-	for len(entered) < 5 {
+	for len(entered) < 3 {
 		entered[<-old.entered] = true
 	}
 	runtime.Swap(RuntimeCandidate{Provider: newProvider, Probe: newProvider})
 	close(release)
 
 	got := map[string]bool{}
-	for index := 0; index < 5; index++ {
+	for index := 0; index < 3; index++ {
 		got[<-results] = true
 	}
-	for _, want := range []string{"old:complete", "old:structured", "old:embed:1", "old:probe-chat", "old:probe-embeddings"} {
+	for _, want := range []string{"old:complete", "old:structured", "old:probe-chat"} {
 		if !got[want] {
 			t.Fatalf("in-flight results = %#v, missing %q", got, want)
 		}
@@ -99,11 +81,8 @@ func TestRuntimeProviderInFlightCallsKeepOneImmutableSnapshot(t *testing.T) {
 	if value, _ := runtime.CompleteStructured(context.Background(), GenerationRequest{OutputSchema: json.RawMessage(`{}`)}); value.Provider != "new" {
 		t.Fatalf("subsequent CompleteStructured = %#v", value)
 	}
-	if value, _ := runtime.Embed(context.Background(), nil); value[0][0] != 2 {
-		t.Fatalf("subsequent Embed = %#v", value)
-	}
-	if runtime.ProbeChat(context.Background()).Metadata["provider"] != "new" || runtime.ProbeEmbeddings(context.Background()).Metadata["provider"] != "new" {
-		t.Fatal("subsequent probes did not use the new snapshot")
+	if runtime.ProbeChat(context.Background()).Metadata["provider"] != "new" {
+		t.Fatal("subsequent probe did not use the new snapshot")
 	}
 }
 

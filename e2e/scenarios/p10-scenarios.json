@@ -11,12 +11,12 @@
     {
       "id": "provider-schema-compatibility",
       "testFile": "e2e/tests/provider-reindex.test.mjs",
-      "coverage": ["structured readiness probe", "vLLM unsupported-key rejection", "real Hover response", "separate embeddings API key"]
+      "coverage": ["structured readiness probe", "vLLM unsupported-key rejection", "real Hover response", "labeled chat API key"]
     },
     {
       "id": "index-maintenance-contract",
       "testFile": "e2e/tests/provider-reindex.test.mjs",
-      "coverage": ["explicit no-op", "changed-file commit", "embedding regeneration", "FTS rebuild"]
+      "coverage": ["explicit no-op", "changed-file commit", "FTS rebuild"]
     }
   ],
   "groups": [
@@ -25,7 +25,7 @@
       "number": 1,
       "automated": true,
       "commands": ["make e2e", "cd backend && go test -tags fts5 ./internal/app ./internal/httpapi"],
-      "coverage": ["happy startup", "provider unavailable", "invalid embeddings", "index failure", "diagnostic-only UI"]
+      "coverage": ["happy startup", "provider unavailable", "index failure", "diagnostic-only UI"]
     },
     {
       "id": "document-basic",
@@ -114,7 +114,7 @@
     "accessibility": {
       "automated": true,
       "commands": ["cd frontend && npm run check", "make e2e"],
-      "coverage": ["skip links", "tree", "tabs", "search listbox", "dialogs", "jobs", "problems", "navigation", "Codemap text mode"]
+      "coverage": ["skip links", "tree", "tabs", "dialogs", "jobs", "problems", "navigation", "Codemap text mode"]
     },
     "performance-budget": {
       "automated": true,

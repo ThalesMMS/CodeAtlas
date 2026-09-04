@@ -6,7 +6,7 @@
 
 **Architecture:** Run fresh static/unit/eval/E2E gates first, then start the built application with the ignored `.env`, exercise every advanced LLM surface through public APIs and the browser, inspect sanitized observability, and shut down cleanly.
 
-**Tech Stack:** Node.js 26, npm 11.16, Go, Make, browser E2E, OpenAI-compatible chat and embeddings endpoints.
+**Tech Stack:** Node.js 26, npm 11.16, Go, Make, browser E2E, OpenAI-compatible chat endpoint.
 
 **Spec:** `docs/superpowers/specs/2026-08-16-llm-windows-e2e-reliability-design.md`
 
@@ -115,7 +115,6 @@ Expected readiness assertions:
 HTTP status = 200
 chat provider = available
 structured output = available
-embeddings = available when CODEATLAS_ENABLE_EMBEDDINGS=true
 required local capabilities = available
 ```
 
@@ -150,13 +149,13 @@ no omission contains "planner output failed validation"
 
 This is the live acceptance criterion for the dynamic schema, safe repair diagnostic, `reasoning_effort=medium`, and `max_completion_tokens` request path.
 
-- [ ] **Step 5: Exercise embeddings and reindexing**
+- [ ] **Step 5: Exercise reindexing**
 
-When embeddings are enabled, run a semantic search and assert a non-empty ranked result set. Trigger reindexing, follow its job/SSE state, then repeat one LLM surface and one artifact retrieval to prove the provider and generated state remain usable after index version changes.
+Trigger reindexing, follow its job/SSE state, then repeat one LLM surface and one artifact retrieval to prove the provider and generated state remain usable after index version changes.
 
 - [ ] **Step 6: Inspect sanitized runtime evidence**
 
-Count LLM calls, embedding calls, completed jobs, failed jobs, dropped SSE events, warnings, and errors. Assert no log line contains the configured API key, Authorization header, complete prompt, raw completion, or endpoint URL.
+Count LLM calls, completed jobs, failed jobs, dropped SSE events, warnings, and errors. Assert no log line contains the configured API key, Authorization header, complete prompt, raw completion, or endpoint URL.
 
 ---
 
@@ -197,7 +196,7 @@ Report:
 runtime versions
 static/build/test/eval/E2E pass totals
 npm audit outcomes
-live LLM/embedding call counts
+live LLM call counts
 CodeMap and DeepWiki job/page counts
 planner fallback used: yes/no
 browser console errors/warnings

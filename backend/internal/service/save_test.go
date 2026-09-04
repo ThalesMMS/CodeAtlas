@@ -24,13 +24,7 @@ func (failParser) Parse(string, []byte) ([]domain.Symbol, []domain.Edge, string,
 	return nil, nil, "", errors.New("synthetic parse failure")
 }
 
-type failEmbedder struct{}
-
-func (failEmbedder) GenerateEmbeddings(context.Context, []domain.Symbol) (map[string][]float64, error) {
-	return nil, errors.New("synthetic embedding failure")
-}
-
-func newSaveFixture(t *testing.T, parser service.SaveParser, embedder service.SaveEmbedder, maxBytes int64) (*service.SavePreparer, repository.Store, string) {
+func newSaveFixture(t *testing.T, parser service.SaveParser, maxBytes int64) (*service.SavePreparer, repository.Store, string) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte(original), 0o600); err != nil {
@@ -43,7 +37,7 @@ func newSaveFixture(t *testing.T, parser service.SaveParser, embedder service.Sa
 	if maxBytes == 0 {
 		maxBytes = 1_500_000
 	}
-	preparer := service.NewSavePreparer(service.NewWorkspace(root), repository, parser, embedder, maxBytes)
+	preparer := service.NewSavePreparer(service.NewWorkspace(root), repository, parser, maxBytes)
 	return preparer, repository, root
 }
 
@@ -69,7 +63,7 @@ func assertSaveError(t *testing.T, err error, wantCode string, wantStatus int) {
 
 func TestPrepareNoopWhenIdentical(t *testing.T) {
 	t.Parallel()
-	preparer, repository, root := newSaveFixture(t, codeparser.New(), nil, 0)
+	preparer, repository, root := newSaveFixture(t, codeparser.New(), 0)
 	prepared, err := preparer.Prepare(context.Background(), service.SaveRequest{
 		Path: "a.go", Content: []byte(original), ExpectedContentHash: currentHash(t, root, "a.go"),
 	})
@@ -89,7 +83,6 @@ func TestPrepareFailureModes(t *testing.T) {
 	cases := []struct {
 		name       string
 		parser     service.SaveParser
-		embedder   service.SaveEmbedder
 		maxBytes   int64
 		request    func(root string) service.SaveRequest
 		wantCode   string
@@ -135,18 +128,11 @@ func TestPrepareFailureModes(t *testing.T) {
 			},
 			wantCode: service.CodeSourceParseFailed, wantStatus: 422,
 		},
-		{
-			name: "embedding failure", parser: codeparser.New(), embedder: failEmbedder{},
-			request: func(root string) service.SaveRequest {
-				return service.SaveRequest{Path: "a.go", Content: []byte(updated), ExpectedContentHash: currentHash(t, root, "a.go")}
-			},
-			wantCode: service.CodeEmbeddingUnavailable, wantStatus: 503,
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			preparer, repository, root := newSaveFixture(t, tc.parser, tc.embedder, tc.maxBytes)
+			preparer, repository, root := newSaveFixture(t, tc.parser, tc.maxBytes)
 			before := currentHash(t, root, "a.go")
 			_, err := preparer.Prepare(context.Background(), tc.request(root))
 			assertSaveError(t, err, tc.wantCode, tc.wantStatus)
@@ -168,7 +154,7 @@ func TestPrepareUnsupportedLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository, _ := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))
-	preparer := service.NewSavePreparer(service.NewWorkspace(root), repository, codeparser.New(), nil, 1_500_000)
+	preparer := service.NewSavePreparer(service.NewWorkspace(root), repository, codeparser.New(), 1_500_000)
 	_, err := preparer.Prepare(context.Background(), service.SaveRequest{
 		Path: "notes.txt", Content: []byte("changed"), ExpectedContentHash: contenthash.HashContent([]byte("hello")),
 	})
@@ -177,7 +163,7 @@ func TestPrepareUnsupportedLanguage(t *testing.T) {
 
 func TestPrepareCancellation(t *testing.T) {
 	t.Parallel()
-	preparer, repository, root := newSaveFixture(t, codeparser.New(), nil, 0)
+	preparer, repository, root := newSaveFixture(t, codeparser.New(), 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := preparer.Prepare(ctx, service.SaveRequest{Path: "a.go", Content: []byte(updated), ExpectedContentHash: currentHash(t, root, "a.go")})
@@ -191,7 +177,7 @@ func TestPrepareCancellation(t *testing.T) {
 
 func TestPrepareThenCommitHasNoSideEffectsUntilCommit(t *testing.T) {
 	t.Parallel()
-	preparer, repository, root := newSaveFixture(t, codeparser.New(), nil, 0)
+	preparer, repository, root := newSaveFixture(t, codeparser.New(), 0)
 	content := []byte(updated)
 	prepared, err := preparer.Prepare(context.Background(), service.SaveRequest{
 		Path: "a.go", Content: content, ExpectedContentHash: currentHash(t, root, "a.go"),

@@ -17,17 +17,12 @@ import (
 type recordingProvider struct {
 	completeResult string
 	completeErr    error
-	embedResult    [][]float64
-	embedErr       error
 }
 
 func (p *recordingProvider) Name() string    { return "openai-compatible:secret-model" }
 func (p *recordingProvider) Available() bool { return true }
 func (p *recordingProvider) Complete(context.Context, string, string, int) (string, error) {
 	return p.completeResult, p.completeErr
-}
-func (p *recordingProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return p.embedResult, p.embedErr
 }
 
 func captureLogger() (*slog.Logger, *bytes.Buffer) {
@@ -48,7 +43,7 @@ func TestObservedCompleteLogsMetadataNotContent(t *testing.T) {
 		t.Fatalf("Complete passthrough broken: %v / %q", err, result)
 	}
 	logged := buffer.String()
-	if !strings.Contains(logged, `"operation":"chat"`) || !strings.Contains(logged, `"maxTokens":800`) {
+	if !strings.Contains(logged, `"operation":"chat"`) || !strings.Contains(logged, `"maxTokens":800`) || !strings.Contains(logged, `"inputCount":1`) {
 		t.Fatalf("ai log missing metadata: %s", logged)
 	}
 	if strings.Contains(logged, secretPrompt) || strings.Contains(logged, secretReply) {
@@ -80,27 +75,6 @@ func TestObservedCompleteErrorLogsRedactedCause(t *testing.T) {
 	}
 }
 
-func TestObservedEmbedLogsDimension(t *testing.T) {
-	t.Parallel()
-	logger, buffer := captureLogger()
-	metrics := NewMetrics()
-	provider := ObserveProvider(&recordingProvider{embedResult: [][]float64{{0.1, 0.2, 0.3, 0.4}}}, logger, metrics)
-
-	if _, err := provider.Embed(context.Background(), []string{"secret code snippet"}); err != nil {
-		t.Fatalf("Embed error = %v", err)
-	}
-	logged := buffer.String()
-	if !strings.Contains(logged, `"operation":"embedding"`) || !strings.Contains(logged, `"dimension":4`) || !strings.Contains(logged, `"inputCount":1`) {
-		t.Fatalf("embedding log missing metadata: %s", logged)
-	}
-	if strings.Contains(logged, "secret code snippet") {
-		t.Fatalf("embedding log leaked input: %s", logged)
-	}
-	if metrics.Snapshot().EmbedSuccessTotal != 1 {
-		t.Fatal("embed success not counted")
-	}
-}
-
 type nativeStructuredProvider struct {
 	structuredCalls int
 	probeCalls      int
@@ -115,15 +89,9 @@ func (p *nativeStructuredProvider) CompleteStructured(context.Context, ai.Genera
 	p.structuredCalls++
 	return ai.GenerationResult{RawJSON: []byte(`{"native":true}`), Provider: "native"}, nil
 }
-func (p *nativeStructuredProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, nil
-}
 func (p *nativeStructuredProvider) ProbeChat(context.Context) ai.ProviderProbeResult {
 	p.probeCalls++
 	return ai.ProviderProbeResult{Status: ai.ProbeSuccess}
-}
-func (p *nativeStructuredProvider) ProbeEmbeddings(context.Context) ai.ProviderProbeResult {
-	return ai.ProviderProbeResult{Status: ai.ProbeDisabled}
 }
 
 func TestObservedRuntimeCandidatePreservesStructuredCompletionAndProbe(t *testing.T) {

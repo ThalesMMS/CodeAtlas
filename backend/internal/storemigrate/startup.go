@@ -15,14 +15,17 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
 )
 
-const supportedJSONSnapshotSchema = 4
+// supportedJSONSnapshotSchema tracks internal/store's canonical-hash schema.
+// Snapshot schema 5 (#163) dropped dense retrieval from the canonical hash; an
+// older schema-4 file is no longer identity-compatible and is planned as a
+// rebuild rather than imported.
+const supportedJSONSnapshotSchema = 5
 
 // StartupOptions configure the SQLite-only production startup path.
 type StartupOptions struct {
 	WorkspaceRoot             string
 	DatabasePath              string
 	LegacyJSONPath            string
-	EmbeddingsEnabled         bool
 	ForceRebuild              bool
 	RecoverLegacyTransactions func() error
 	Now                       func() time.Time
@@ -107,7 +110,7 @@ func PlanStartup(options StartupOptions) (MigrationPlan, error) {
 	if options.LegacyJSONPath == "" {
 		options.LegacyJSONPath = filepath.Join(filepath.Dir(options.DatabasePath), "index.json")
 	}
-	input, err := inspectJSONSource(options.LegacyJSONPath, options.EmbeddingsEnabled, options.ForceRebuild)
+	input, err := inspectJSONSource(options.LegacyJSONPath, options.ForceRebuild)
 	if err != nil {
 		return MigrationPlan{}, err
 	}
@@ -331,13 +334,11 @@ func migrateMissingMarker(ctx context.Context, options StartupOptions, stateDir 
 	return StartupReport{Plan: plan, Marker: marker, Migrated: true}, nil
 }
 
-func inspectJSONSource(path string, embeddingsEnabled, forceRebuild bool) (PlanInput, error) {
+func inspectJSONSource(path string, forceRebuild bool) (PlanInput, error) {
 	input := PlanInput{
 		SupportedJSONSchema: supportedJSONSnapshotSchema,
 		TargetSchema:        3,
-		EmbeddingsEnabled:   embeddingsEnabled,
 		ForceRebuild:        forceRebuild,
-		EmbeddingCompatible: true,
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -348,32 +349,26 @@ func inspectJSONSource(path string, embeddingsEnabled, forceRebuild bool) (PlanI
 	}
 	input.JSONExists = true
 	var snapshot struct {
-		Version           int                           `json:"version"`
-		SnapshotSchema    int                           `json:"snapshotSchema"`
-		SnapshotID        domain.SnapshotID             `json:"snapshotId"`
-		Files             []domain.File                 `json:"files"`
-		Identities        []domain.SymbolIdentity       `json:"identities"`
-		Occurrences       []domain.SymbolOccurrence     `json:"occurrences"`
-		Symbols           []domain.Symbol               `json:"symbols"`
-		Edges             []domain.Edge                 `json:"edges"`
-		Wiki              []domain.WikiPage             `json:"wiki"`
-		Embeddings        map[string][]float64          `json:"embeddings"`
-		EmbeddingMetadata domain.EmbeddingIndexMetadata `json:"embeddingMetadata"`
+		Version        int                       `json:"version"`
+		SnapshotSchema int                       `json:"snapshotSchema"`
+		SnapshotID     domain.SnapshotID         `json:"snapshotId"`
+		Files          []domain.File             `json:"files"`
+		Identities     []domain.SymbolIdentity   `json:"identities"`
+		Occurrences    []domain.SymbolOccurrence `json:"occurrences"`
+		Symbols        []domain.Symbol           `json:"symbols"`
+		Edges          []domain.Edge             `json:"edges"`
+		Wiki           []domain.WikiPage         `json:"wiki"`
 	}
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		input.IdentityCompatible = false
-		input.EmbeddingCompatible = false
 		return input, nil
 	}
 	input.JSONSchema = snapshot.SnapshotSchema
 	input.SnapshotID = string(snapshot.SnapshotID)
 	input.IdentityCompatible = snapshot.Version == 1 && snapshot.SnapshotSchema == supportedJSONSnapshotSchema && len(snapshot.Symbols) == 0
-	if embeddingsEnabled && (len(snapshot.Embeddings) > 0 || snapshot.EmbeddingMetadata.Enabled) {
-		input.EmbeddingCompatible = false
-	}
 	input.Counts = Counts{
 		Files: len(snapshot.Files), Symbols: len(snapshot.Identities), Edges: len(snapshot.Edges),
-		Embeddings: len(snapshot.Embeddings), WikiPages: len(snapshot.Wiki),
+		WikiPages: len(snapshot.Wiki),
 	}
 	return input, nil
 }

@@ -11,11 +11,9 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/capabilities"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/httpapi"
@@ -23,7 +21,6 @@ import (
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 )
 
@@ -116,19 +113,18 @@ func TestDeepWikiFailedJobNamesFailedPageAndLogsSanitizedValidation(t *testing.T
 		t.Fatal(err)
 	}
 	provider := failingDeepWikiProvider{}
-	retriever := retrieval.NewHybrid(repo, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	workspace := service.NewWorkspace(root)
-	saver := service.NewSavePreparer(workspace, repo, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repo, codeparser.New(), 1_500_000)
 	deepWiki := service.NewDeepWikiService(repo, provider)
 	deepWiki.SetPlannerEnabled(false)
 	var logs bytes.Buffer
 	api := httpapi.New(
-		workspace, repo, backgroundIndexer, retriever,
-		service.NewExplainer(repo, workspace, provider), service.NewCodemapService(repo, retriever, provider), deepWiki,
+		workspace, repo, backgroundIndexer,
+		service.NewExplainer(repo, workspace, provider), service.NewCodemapService(repo, provider), deepWiki,
 		service.NewWorkspaceCommitCoordinator(saver, workspace, repo, filepath.Join(t.TempDir(), "tx"), ""),
 		provider, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(),
 		slog.New(slog.NewTextHandler(&logs, nil)),
@@ -211,11 +207,6 @@ func TestJobsAPIListsCancelsAndStreamsStructuredEvents(t *testing.T) {
 	_ = json.NewDecoder(response.Body).Decode(&canceled)
 }
 
-type countingEmbeddingProvider struct {
-	mu    sync.Mutex
-	calls int
-}
-
 type failingDeepWikiProvider struct{}
 
 func (failingDeepWikiProvider) Name() string    { return "failing-deepwiki" }
@@ -229,83 +220,6 @@ func (failingDeepWikiProvider) Complete(_ context.Context, systemPrompt, userPro
 	}
 	return "{}", nil
 }
-func (failingDeepWikiProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
-
-func (p *countingEmbeddingProvider) Name() string    { return "embedding-test" }
-func (p *countingEmbeddingProvider) Available() bool { return true }
-func (p *countingEmbeddingProvider) Complete(context.Context, string, string, int) (string, error) {
-	return "ok", nil
-}
-func (p *countingEmbeddingProvider) Embed(_ context.Context, texts []string) ([][]float64, error) {
-	p.mu.Lock()
-	p.calls++
-	p.mu.Unlock()
-	vectors := make([][]float64, len(texts))
-	for index := range texts {
-		vectors[index] = []float64{0.1, 0.2, 0.3, 0.4}
-	}
-	return vectors, nil
-}
-func (p *countingEmbeddingProvider) reset() {
-	p.mu.Lock()
-	p.calls = 0
-	p.mu.Unlock()
-}
-func (p *countingEmbeddingProvider) callCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.calls
-}
-
-func TestEmbeddingsRebuildJobRegeneratesVectorsWithoutSourceChanges(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	writeFixture(t, root, "service.go", "package service\nfunc SubmitOrder() {}\n")
-	repo, err := repository.OpenSQLite(context.Background(), repository.SQLiteConfig{WorkspaceRoot: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = repo.Close() })
-	provider := &countingEmbeddingProvider{}
-	retriever := retrieval.NewHybrid(repo, provider, true)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo, retriever)
-	if err := backgroundIndexer.Scan(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := retriever.Reconcile(context.Background(), provider.Name(), "embedding-model"); err != nil {
-		t.Fatal(err)
-	}
-	provider.reset()
-	workspace := service.NewWorkspace(root)
-	saver := service.NewSavePreparer(workspace, repo, codeparser.New(), retriever, 1_500_000)
-	api := httpapi.New(
-		workspace, repo, backgroundIndexer, retriever,
-		service.NewExplainer(repo, workspace, provider), service.NewCodemapService(repo, retriever, provider),
-		service.NewDeepWikiService(repo, provider),
-		service.NewWorkspaceCommitCoordinator(saver, workspace, repo, filepath.Join(t.TempDir(), "tx"), ""),
-		provider, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), slog.New(slog.NewTextHandler(io.Discard, nil)),
-	)
-	server := httptest.NewServer(api.Handler())
-	t.Cleanup(server.Close)
-
-	var created struct {
-		Job domain.JobSnapshot `json:"job"`
-	}
-	postJSONStatus(t, server.URL+"/api/jobs", map[string]any{"type": "embeddings.rebuild", "input": map[string]any{}}, http.StatusAccepted, &created)
-	completed := waitHTTPJob(t, server.URL, created.Job.ID, domain.JobSucceeded)
-	if completed.Stage != "rebuilt" || completed.Message != "embeddings index rebuilt" {
-		t.Fatalf("embeddings rebuild job = %#v", completed)
-	}
-	if provider.callCount() <= 1 {
-		t.Fatalf("embedding calls = %d, want probe plus full regeneration", provider.callCount())
-	}
-	if completed.InputSnapshotID != completed.ResultSnapshotID {
-		t.Fatalf("embeddings rebuild changed structural snapshot: %q -> %q", completed.InputSnapshotID, completed.ResultSnapshotID)
-	}
-}
-
 func buildJobServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	root := t.TempDir()
@@ -326,19 +240,18 @@ func Save() {}
 	}
 	t.Cleanup(func() { _ = repo.Close() })
 	provider := staticProvider{response: "ok"}
-	retriever := retrieval.NewHybrid(repo, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 	workspace := service.NewWorkspace(root)
 	explainer := service.NewExplainer(repo, workspace, provider)
-	codemaps := service.NewCodemapService(repo, retriever, provider)
+	codemaps := service.NewCodemapService(repo, provider)
 	deepWiki := service.NewDeepWikiService(repo, provider)
-	saver := service.NewSavePreparer(workspace, repo, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repo, codeparser.New(), 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, repo, filepath.Join(t.TempDir(), "tx"), "")
 	api := httpapi.New(
-		workspace, repo, backgroundIndexer, retriever, explainer, codemaps, deepWiki, committer, provider,
+		workspace, repo, backgroundIndexer, explainer, codemaps, deepWiki, committer, provider,
 		coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	server := httptest.NewServer(api.Handler())

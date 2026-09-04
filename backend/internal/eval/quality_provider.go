@@ -6,7 +6,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/aiout"
 	"github.com/ThalesMMS/CodeAtlas/internal/contextpack"
 )
@@ -19,10 +18,6 @@ type qualityProvider struct{}
 
 func (qualityProvider) Name() string    { return "offline-quality-eval" }
 func (qualityProvider) Available() bool { return true }
-func (qualityProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
-
 func (qualityProvider) Complete(_ context.Context, systemPrompt, userPrompt string, _ int) (string, error) {
 	switch {
 	case strings.Contains(systemPrompt, aiout.CodemapSchemaVersion):

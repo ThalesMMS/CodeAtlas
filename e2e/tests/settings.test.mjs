@@ -38,17 +38,6 @@ async function eventually(predicate, label, timeoutMs = 10_000) {
   assert.fail(`${label} did not become true: ${JSON.stringify(last)}`);
 }
 
-async function waitForJob(backend, id) {
-  return eventually(async () => {
-    const response = await backend.json(`/api/jobs/${encodeURIComponent(id)}`);
-    assert.equal(response.status, 200, JSON.stringify(response.body));
-    const job = response.body.job;
-    if (job.state === 'succeeded') return job;
-    if (['failed', 'stale', 'canceled'].includes(job.state)) assert.fail(JSON.stringify(job));
-    return null;
-  }, `embedding job ${id}`, 30_000);
-}
-
 test('settings repair first-run configuration without restart and keep sentinels out of outputs', { timeout: 120_000 }, async () => {
   const sentinel = 'settings-e2e-api-key-sentinel';
   const provider = await startFakeProvider({ scenario: 'happy-path' });
@@ -101,7 +90,7 @@ test('settings repair first-run configuration without restart and keep sentinels
   assert.doesNotMatch(JSON.stringify(provider.requests), new RegExp(sentinel, 'u'));
 });
 
-test('settings hot-swap providers, rebuild embeddings, and preserve the old LSP on rejection', { timeout: 180_000 }, async () => {
+test('settings hot-swap providers and preserve the old LSP on rejection', { timeout: 180_000 }, async () => {
   const providerA = await startFakeProvider({ scenario: 'happy-path' });
   const providerB = await startFakeProvider({ scenario: 'happy-path' });
   cleanup.push(providerA, providerB);
@@ -111,9 +100,6 @@ test('settings hot-swap providers, rebuild embeddings, and preserve the old LSP 
     root,
     workspaceDir: workspace.path,
     providerBaseURL: providerA.baseURL,
-    embeddingBaseURL: providerA.baseURL,
-    enableEmbeddings: true,
-    embeddingModel: 'fake-embedding-a',
     pollInterval: '1h',
     goplsPath: path.join(root, 'e2e/harness/fake-gopls.mjs'),
   });
@@ -150,26 +136,6 @@ test('settings hot-swap providers, rebuild embeddings, and preserve the old LSP 
   assert.equal(nextRequest.status, 200, JSON.stringify(nextRequest.body));
   assert.ok(providerB.requests.filter((request) => request.path.endsWith('/chat/completions')).length > beforeB);
 
-  providerB.setScenario('embeddings-slow');
-  const embeddingUpdate = await backend.settings('/api/settings', {
-    method: 'PUT',
-    body: {
-      revision: switched.body.snapshot.revision,
-      overrides: {
-        CODEATLAS_EMBEDDING_BASE_URL: { operation: 'replace', value: providerB.baseURL },
-        CODEATLAS_EMBEDDING_MODEL: { operation: 'replace', value: 'fake-embedding-b' },
-      },
-    },
-  });
-  assert.equal(embeddingUpdate.status, 200, JSON.stringify(embeddingUpdate.body));
-  assert.ok(embeddingUpdate.body.embeddingJobId);
-  const lexicalDuringRebuild = await backend.json('/api/search?q=Submit', { timeoutMs: 10_000 });
-  assert.equal(lexicalDuringRebuild.status, 200, JSON.stringify(lexicalDuringRebuild.body));
-  assert.ok(Array.isArray(lexicalDuringRebuild.body));
-  await waitForJob(backend, embeddingUpdate.body.embeddingJobId);
-  assert.ok(providerB.requests.some((request) => request.path.endsWith('/embeddings')));
-  providerB.setScenario('happy-path');
-
   const opened = await backend.json('/api/documents/open', { method: 'POST', body: { path: 'internal/order/service.go' } });
   assert.equal(opened.status, 201, JSON.stringify(opened.body));
   const tokensBefore = await backend.json(`/api/documents/${encodeURIComponent(opened.body.documentId)}/semantic-tokens?version=1`);
@@ -178,13 +144,13 @@ test('settings hot-swap providers, rebuild embeddings, and preserve the old LSP 
   const brokenLSP = await backend.settings('/api/settings', {
     method: 'PUT',
     body: {
-      revision: embeddingUpdate.body.snapshot.revision,
+      revision: switched.body.snapshot.revision,
       overrides: { CODEATLAS_GOPLS_PATH: { operation: 'replace', value: path.join(workspace.path, 'missing-gopls') } },
     },
   });
   assert.equal(brokenLSP.status, 503, JSON.stringify(brokenLSP.body));
   assert.equal(brokenLSP.body.error.code, 'SETTINGS_PREPARE_FAILED');
-  assert.equal(brokenLSP.body.error.details.snapshot.revision, embeddingUpdate.body.snapshot.revision);
+  assert.equal(brokenLSP.body.error.details.snapshot.revision, switched.body.snapshot.revision);
   const tokensAfter = await backend.json(`/api/documents/${encodeURIComponent(opened.body.documentId)}/semantic-tokens?version=1`);
   assert.equal(tokensAfter.status, 200, JSON.stringify(tokensAfter.body));
   assert.equal(tokensAfter.body.providerSession, tokensBefore.body.providerSession);

@@ -528,9 +528,6 @@ func (p *plannerSequenceProvider) CompleteStructured(_ context.Context, request 
 	}
 	return ai.GenerationResult{RawJSON: []byte(structuredStub(request.SystemPrompt, "Grounded page")), Provider: p.Name()}, nil
 }
-func (p *plannerSequenceProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
 func (p *plannerSequenceProvider) Requests() []ai.GenerationRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -548,9 +545,6 @@ func (p *schemaCapturingWikiProvider) CompleteStructured(_ context.Context, requ
 	p.mu.Unlock()
 	return ai.GenerationResult{RawJSON: []byte(structuredStub(request.SystemPrompt, "Grounded page")), Provider: p.Name()}, nil
 }
-func (p *schemaCapturingWikiProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
 func (p *schemaCapturingWikiProvider) Requests() []ai.GenerationRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -564,9 +558,6 @@ func (failingTestingPageProvider) Complete(_ context.Context, systemPrompt, user
 		return `{"schemaVersion":"wiki-page/v4","title":"Testing","sections":[],"relatedPages":[],"inferences":[],"limitations":[{"text":"Runtime behavior is unknown"}]}`, nil
 	}
 	return structuredStub(systemPrompt, "Grounded page"), nil
-}
-func (failingTestingPageProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
 }
 
 func (p *delayedWikiProvider) Name() string    { return "delayed-wiki" }
@@ -582,9 +573,6 @@ func (p *delayedWikiProvider) Complete(_ context.Context, systemPrompt, _ string
 	}
 	time.Sleep(15 * time.Millisecond)
 	return structuredStub(systemPrompt, "Grounded page"), nil
-}
-func (p *delayedWikiProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
 }
 
 func cloneWikiPlan(plan aiout.WikiPlan) aiout.WikiPlan {

@@ -6,10 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 )
 
 // TestRealWorkspaceScan is an opt-in measurement of a full initial scan into a
@@ -26,8 +24,7 @@ func TestRealWorkspaceScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	retriever := retrieval.NewHybrid(store, ai.Disabled{}, false)
-	idx := New(root, 1_500_000, codeparser.New(), store, retriever)
+	idx := New(root, 1_500_000, codeparser.New(), store)
 	start := time.Now()
 	if err := idx.Scan(ctx); err != nil {
 		t.Fatalf("Scan: %v", err)

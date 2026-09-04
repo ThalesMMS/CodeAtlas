@@ -12,7 +12,6 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 )
 
 func TestCanonicalParserBatchPreservesDuplicateOccurrencesAcrossBackends(t *testing.T) {
@@ -197,41 +196,6 @@ func TestStoreContractJSONAndSQLite(t *testing.T) {
 			if files != 2 || symbols == 0 || edgesCount == 0 {
 				t.Fatalf("Counts = %d/%d/%d, want indexed content", files, symbols, edgesCount)
 			}
-
-			indexedSymbols := view.AllSymbols()
-			vectors := make(map[string][]float64, len(indexedSymbols))
-			for i, symbol := range indexedSymbols {
-				vector := []float64{0, 1, 0}
-				if i == 0 {
-					vector = []float64{1, 0, 0}
-				}
-				vectors[symbol.ID] = vector
-			}
-			prepared, err = store.PrepareEmbeddingRebuild(vectors, retrieval.DesiredMetadata("provider", "model", 3))
-			if err != nil {
-				t.Fatalf("PrepareEmbeddingRebuild: %v", err)
-			}
-			if _, err := store.CommitPrepared(prepared); err != nil {
-				t.Fatalf("CommitPrepared embeddings: %v", err)
-			}
-			searcher, ok := store.(repository.DenseSearcher)
-			if !ok {
-				t.Fatalf("%T does not implement repository.DenseSearcher", store)
-			}
-			denseHits, err := searcher.SearchDense(context.Background(), []float64{1, 0, 0}, 2)
-			if err != nil {
-				t.Fatalf("SearchDense: %v", err)
-			}
-			if len(denseHits) == 0 || denseHits[0].Source != "dense" {
-				t.Fatalf("dense hits = %+v, want a dense result", denseHits)
-			}
-			wantSnippet := denseHits[0].Symbol.DocComment
-			if wantSnippet == "" {
-				wantSnippet = denseHits[0].Symbol.Summary
-			}
-			if denseHits[0].Snippet != wantSnippet {
-				t.Fatalf("dense snippet = %q, want %q", denseHits[0].Snippet, wantSnippet)
-			}
 		})
 	}
 }
@@ -384,40 +348,6 @@ func TestSQLiteContextMethodsPropagateCancellationAndDatabaseErrors(t *testing.T
 	}
 	if _, err := store.PrepareContext(context.Background(), change); err == nil || errors.Is(err, repository.ErrVersionConflict) {
 		t.Fatalf("PrepareContext after close = %v, want database error rather than version conflict", err)
-	}
-}
-
-func TestStoreContractEmbeddingRebuild(t *testing.T) {
-	t.Parallel()
-	store, err := repository.OpenSQLite(context.Background(), repository.SQLiteConfig{WorkspaceRoot: t.TempDir()})
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	if _, err := store.CommitPrepared(mustPrepare(t, store, buildContractChangeSet(t, store.Version(), contractFiles()))); err != nil {
-		t.Fatalf("seed commit: %v", err)
-	}
-
-	vectors := map[string][]float64{}
-	for _, symbol := range store.AllSymbols() {
-		if symbol.Kind == domain.KindFile {
-			continue
-		}
-		vectors[symbol.ID] = []float64{1, 0, 0}
-	}
-	prepared, err := store.PrepareEmbeddingRebuild(vectors, retrieval.DesiredMetadata("provider", "model", 3))
-	if err != nil {
-		t.Fatalf("PrepareEmbeddingRebuild: %v", err)
-	}
-	if _, err := store.CommitPrepared(prepared); err != nil {
-		t.Fatalf("CommitPrepared embeddings: %v", err)
-	}
-	if store.EmbeddingCount() != len(vectors) {
-		t.Fatalf("EmbeddingCount = %d, want %d", store.EmbeddingCount(), len(vectors))
-	}
-	metadata := store.EmbeddingMetadata()
-	if metadata.Provider != "provider" || metadata.Model != "model" || metadata.Dimension != 3 {
-		t.Fatalf("metadata = %+v", metadata)
 	}
 }
 

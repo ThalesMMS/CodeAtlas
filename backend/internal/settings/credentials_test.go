@@ -14,27 +14,16 @@ type memoryCredentialStore struct {
 	deletes     []string
 	failSetCall int
 	setCalls    int
-	getErr      error
 }
 
 func newMemoryCredentialStore() *memoryCredentialStore {
 	return &memoryCredentialStore{values: map[string]string{}}
 }
 
-func (s *memoryCredentialStore) Get(context.Context, string) (string, error) {
-	if s.getErr != nil {
-		return "", s.getErr
-	}
-	for _, value := range s.values {
-		return value, nil
-	}
-	return "", ErrCredentialNotFound
-}
-
-func (s *memoryCredentialStore) GetAccount(_ context.Context, account string) (string, error) {
-	if s.getErr != nil {
-		return "", s.getErr
-	}
+// Get resolves the exact account, the way a real keyring does: a transaction
+// that asks for a superseded generation must miss rather than be handed some
+// other generation's secret.
+func (s *memoryCredentialStore) Get(_ context.Context, account string) (string, error) {
 	value, ok := s.values[account]
 	if !ok {
 		return "", ErrCredentialNotFound
@@ -58,34 +47,22 @@ func (s *memoryCredentialStore) Delete(_ context.Context, account string) error 
 	return nil
 }
 
-type accountCredentialStore struct{ *memoryCredentialStore }
-
-func (s accountCredentialStore) Get(ctx context.Context, account string) (string, error) {
-	return s.GetAccount(ctx, account)
-}
-
-func TestCredentialTransactionPreserveReplaceAndInherit(t *testing.T) {
+func TestCredentialTransactionReplaceRotatesGenerationAndRetiresTheOldOne(t *testing.T) {
 	store := newMemoryCredentialStore()
 	store.values[credentialAccount(FieldLLMAPIKey, "old-chat")] = "old-chat-secret"
-	store.values[credentialAccount(FieldEmbeddingsAPIKey, "old-embed")] = "old-embed-secret"
-	references := CredentialReferences{LLMAPIKeyGeneration: "old-chat", EmbeddingsAPIKeyGeneration: "old-embed"}
-	environment := SecretValues{FieldEmbeddingsAPIKey: "env-embed-secret"}
+	references := CredentialReferences{LLMAPIKeyGeneration: "old-chat"}
 
-	tx, err := PrepareCredentialTransaction(context.Background(), accountCredentialStore{store}, references, environment, map[FieldKey]SecretOperation{
-		FieldLLMAPIKey:        {Operation: SecretReplace, Value: "new-chat-secret"},
-		FieldEmbeddingsAPIKey: {Operation: SecretInherit},
+	tx, err := PrepareCredentialTransaction(context.Background(), store, references, nil, map[FieldKey]SecretOperation{
+		FieldLLMAPIKey: {Operation: SecretReplace, Value: "new-chat-secret"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tx.Values()[FieldLLMAPIKey] != "new-chat-secret" || tx.Values()[FieldEmbeddingsAPIKey] != "env-embed-secret" {
+	if tx.Values()[FieldLLMAPIKey] != "new-chat-secret" {
 		t.Fatalf("candidate values = %#v", tx.Values())
 	}
 	if tx.References().LLMAPIKeyGeneration == "" || tx.References().LLMAPIKeyGeneration == "old-chat" {
 		t.Fatalf("new chat generation = %q", tx.References().LLMAPIKeyGeneration)
-	}
-	if tx.References().EmbeddingsAPIKeyGeneration != "" {
-		t.Fatalf("embedding generation = %q, want inherited", tx.References().EmbeddingsAPIKeyGeneration)
 	}
 	if len(store.sets) != 1 {
 		t.Fatalf("vault sets = %#v, want one replacement", store.sets)
@@ -96,15 +73,44 @@ func TestCredentialTransactionPreserveReplaceAndInherit(t *testing.T) {
 	if _, ok := store.values[credentialAccount(FieldLLMAPIKey, "old-chat")]; ok {
 		t.Fatal("old chat generation was not deleted")
 	}
-	if _, ok := store.values[credentialAccount(FieldEmbeddingsAPIKey, "old-embed")]; ok {
-		t.Fatal("old embedding generation was not deleted")
+	if store.values[credentialAccount(FieldLLMAPIKey, tx.References().LLMAPIKeyGeneration)] != "new-chat-secret" {
+		t.Fatalf("new generation missing from vault: %#v", store.values)
+	}
+}
+
+func TestCredentialTransactionInheritClearsGenerationAndFallsBackToEnvironment(t *testing.T) {
+	store := newMemoryCredentialStore()
+	store.values[credentialAccount(FieldLLMAPIKey, "old-chat")] = "old-chat-secret"
+	references := CredentialReferences{LLMAPIKeyGeneration: "old-chat"}
+	environment := SecretValues{FieldLLMAPIKey: "env-chat-secret"}
+
+	tx, err := PrepareCredentialTransaction(context.Background(), store, references, environment, map[FieldKey]SecretOperation{
+		FieldLLMAPIKey: {Operation: SecretInherit},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tx.Values()[FieldLLMAPIKey] != "env-chat-secret" {
+		t.Fatalf("candidate values = %#v, want the environment value", tx.Values())
+	}
+	if tx.References().LLMAPIKeyGeneration != "" {
+		t.Fatalf("chat generation = %q, want inherited", tx.References().LLMAPIKeyGeneration)
+	}
+	if len(store.sets) != 0 {
+		t.Fatalf("vault sets = %#v, want none for inherit", store.sets)
+	}
+	if err := tx.CleanupSuperseded(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := store.values[credentialAccount(FieldLLMAPIKey, "old-chat")]; ok {
+		t.Fatal("old chat generation was not deleted")
 	}
 }
 
 func TestCredentialTransactionPreserveReadsExistingGenerationWithoutWriting(t *testing.T) {
 	store := newMemoryCredentialStore()
 	store.values[credentialAccount(FieldLLMAPIKey, "existing")] = "existing-secret"
-	tx, err := PrepareCredentialTransaction(context.Background(), accountCredentialStore{store}, CredentialReferences{LLMAPIKeyGeneration: "existing"}, nil, nil)
+	tx, err := PrepareCredentialTransaction(context.Background(), store, CredentialReferences{LLMAPIKeyGeneration: "existing"}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,22 +119,40 @@ func TestCredentialTransactionPreserveReadsExistingGenerationWithoutWriting(t *t
 	}
 }
 
-func TestCredentialTransactionRollsBackEveryNewGenerationAfterPartialFailure(t *testing.T) {
-	store := newMemoryCredentialStore()
-	store.failSetCall = 2
-	_, err := PrepareCredentialTransaction(context.Background(), accountCredentialStore{store}, CredentialReferences{}, nil, map[FieldKey]SecretOperation{
-		FieldLLMAPIKey:        {Operation: SecretReplace, Value: "chat-sentinel"},
-		FieldEmbeddingsAPIKey: {Operation: SecretReplace, Value: "embed-sentinel"},
+func TestCredentialTransactionRollsBackEveryNewGenerationAfterFailure(t *testing.T) {
+	t.Run("vault write fails", func(t *testing.T) {
+		store := newMemoryCredentialStore()
+		store.failSetCall = 1
+		_, err := PrepareCredentialTransaction(context.Background(), store, CredentialReferences{}, nil, map[FieldKey]SecretOperation{
+			FieldLLMAPIKey: {Operation: SecretReplace, Value: "chat-sentinel"},
+		})
+		if err == nil {
+			t.Fatal("Prepare succeeded despite a failing vault write")
+		}
+		if strings.Contains(err.Error(), "chat-sentinel") {
+			t.Fatalf("error leaked secret: %v", err)
+		}
+		if len(store.values) != 0 {
+			t.Fatalf("rollback left credentials behind: %#v", store.values)
+		}
 	})
-	if err == nil {
-		t.Fatal("Prepare succeeded despite second vault write failure")
-	}
-	if strings.Contains(err.Error(), "chat-sentinel") || strings.Contains(err.Error(), "embed-sentinel") {
-		t.Fatalf("error leaked secret: %v", err)
-	}
-	if len(store.values) != 0 || len(store.deletes) != 1 {
-		t.Fatalf("rollback values/deletes = %#v/%#v", store.values, store.deletes)
-	}
+
+	t.Run("unsupported field rejected after a successful write", func(t *testing.T) {
+		store := newMemoryCredentialStore()
+		_, err := PrepareCredentialTransaction(context.Background(), store, CredentialReferences{}, nil, map[FieldKey]SecretOperation{
+			FieldLLMAPIKey: {Operation: SecretReplace, Value: "chat-sentinel"},
+			FieldWorkspace: {Operation: SecretReplace, Value: "bogus-sentinel"},
+		})
+		if err == nil {
+			t.Fatal("Prepare succeeded for a field that is not a credential")
+		}
+		if strings.Contains(err.Error(), "chat-sentinel") || strings.Contains(err.Error(), "bogus-sentinel") {
+			t.Fatalf("error leaked secret: %v", err)
+		}
+		if len(store.values) != 0 || len(store.deletes) != 1 {
+			t.Fatalf("rollback values/deletes = %#v/%#v", store.values, store.deletes)
+		}
+	})
 }
 
 func TestSecretStatusNeverContainsValue(t *testing.T) {

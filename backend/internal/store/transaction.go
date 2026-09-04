@@ -3,10 +3,8 @@ package store
 import (
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/changeset"
-	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 )
 
 // ErrVersionConflict is returned by CommitPrepared when the active version no
@@ -57,7 +55,6 @@ func (s *Store) Prepare(change *changeset.ChangeSet) (*PreparedCommit, error) {
 	for _, parsed := range change.Upserts() {
 		candidate.replaceFile(parsed)
 	}
-	candidate.setEmbeddings(change.Embeddings())
 	candidate.indexedAt = change.CreatedAt()
 	candidate.finalize()
 	candidate.version = bumpVersion(expectedVersion)
@@ -140,45 +137,6 @@ func (s *Store) DiscardStaged(staged *StagedCommit) {
 	if staged != nil && !staged.noop && staged.tempName != "" {
 		s.persister.remove(staged.tempName)
 	}
-}
-
-// PrepareEmbeddingRebuild prepares a transactional commit that replaces the
-// entire dense index with new vectors and records the embedding metadata. It
-// validates that every vector references an existing symbol, is finite and
-// matches the declared dimension, so the published snapshot holds a single
-// compatible configuration and no orphan vectors.
-func (s *Store) PrepareEmbeddingRebuild(vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (*PreparedCommit, error) {
-	s.mu.RLock()
-	candidate := s.current.clone()
-	s.mu.RUnlock()
-
-	for id, vector := range vectors {
-		if _, ok := candidate.symbols[id]; !ok {
-			return nil, fmt.Errorf("embedding for unknown symbol %s", id)
-		}
-		if len(vector) != metadata.Dimension {
-			return nil, fmt.Errorf("embedding dimension %d != metadata dimension %d", len(vector), metadata.Dimension)
-		}
-		for _, value := range vector {
-			if math.IsNaN(value) || math.IsInf(value, 0) {
-				return nil, fmt.Errorf("non-finite embedding value for %s", id)
-			}
-		}
-	}
-
-	expectedVersion := candidate.version
-	candidate.embeddings = make(map[string][]float64, len(vectors))
-	for id, vector := range vectors {
-		candidate.embeddings[id] = append([]float64(nil), vector...)
-	}
-	candidate.embeddingMetadata = metadata
-	candidate.version = bumpVersion(expectedVersion)
-	return &PreparedCommit{
-		ChangeSetID:     "embedding-rebuild",
-		ExpectedVersion: expectedVersion,
-		NextVersion:     expectedVersion + 1,
-		candidate:       candidate,
-	}, nil
 }
 
 // CommitPrepared stages and publishes a prepared commit in one call.

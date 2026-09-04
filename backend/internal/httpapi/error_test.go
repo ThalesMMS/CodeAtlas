@@ -21,7 +21,6 @@ import (
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 )
 
@@ -44,9 +43,6 @@ func (p erroringProvider) Available() bool { return true }
 func (p erroringProvider) Complete(context.Context, string, string, int) (string, error) {
 	return "", p.err
 }
-func (p erroringProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, p.err
-}
 
 type panicProvider struct{}
 
@@ -54,9 +50,6 @@ func (panicProvider) Name() string    { return "panic" }
 func (panicProvider) Available() bool { return true }
 func (panicProvider) Complete(context.Context, string, string, int) (string, error) {
 	panic("provider blew up with secret api_key=sk-PANIC-LEAK")
-}
-func (panicProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, errors.New("no embed")
 }
 
 func readyErrorServer(t *testing.T, provider ai.Provider) *httptest.Server {
@@ -72,19 +65,18 @@ func readyErrorServerLogged(t *testing.T, provider ai.Provider, logger *slog.Log
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repository.Close() })
-	retriever := retrieval.NewHybrid(repository, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 	workspace := service.NewWorkspace(root)
 	explainer := service.NewExplainer(repository, workspace, provider)
-	codemaps := service.NewCodemapService(repository, retriever, provider)
+	codemaps := service.NewCodemapService(repository, provider)
 	deepWiki := service.NewDeepWikiService(repository, provider)
-	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, repository, filepath.Join(t.TempDir(), "tx"), "")
 	api := httpapi.New(
-		workspace, repository, backgroundIndexer, retriever, explainer, codemaps, deepWiki, committer, provider,
+		workspace, repository, backgroundIndexer, explainer, codemaps, deepWiki, committer, provider,
 		coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), logger,
 	)
 	api.SetMetrics(metrics)

@@ -29,7 +29,7 @@ func fieldFromLogLine(logged, msg, field string) string {
 
 func TestScanEmitsCorrelatedObservability(t *testing.T) {
 	t.Parallel()
-	indexer, root, _ := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, _ := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "pkg/app.go", goSource)
 
 	buffer := &bytes.Buffer{}
@@ -73,7 +73,7 @@ func TestScanEmitsCorrelatedObservability(t *testing.T) {
 
 func TestScanParseFailureLogsQuarantineAndCountsSuccess(t *testing.T) {
 	t.Parallel()
-	indexer, root, _ := newTestIndexer(t, failingParser{}, nil, false)
+	indexer, root, _ := newTestIndexer(t, failingParser{})
 	writeSource(t, root, "pkg/app.go", goSource)
 
 	buffer := &bytes.Buffer{}

@@ -2,23 +2,21 @@ package storemigrate
 
 // Counts is an estimated entity census, for diagnostics only.
 type Counts struct {
-	Files      int `json:"files"`
-	Symbols    int `json:"symbols"`
-	Edges      int `json:"edges"`
-	Embeddings int `json:"embeddings"`
-	WikiPages  int `json:"wikiPages"`
+	Files     int `json:"files"`
+	Symbols   int `json:"symbols"`
+	Edges     int `json:"edges"`
+	WikiPages int `json:"wikiPages"`
 }
 
 // MigrationPlan is the deterministic plan produced before any write.
 type MigrationPlan struct {
-	Mode               Mode     `json:"mode"`
-	SourceSchema       int      `json:"sourceSchema"`
-	SourceSnapshotID   string   `json:"sourceSnapshotId"`
-	TargetSchema       int      `json:"targetSchema"`
-	RequiresEmbeddings bool     `json:"requiresEmbeddings"`
-	ImportArtifacts    bool     `json:"importArtifacts"`
-	Reasons            []string `json:"reasons"`
-	EstimatedCounts    Counts   `json:"estimatedCounts"`
+	Mode             Mode     `json:"mode"`
+	SourceSchema     int      `json:"sourceSchema"`
+	SourceSnapshotID string   `json:"sourceSnapshotId"`
+	TargetSchema     int      `json:"targetSchema"`
+	ImportArtifacts  bool     `json:"importArtifacts"`
+	Reasons          []string `json:"reasons"`
+	EstimatedCounts  Counts   `json:"estimatedCounts"`
 }
 
 // PlanInput is the observed state the planner reasons over. It is gathered without
@@ -29,8 +27,6 @@ type PlanInput struct {
 	SupportedJSONSchema int // the newest JSON schema this build can import
 	SnapshotID          string
 	IdentityCompatible  bool // SymbolIdentity/Occurrence v1 + identity algorithm match
-	EmbeddingCompatible bool // embedding metadata compatible (when embeddings enabled)
-	EmbeddingsEnabled   bool
 	ForceRebuild        bool // user passed --rebuild
 	TargetSchema        int
 	Counts              Counts
@@ -42,7 +38,7 @@ type PlanInput struct {
 func Plan(input PlanInput) MigrationPlan {
 	plan := MigrationPlan{
 		SourceSchema: input.JSONSchema, SourceSnapshotID: input.SnapshotID,
-		TargetSchema: input.TargetSchema, RequiresEmbeddings: input.EmbeddingsEnabled,
+		TargetSchema:    input.TargetSchema,
 		ImportArtifacts: false, EstimatedCounts: input.Counts,
 	}
 
@@ -59,9 +55,6 @@ func Plan(input PlanInput) MigrationPlan {
 	case !input.IdentityCompatible:
 		plan.Mode = ModeRebuild
 		plan.Reasons = []string{"identity/occurrence model incompatible; line-based ids would not preserve meaning"}
-	case input.EmbeddingsEnabled && !input.EmbeddingCompatible:
-		plan.Mode = ModeRebuild
-		plan.Reasons = []string{"embedding metadata missing or incompatible while embeddings are required"}
 	default:
 		plan.Mode = ModeImport
 		plan.ImportArtifacts = input.Counts.WikiPages > 0

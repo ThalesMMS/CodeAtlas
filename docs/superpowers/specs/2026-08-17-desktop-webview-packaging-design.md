@@ -63,7 +63,7 @@ The settings implementation owns:
 - recoverable startup when the provider is absent or invalid;
 - the bootstrap Settings action and settings drawer;
 - settings persistence and Windows Credential Manager/macOS Keychain access;
-- runtime activation of provider, embeddings, and language-server changes.
+- runtime activation of provider and language-server changes.
 
 The desktop implementation owns only:
 

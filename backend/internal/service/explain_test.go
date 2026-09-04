@@ -173,7 +173,7 @@ go 1.22
 		t.Fatal(err)
 	}
 	parser := codeparser.New()
-	backgroundIndexer := indexer.New(root, 1_500_000, parser, repository, nil)
+	backgroundIndexer := indexer.New(root, 1_500_000, parser, repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
@@ -367,7 +367,7 @@ func main() { Target() }
 	if err != nil {
 		t.Fatal(err)
 	}
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo, nil)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
@@ -469,10 +469,6 @@ func (p *explainRequestCapturingProvider) CompleteStructured(_ context.Context, 
 		Provider: p.Name(),
 	}, nil
 }
-func (p *explainRequestCapturingProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
-
 func TestExplainReasoningEffortOnlyDisablesHover(t *testing.T) {
 	for _, test := range []struct {
 		feature contextpack.Feature
@@ -520,7 +516,7 @@ export async function submitOrder(input: OrderInput): Promise<void> {
 		t.Fatal(err)
 	}
 	parser := codeparser.New()
-	backgroundIndexer := indexer.New(root, 1_500_000, parser, repository, nil)
+	backgroundIndexer := indexer.New(root, 1_500_000, parser, repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
@@ -572,7 +568,7 @@ func (s *Service) Submit() {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository, nil)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}

@@ -62,7 +62,6 @@ type ReadView interface {
 	Graph(seedIDs []string, depth, maxNodes int) ([]domain.Symbol, []domain.Edge)
 	EdgesForSymbol(id string) []domain.Edge
 	AllEdges() []domain.Edge
-	Embeddings() map[string][]float64
 	Close() error
 }
 
@@ -93,11 +92,13 @@ type Store interface {
 	SnapshotMetadataContext(ctx context.Context) (domain.SnapshotMetadata, error)
 	SnapshotContext(ctx context.Context) (ReadView, error)
 	PrepareContext(ctx context.Context, change *changeset.ChangeSet) (PreparedCommit, error)
-	PrepareEmbeddingRebuildContext(ctx context.Context, vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error)
 	CommitPreparedContext(ctx context.Context, prepared PreparedCommit) (CommitResult, error)
 	FileHashContext(ctx context.Context, path string) (string, bool, error)
+	// SearchContext is the store's lexical (FTS5/BM25) port. It has no direct HTTP
+	// caller since the global search endpoint was removed in #163; the live
+	// consumer is internal/contextpack, which reaches the same index through
+	// ReadView.Search. Do not delete it as dead code.
 	SearchContext(ctx context.Context, query string, limit int) ([]domain.SearchHit, error)
-	EmbeddingMetadataContext(ctx context.Context) (domain.EmbeddingIndexMetadata, error)
 	CompositeViewContext(ctx context.Context, ephemeral domain.ParsedFile, overlay OverlayContext) (CompositeReadView, error)
 	Version() uint64
 	Revision() domain.Revision
@@ -105,7 +106,6 @@ type Store interface {
 	SnapshotMetadata() domain.SnapshotMetadata
 	Snapshot() ReadView
 	Prepare(change *changeset.ChangeSet) (PreparedCommit, error)
-	PrepareEmbeddingRebuild(vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error)
 	CommitPrepared(prepared PreparedCommit) (CommitResult, error)
 	ReplaceFile(parsed domain.ParsedFile) error
 	FileHash(path string) (string, bool)
@@ -116,9 +116,6 @@ type Store interface {
 	GetSymbol(id string) (domain.Symbol, bool)
 	AllSymbols() []domain.Symbol
 	AllEdges() []domain.Edge
-	Embeddings() map[string][]float64
-	EmbeddingMetadata() domain.EmbeddingIndexMetadata
-	EmbeddingCount() int
 	WikiPages() []domain.WikiPage
 	ReplaceWikiPages(pages []domain.WikiPage) error
 	PublishCodemap(codemap domain.Codemap) (domain.ArtifactMetadata, error)
@@ -128,13 +125,6 @@ type Store interface {
 	CompositeView(ephemeral domain.ParsedFile, overlay OverlayContext) (CompositeReadView, error)
 	Validate(ctx context.Context) error
 	Close() error
-}
-
-// DenseSearcher is the optional optimized dense-retrieval capability. Runtime
-// adapters implement it without materializing the complete embedding index or
-// rebuilding a symbol map for every query.
-type DenseSearcher interface {
-	SearchDense(ctx context.Context, queryVector []float64, limit int) ([]domain.SearchHit, error)
 }
 
 // FTSRebuilder is the optional maintenance capability for replacing the entire
@@ -210,14 +200,6 @@ func (r *Ref) PrepareContext(ctx context.Context, change *changeset.ChangeSet) (
 	return store.PrepareContext(ctx, change)
 }
 
-func (r *Ref) PrepareEmbeddingRebuildContext(ctx context.Context, vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	store, err := r.require()
-	if err != nil {
-		return nil, err
-	}
-	return store.PrepareEmbeddingRebuildContext(ctx, vectors, metadata)
-}
-
 func (r *Ref) CommitPreparedContext(ctx context.Context, prepared PreparedCommit) (CommitResult, error) {
 	store, err := r.require()
 	if err != nil {
@@ -252,14 +234,6 @@ func (r *Ref) RebuildFTSContext(ctx context.Context) error {
 		return errors.New("repository: backend does not support FTS rebuild")
 	}
 	return rebuilder.RebuildFTSContext(ctx)
-}
-
-func (r *Ref) EmbeddingMetadataContext(ctx context.Context) (domain.EmbeddingIndexMetadata, error) {
-	store, err := r.require()
-	if err != nil {
-		return domain.EmbeddingIndexMetadata{}, err
-	}
-	return store.EmbeddingMetadataContext(ctx)
 }
 
 func (r *Ref) CompositeViewContext(ctx context.Context, ephemeral domain.ParsedFile, overlay OverlayContext) (CompositeReadView, error) {
@@ -302,13 +276,6 @@ func (r *Ref) Prepare(change *changeset.ChangeSet) (PreparedCommit, error) {
 	}
 	return store.Prepare(change)
 }
-func (r *Ref) PrepareEmbeddingRebuild(vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	store, err := r.require()
-	if err != nil {
-		return nil, err
-	}
-	return store.PrepareEmbeddingRebuild(vectors, metadata)
-}
 func (r *Ref) CommitPrepared(prepared PreparedCommit) (CommitResult, error) {
 	store, err := r.require()
 	if err != nil {
@@ -348,17 +315,6 @@ func (r *Ref) Search(query string, limit int) ([]domain.SearchHit, error) {
 	}
 	return store.Search(query, limit)
 }
-func (r *Ref) SearchDense(ctx context.Context, queryVector []float64, limit int) ([]domain.SearchHit, error) {
-	store, err := r.require()
-	if err != nil {
-		return nil, err
-	}
-	searcher, ok := store.(DenseSearcher)
-	if !ok {
-		return nil, errors.New("repository: backend does not support optimized dense search")
-	}
-	return searcher.SearchDense(ctx, queryVector, limit)
-}
 func (r *Ref) Graph(seedIDs []string, depth, maxNodes int) ([]domain.Symbol, []domain.Edge) {
 	if store, ok := r.Inner(); ok {
 		return store.Graph(seedIDs, depth, maxNodes)
@@ -382,24 +338,6 @@ func (r *Ref) AllEdges() []domain.Edge {
 		return store.AllEdges()
 	}
 	return nil
-}
-func (r *Ref) Embeddings() map[string][]float64 {
-	if store, ok := r.Inner(); ok {
-		return store.Embeddings()
-	}
-	return nil
-}
-func (r *Ref) EmbeddingMetadata() domain.EmbeddingIndexMetadata {
-	if store, ok := r.Inner(); ok {
-		return store.EmbeddingMetadata()
-	}
-	return domain.EmbeddingIndexMetadata{}
-}
-func (r *Ref) EmbeddingCount() int {
-	if store, ok := r.Inner(); ok {
-		return store.EmbeddingCount()
-	}
-	return 0
 }
 func (r *Ref) WikiPages() []domain.WikiPage {
 	if store, ok := r.Inner(); ok {
@@ -516,12 +454,6 @@ func (a *jsonAdapter) PrepareContext(ctx context.Context, change *changeset.Chan
 	}
 	return a.Prepare(change)
 }
-func (a *jsonAdapter) PrepareEmbeddingRebuildContext(ctx context.Context, vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return a.PrepareEmbeddingRebuild(vectors, metadata)
-}
 func (a *jsonAdapter) CommitPreparedContext(ctx context.Context, prepared PreparedCommit) (CommitResult, error) {
 	if err := ctx.Err(); err != nil {
 		return CommitResult{}, err
@@ -548,12 +480,6 @@ func (a *jsonAdapter) RebuildFTSContext(ctx context.Context) error {
 	a.inner.RebuildLexical()
 	return nil
 }
-func (a *jsonAdapter) EmbeddingMetadataContext(ctx context.Context) (domain.EmbeddingIndexMetadata, error) {
-	if err := ctx.Err(); err != nil {
-		return domain.EmbeddingIndexMetadata{}, err
-	}
-	return a.inner.EmbeddingMetadata(), nil
-}
 func (a *jsonAdapter) CompositeViewContext(ctx context.Context, ephemeral domain.ParsedFile, overlay OverlayContext) (CompositeReadView, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -574,12 +500,7 @@ func (a *jsonAdapter) Graph(seedIDs []string, depth, maxNodes int) ([]domain.Sym
 func (a *jsonAdapter) GetSymbol(id string) (domain.Symbol, bool) { return a.inner.GetSymbol(id) }
 func (a *jsonAdapter) AllSymbols() []domain.Symbol               { return a.inner.AllSymbols() }
 func (a *jsonAdapter) AllEdges() []domain.Edge                   { return a.inner.AllEdges() }
-func (a *jsonAdapter) Embeddings() map[string][]float64          { return a.inner.Embeddings() }
-func (a *jsonAdapter) EmbeddingMetadata() domain.EmbeddingIndexMetadata {
-	return a.inner.EmbeddingMetadata()
-}
-func (a *jsonAdapter) EmbeddingCount() int          { return a.inner.EmbeddingCount() }
-func (a *jsonAdapter) WikiPages() []domain.WikiPage { return a.inner.WikiPages() }
+func (a *jsonAdapter) WikiPages() []domain.WikiPage              { return a.inner.WikiPages() }
 func (a *jsonAdapter) ReplaceWikiPages(pages []domain.WikiPage) error {
 	a.inner.ReplaceWikiPages(pages)
 	return a.inner.Persist()
@@ -601,18 +522,8 @@ func (a *jsonAdapter) Snapshot() ReadView { return jsonReadView{inner: a.inner.S
 func (a *jsonAdapter) Search(query string, limit int) ([]domain.SearchHit, error) {
 	return a.inner.Search(query, limit), nil
 }
-func (a *jsonAdapter) SearchDense(ctx context.Context, queryVector []float64, limit int) ([]domain.SearchHit, error) {
-	return a.inner.SearchDense(ctx, queryVector, limit)
-}
 func (a *jsonAdapter) Prepare(change *changeset.ChangeSet) (PreparedCommit, error) {
 	prepared, err := a.inner.Prepare(change)
-	if err != nil {
-		return nil, err
-	}
-	return &jsonPrepared{inner: prepared}, nil
-}
-func (a *jsonAdapter) PrepareEmbeddingRebuild(vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	prepared, err := a.inner.PrepareEmbeddingRebuild(vectors, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -699,7 +610,6 @@ func (v jsonReadView) Graph(seedIDs []string, depth, maxNodes int) ([]domain.Sym
 }
 func (v jsonReadView) EdgesForSymbol(id string) []domain.Edge { return v.inner.EdgesForSymbol(id) }
 func (v jsonReadView) AllEdges() []domain.Edge                { return v.inner.AllEdges() }
-func (v jsonReadView) Embeddings() map[string][]float64       { return v.inner.Embeddings() }
 func (v jsonReadView) Close() error                           { return nil }
 
 type jsonCompositeView struct {
@@ -776,21 +686,6 @@ func (a *sqliteAdapter) PrepareContext(ctx context.Context, change *changeset.Ch
 	}
 	return &sqlitePrepared{change: change, expected: expected, next: next, noop: change.IsNoop()}, nil
 }
-func (a *sqliteAdapter) PrepareEmbeddingRebuild(vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	return a.PrepareEmbeddingRebuildContext(context.Background(), vectors, metadata)
-}
-func (a *sqliteAdapter) PrepareEmbeddingRebuildContext(ctx context.Context, vectors map[string][]float64, metadata domain.EmbeddingIndexMetadata) (PreparedCommit, error) {
-	current, err := a.inner.Metadata(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &sqliteEmbeddingPrepared{
-		expected: uint64(current.Revision),
-		next:     uint64(current.Revision) + 1,
-		vectors:  cloneVectors(vectors),
-		metadata: metadata,
-	}, nil
-}
 func (a *sqliteAdapter) CommitPrepared(prepared PreparedCommit) (CommitResult, error) {
 	return a.CommitPreparedContext(context.Background(), prepared)
 }
@@ -805,22 +700,6 @@ func (a *sqliteAdapter) CommitPreparedContext(ctx context.Context, prepared Prep
 			return CommitResult{}, err
 		}
 		return CommitResult{Revision: result.Revision, SnapshotID: result.SnapshotID, NoOp: result.NoOp}, nil
-	case *sqliteEmbeddingPrepared:
-		snapshot := sqlitestore.EmbeddingSnapshot{
-			Provider:        p.metadata.Provider,
-			Model:           p.metadata.Model,
-			TemplateVersion: p.metadata.TemplateVersion,
-			Dimension:       p.metadata.Dimension,
-			Vectors:         cloneVectors(p.vectors),
-		}
-		if err := a.inner.RebuildEmbeddings(ctx, domain.Revision(p.expected), snapshot); err != nil {
-			return CommitResult{}, err
-		}
-		metadata, err := a.inner.Metadata(ctx)
-		if err != nil {
-			return CommitResult{}, err
-		}
-		return CommitResult{Revision: metadata.Revision, SnapshotID: metadata.ID}, nil
 	default:
 		return CommitResult{}, errors.New("repository: prepared commit belongs to another backend")
 	}
@@ -870,30 +749,6 @@ func (a *sqliteAdapter) SearchContext(ctx context.Context, query string, limit i
 func (a *sqliteAdapter) RebuildFTSContext(ctx context.Context) error {
 	return a.inner.RebuildFTS(ctx)
 }
-func (a *sqliteAdapter) SearchDense(ctx context.Context, queryVector []float64, limit int) ([]domain.SearchHit, error) {
-	view, err := a.inner.OpenReadView(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer view.Close()
-	dense, err := view.SearchDense(ctx, queryVector, limit)
-	if err != nil {
-		return nil, err
-	}
-	hits := make([]domain.SearchHit, 0, len(dense))
-	for _, hit := range dense {
-		symbol, ok := view.GetSymbol(string(hit.SymbolID))
-		if !ok {
-			continue
-		}
-		snippet := symbol.DocComment
-		if snippet == "" {
-			snippet = symbol.Summary
-		}
-		hits = append(hits, domain.SearchHit{Symbol: symbol, Snippet: snippet, Score: hit.Similarity, Source: "dense"})
-	}
-	return hits, nil
-}
 func (a *sqliteAdapter) Graph(seedIDs []string, depth, maxNodes int) ([]domain.Symbol, []domain.Edge) {
 	view := a.Snapshot()
 	defer view.Close()
@@ -913,28 +768,6 @@ func (a *sqliteAdapter) AllEdges() []domain.Edge {
 	view := a.Snapshot()
 	defer view.Close()
 	return view.AllEdges()
-}
-func (a *sqliteAdapter) Embeddings() map[string][]float64 {
-	view := a.Snapshot()
-	defer view.Close()
-	return view.Embeddings()
-}
-func (a *sqliteAdapter) EmbeddingMetadata() domain.EmbeddingIndexMetadata {
-	metadata, err := a.EmbeddingMetadataContext(context.Background())
-	if err != nil {
-		return domain.EmbeddingIndexMetadata{}
-	}
-	return metadata
-}
-func (a *sqliteAdapter) EmbeddingMetadataContext(ctx context.Context) (domain.EmbeddingIndexMetadata, error) {
-	return a.inner.EmbeddingMetadata(ctx)
-}
-func (a *sqliteAdapter) EmbeddingCount() int {
-	count, err := a.inner.EmbeddingCount(context.Background())
-	if err != nil {
-		return 0
-	}
-	return count
 }
 func (a *sqliteAdapter) WikiPages() []domain.WikiPage {
 	heads, err := a.inner.Artifacts().ListHeads(context.Background(), sqlitestore.ArtifactFilter{Type: "deepwiki"})
@@ -1217,17 +1050,6 @@ func (p *sqlitePrepared) IsNoop() bool            { return p.noop }
 func (p *sqlitePrepared) ExpectedVersion() uint64 { return p.expected }
 func (p *sqlitePrepared) NextVersion() uint64     { return p.next }
 
-type sqliteEmbeddingPrepared struct {
-	expected uint64
-	next     uint64
-	vectors  map[string][]float64
-	metadata domain.EmbeddingIndexMetadata
-}
-
-func (p *sqliteEmbeddingPrepared) IsNoop() bool            { return false }
-func (p *sqliteEmbeddingPrepared) ExpectedVersion() uint64 { return p.expected }
-func (p *sqliteEmbeddingPrepared) NextVersion() uint64     { return p.next }
-
 type sqliteReadView struct {
 	inner sqlitestore.ReadView
 }
@@ -1264,7 +1086,6 @@ func (v sqliteReadView) Graph(seedIDs []string, depth, maxNodes int) ([]domain.S
 }
 func (v sqliteReadView) EdgesForSymbol(id string) []domain.Edge { return v.inner.EdgesForSymbol(id) }
 func (v sqliteReadView) AllEdges() []domain.Edge                { return v.inner.AllEdges() }
-func (v sqliteReadView) Embeddings() map[string][]float64       { return v.inner.Embeddings() }
 func (v sqliteReadView) Close() error                           { return v.inner.Close() }
 
 type sqliteCompositeView struct {
@@ -1304,13 +1125,4 @@ func (v emptyReadView) OccurrencesForSymbol(domain.SymbolID) []domain.SymbolOccu
 func (v emptyReadView) Graph([]string, int, int) ([]domain.Symbol, []domain.Edge) { return nil, nil }
 func (v emptyReadView) EdgesForSymbol(string) []domain.Edge                       { return nil }
 func (v emptyReadView) AllEdges() []domain.Edge                                   { return nil }
-func (v emptyReadView) Embeddings() map[string][]float64                          { return nil }
 func (v emptyReadView) Close() error                                              { return nil }
-
-func cloneVectors(input map[string][]float64) map[string][]float64 {
-	out := make(map[string][]float64, len(input))
-	for id, vector := range input {
-		out[id] = append([]float64(nil), vector...)
-	}
-	return out
-}

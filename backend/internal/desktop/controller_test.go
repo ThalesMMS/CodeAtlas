@@ -373,6 +373,67 @@ func TestControllerSkipsFolderPickerBindingWithoutNativeChooser(t *testing.T) {
 	}
 }
 
+// quitMenuWindow is a fake window that also hosts an application menu bar.
+type quitMenuWindow struct {
+	*fakeWindow
+	menus []string
+}
+
+func (w *quitMenuWindow) InstallQuitMenu(applicationName string) {
+	w.menus = append(w.menus, applicationName)
+	w.record("quit-menu")
+}
+
+func TestControllerInstallsQuitMenuBeforeNavigation(t *testing.T) {
+	window := &quitMenuWindow{fakeWindow: newFakeWindow()}
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		listening(staticAddr("127.0.0.1:43132"))
+		<-ctx.Done()
+		return nil
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	window.close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	events, _, _ := window.snapshot()
+	menu, navigate := -1, -1
+	for i, event := range events {
+		if event == "quit-menu" {
+			menu = i
+		}
+		if strings.HasPrefix(event, "navigate:") {
+			navigate = i
+		}
+	}
+	if menu < 0 || navigate < 0 || menu >= navigate {
+		t.Fatalf("events = %v, want the quit menu installed before navigation", events)
+	}
+	if len(window.menus) != 1 || window.menus[0] != ApplicationName {
+		t.Fatalf("quit menu names = %v, want [%s]", window.menus, ApplicationName)
+	}
+}
+
+func TestControllerSkipsQuitMenuWithoutMenuBar(t *testing.T) {
+	window := newFakeWindow()
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		listening(staticAddr("127.0.0.1:43134"))
+		<-ctx.Done()
+		return nil
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	window.close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	events, _, _ := window.snapshot()
+	if containsEvent(events, "quit-menu") {
+		t.Fatalf("events = %v, want no quit menu on a window without a menu bar", events)
+	}
+}
+
 func TestControllerRestartRerunsServerAndNavigatesToNewListener(t *testing.T) {
 	window := newFakeWindow()
 	restart := make(chan struct{})

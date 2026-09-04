@@ -25,10 +25,6 @@ type Config struct {
 	LLMModel               string
 	LLMReasoningEffort     string
 	LLMTimeout             time.Duration
-	EmbeddingBaseURL       string
-	EmbeddingModel         string
-	EmbeddingsAPIKey       string
-	EnableEmbeddings       bool
 	ProbeTimeout           time.Duration
 	WatchMode              string
 	WatchDebounce          time.Duration
@@ -110,7 +106,6 @@ func load(args []string, saved *settings.Values) (Config, error) {
 	}
 
 	maxFileBytes := int64(1_500_000)
-	enableEmbeddings := false
 	llmTimeout := 10 * time.Minute
 	if saved == nil {
 		maxFileBytesValue, err := envInt("CODEATLAS_MAX_FILE_BYTES", 1_500_000)
@@ -118,17 +113,12 @@ func load(args []string, saved *settings.Values) (Config, error) {
 			return Config{}, err
 		}
 		maxFileBytes = int64(maxFileBytesValue)
-		enableEmbeddings, err = envBool("CODEATLAS_ENABLE_EMBEDDINGS", false)
-		if err != nil {
-			return Config{}, err
-		}
 		llmTimeout, err = envDuration("CODEATLAS_LLM_TIMEOUT", 10*time.Minute)
 		if err != nil {
 			return Config{}, err
 		}
 	} else {
 		maxFileBytes = saved.MaxFileBytes
-		enableEmbeddings = saved.EnableEmbeddings
 		llmTimeout = saved.LLMTimeout
 	}
 	probeTimeout, err := envDuration("CODEATLAS_PROBE_TIMEOUT", 10*time.Second)
@@ -162,10 +152,6 @@ func load(args []string, saved *settings.Values) (Config, error) {
 		LLMModel:               envOr("CODEATLAS_LLM_MODEL", ""),
 		LLMReasoningEffort:     strings.ToLower(strings.TrimSpace(os.Getenv("CODEATLAS_LLM_REASONING_EFFORT"))),
 		LLMTimeout:             llmTimeout,
-		EmbeddingBaseURL:       strings.TrimRight(os.Getenv("CODEATLAS_EMBEDDING_BASE_URL"), "/"),
-		EmbeddingModel:         envOr("CODEATLAS_EMBEDDING_MODEL", ""),
-		EmbeddingsAPIKey:       os.Getenv("CODEATLAS_EMBEDDINGS_API_KEY"),
-		EnableEmbeddings:       enableEmbeddings,
 		ProbeTimeout:           probeTimeout,
 		WatchMode:              envOr("CODEATLAS_WATCH_MODE", "auto"),
 		WatchDebounce:          watchDebounce,
@@ -189,9 +175,6 @@ func load(args []string, saved *settings.Values) (Config, error) {
 		cfg.LLMAPIKey = saved.LLMAPIKey
 		cfg.LLMModel = saved.LLMModel
 		cfg.LLMReasoningEffort = saved.LLMReasoningEffort
-		cfg.EmbeddingBaseURL = saved.EmbeddingBaseURL
-		cfg.EmbeddingModel = saved.EmbeddingModel
-		cfg.EmbeddingsAPIKey = saved.EmbeddingsAPIKey
 		cfg.GoplsMode = saved.GoplsMode
 		cfg.GoplsPath = saved.GoplsPath
 		cfg.TypeScriptLSPMode = saved.TypeScriptLSPMode
@@ -284,7 +267,7 @@ func (c Config) validate() error {
 // making workspace/listener startup fail. Runtime settings can repair these
 // fields after the local HTTP UI has bound successfully.
 func ValidateProvider(c Config) []ValidationIssue {
-	issues := make([]ValidationIssue, 0, 6)
+	issues := make([]ValidationIssue, 0, 4)
 	if strings.TrimSpace(c.LLMBaseURL) == "" {
 		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_BASE_URL", Message: "LLM base URL is required"})
 	} else if parsed, err := url.Parse(c.LLMBaseURL); err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
@@ -300,17 +283,6 @@ func ValidateProvider(c Config) []ValidationIssue {
 	}
 	if c.LLMTimeout <= 0 {
 		issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_LLM_TIMEOUT", Message: "LLM timeout must be positive"})
-	}
-	if c.EnableEmbeddings {
-		if strings.TrimSpace(c.EmbeddingModel) == "" {
-			issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_EMBEDDING_MODEL", Message: "embedding model is required"})
-		}
-		if strings.TrimSpace(c.EmbeddingBaseURL) != "" {
-			parsed, err := url.Parse(c.EmbeddingBaseURL)
-			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-				issues = append(issues, ValidationIssue{EnvironmentKey: "CODEATLAS_EMBEDDING_BASE_URL", Message: "embedding base URL must be an http(s) URL with a valid host"})
-			}
-		}
 	}
 	return issues
 }
@@ -330,18 +302,6 @@ func envInt(key string, fallback int) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s: %w", key, err)
-	}
-	return parsed, nil
-}
-
-func envBool(key string, fallback bool) (bool, error) {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback, nil
-	}
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return false, fmt.Errorf("invalid %s: %w", key, err)
 	}
 	return parsed, nil
 }

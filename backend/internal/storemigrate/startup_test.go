@@ -115,19 +115,8 @@ func TestOpenSQLiteForStartupImportsAllOccurrencesAndWikiArtifacts(t *testing.T)
 	if err := legacy.ReplaceFile(testParsedFileAt("pkg/util.go", 8)); err != nil {
 		t.Fatal(err)
 	}
-	legacySymbols := legacy.AllSymbols()
-	if len(legacySymbols) == 0 {
+	if len(legacy.AllSymbols()) == 0 {
 		t.Fatal("legacy store has no symbols")
-	}
-	prepared, err := legacy.PrepareEmbeddingRebuild(
-		map[string][]float64{legacySymbols[0].ID: {1, 0, 0}},
-		domain.EmbeddingIndexMetadata{Dimension: 3},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := legacy.CommitPrepared(prepared); err != nil {
-		t.Fatal(err)
 	}
 	if err := legacy.ReplaceWikiPages([]domain.WikiPage{{Slug: "overview", Title: "Old", Markdown: "legacy", Provider: "p"}}); err != nil {
 		t.Fatal(err)
@@ -157,9 +146,6 @@ func TestOpenSQLiteForStartupImportsAllOccurrencesAndWikiArtifacts(t *testing.T)
 	pages := store.WikiPages()
 	if wiki != 1 || len(pages) != 1 || pages[0].Slug != "overview" || pages[0].Markdown != "legacy" {
 		t.Fatalf("legacy wiki was not preserved: count=%d pages=%v", wiki, pages)
-	}
-	if store.EmbeddingCount() != 0 {
-		t.Fatalf("legacy embeddings were imported: %d", store.EmbeddingCount())
 	}
 	view := store.Snapshot()
 	defer view.Close()
@@ -259,5 +245,96 @@ func testParsedFileAt(path string, line int) domain.ParsedFile {
 		Edges: []domain.Edge{
 			{FromSymbolID: path + "#Service", ToSymbolID: path + "#Pay", Type: "contains", Path: path, Line: line, Confidence: 1},
 		},
+	}
+}
+
+// TestPlanStartupRejectsSupersededSnapshotSchema pins the #163 schema bump on the
+// exported planning path the CLI (`codeatlas store plan`) actually calls. The
+// in-package test covers inspectJSONSource directly; this one covers the
+// StartupOptions plumbing around it, which lost its dense-retrieval toggle.
+func TestPlanStartupRejectsSupersededSnapshotSchema(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	// snapshotSchema 4 is the pre-#163 canonical hash, whose ids also covered
+	// dense vectors. Its ids no longer mean what this build means by them.
+	legacy := `{"version":1,"snapshotSchema":4,"snapshotId":"snap-4",` +
+		`"files":[{"path":"pkg/svc.go"}],"identities":[],"occurrences":[],"edges":[],"wiki":[]}`
+	if err := os.WriteFile(filepath.Join(stateDir, "index.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := storemigrate.PlanStartup(storemigrate.StartupOptions{
+		WorkspaceRoot: t.TempDir(),
+		DatabasePath:  filepath.Join(stateDir, "codeatlas.db"),
+	})
+	if err != nil {
+		t.Fatalf("PlanStartup: %v", err)
+	}
+	if plan.Mode != storemigrate.ModeRebuild {
+		t.Fatalf("mode = %q, want %q (reasons: %v)", plan.Mode, storemigrate.ModeRebuild, plan.Reasons)
+	}
+	if plan.SourceSchema != 4 {
+		t.Fatalf("source schema = %d, want the observed 4", plan.SourceSchema)
+	}
+}
+
+// TestPlanStartupImportsSnapshotWrittenByThisBuild is the drift guard: a JSON
+// snapshot produced by the current repository writer must still plan as an
+// import, so storemigrate's supported schema cannot silently fall behind the
+// schema internal/store stamps.
+func TestPlanStartupImportsSnapshotWrittenByThisBuild(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	jsonPath := filepath.Join(stateDir, "index.json")
+	current, err := repository.OpenJSON(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := current.ReplaceFile(testParsedFile()); err != nil {
+		t.Fatal(err)
+	}
+	if err := current.ReplaceWikiPages([]domain.WikiPage{{Slug: "overview", Title: "Old", Markdown: "legacy", Provider: "p"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := storemigrate.PlanStartup(storemigrate.StartupOptions{
+		WorkspaceRoot:  t.TempDir(),
+		DatabasePath:   filepath.Join(stateDir, "codeatlas.db"),
+		LegacyJSONPath: jsonPath,
+	})
+	if err != nil {
+		t.Fatalf("PlanStartup: %v", err)
+	}
+	if plan.Mode != storemigrate.ModeImport || !plan.ImportArtifacts {
+		t.Fatalf("plan = %+v, want an artifact-preserving import", plan)
+	}
+	if plan.EstimatedCounts.Files != 1 || plan.EstimatedCounts.WikiPages != 1 {
+		t.Fatalf("estimated counts = %+v, want the censused source", plan.EstimatedCounts)
+	}
+}
+
+// TestPlanStartupHonoursForceRebuild keeps the one remaining PlanInput toggle
+// covered through the exported entry point now that the dense-retrieval toggle is gone.
+func TestPlanStartupHonoursForceRebuild(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	jsonPath := filepath.Join(stateDir, "index.json")
+	current, err := repository.OpenJSON(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := current.ReplaceFile(testParsedFile()); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := storemigrate.PlanStartup(storemigrate.StartupOptions{
+		WorkspaceRoot:  t.TempDir(),
+		DatabasePath:   filepath.Join(stateDir, "codeatlas.db"),
+		LegacyJSONPath: jsonPath,
+		ForceRebuild:   true,
+	})
+	if err != nil {
+		t.Fatalf("PlanStartup: %v", err)
+	}
+	if plan.Mode != storemigrate.ModeRebuild {
+		t.Fatalf("mode = %q, want %q (reasons: %v)", plan.Mode, storemigrate.ModeRebuild, plan.Reasons)
 	}
 }

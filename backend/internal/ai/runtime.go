@@ -75,19 +75,9 @@ func (r *Runtime) CompleteStructured(ctx context.Context, request GenerationRequ
 	return Generate(ctx, snapshot.provider, request)
 }
 
-func (r *Runtime) Embed(ctx context.Context, texts []string) ([][]float64, error) {
-	snapshot := r.load()
-	return snapshot.provider.Embed(ctx, texts)
-}
-
 func (r *Runtime) ProbeChat(ctx context.Context) ProviderProbeResult {
 	snapshot := r.load()
 	return snapshot.probe.ProbeChat(ctx)
-}
-
-func (r *Runtime) ProbeEmbeddings(ctx context.Context) ProviderProbeResult {
-	snapshot := r.load()
-	return snapshot.probe.ProbeEmbeddings(ctx)
 }
 
 var (

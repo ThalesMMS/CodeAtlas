@@ -39,24 +39,23 @@ func TestDocumentedFieldCatalogMatchesEnvExample(t *testing.T) {
 	if !reflect.DeepEqual(fromCatalog, fromEnvExample) {
 		t.Fatalf("catalog = %#v, want .env.example order %#v", fromCatalog, fromEnvExample)
 	}
-	if len(fromCatalog) != 23 {
-		t.Fatalf("catalog has %d fields, want 23", len(fromCatalog))
+	if len(fromCatalog) != 19 {
+		t.Fatalf("catalog has %d fields, want 19", len(fromCatalog))
 	}
 }
 
 func TestResolveAppliesDefaultEnvironmentAndSettingsPrecedence(t *testing.T) {
 	environment := Environment{
-		FieldWorkspace:        `C:\env-workspace`,
-		FieldMaxFileBytes:     "2000",
-		FieldLLMTimeout:       "45s",
-		FieldEnableEmbeddings: "true",
-		FieldLLMAPIKey:        "env-chat-secret",
+		FieldWorkspace:    `C:\env-workspace`,
+		FieldMaxFileBytes: "2000",
+		FieldLLMTimeout:   "45s",
+		FieldLLMModel:     "env-model",
+		FieldLLMAPIKey:    "env-chat-secret",
 	}
 	overrides := Overrides{
-		FieldWorkspace:        `C:\settings-workspace`,
-		FieldMaxFileBytes:     int64(3000),
-		FieldLLMTimeout:       "90s",
-		FieldEnableEmbeddings: false,
+		FieldWorkspace:    `C:\settings-workspace`,
+		FieldMaxFileBytes: int64(3000),
+		FieldLLMTimeout:   "90s",
 	}
 	resolved := Resolve(environment, overrides, SecretValues{FieldLLMAPIKey: "vault-chat-secret"})
 
@@ -66,8 +65,11 @@ func TestResolveAppliesDefaultEnvironmentAndSettingsPrecedence(t *testing.T) {
 	if resolved.Values.ListenAddress != DefaultListenAddress || resolved.Source(FieldListen) != SourceDefault {
 		t.Fatalf("listen = %q/%q", resolved.Values.ListenAddress, resolved.Source(FieldListen))
 	}
-	if resolved.Values.MaxFileBytes != 3000 || resolved.Values.LLMTimeout != 90*time.Second || resolved.Values.EnableEmbeddings {
+	if resolved.Values.MaxFileBytes != 3000 || resolved.Values.LLMTimeout != 90*time.Second {
 		t.Fatalf("typed values = %#v", resolved.Values)
+	}
+	if resolved.Values.LLMModel != "env-model" || resolved.Source(FieldLLMModel) != SourceEnv {
+		t.Fatalf("llm model = %q/%q", resolved.Values.LLMModel, resolved.Source(FieldLLMModel))
 	}
 	if resolved.Values.LLMAPIKey != "vault-chat-secret" || resolved.Source(FieldLLMAPIKey) != SourceSettings {
 		t.Fatalf("secret source/value = %q/%q", resolved.Values.LLMAPIKey, resolved.Source(FieldLLMAPIKey))
@@ -76,15 +78,18 @@ func TestResolveAppliesDefaultEnvironmentAndSettingsPrecedence(t *testing.T) {
 
 func TestResolvePreservesAllowedExplicitEmptyOverrides(t *testing.T) {
 	resolved := Resolve(Environment{
-		FieldEmbeddingBaseURL:  "https://env.example/v1",
-		FieldTypeScriptSDKPath: `C:\env-sdk`,
+		FieldLLMReasoningEffort: "high",
+		FieldTypeScriptSDKPath:  `C:\env-sdk`,
 	}, Overrides{
-		FieldEmbeddingBaseURL:  "",
-		FieldTypeScriptSDKPath: "",
+		FieldLLMReasoningEffort: "",
+		FieldTypeScriptSDKPath:  "",
 	}, nil)
 
-	if resolved.Values.EmbeddingBaseURL != "" || resolved.Source(FieldEmbeddingBaseURL) != SourceSettings {
-		t.Fatalf("embedding base = %q/%q", resolved.Values.EmbeddingBaseURL, resolved.Source(FieldEmbeddingBaseURL))
+	if resolved.Values.LLMReasoningEffort != "" || resolved.Source(FieldLLMReasoningEffort) != SourceSettings {
+		t.Fatalf("reasoning effort = %q/%q", resolved.Values.LLMReasoningEffort, resolved.Source(FieldLLMReasoningEffort))
+	}
+	if resolved.HasError(FieldLLMReasoningEffort) {
+		t.Fatalf("allowed empty override reported an error: %#v", resolved.Errors)
 	}
 	if resolved.Values.TypeScriptSDKPath != "" || resolved.Source(FieldTypeScriptSDKPath) != SourceSettings {
 		t.Fatalf("typescript sdk = %q/%q", resolved.Values.TypeScriptSDKPath, resolved.Source(FieldTypeScriptSDKPath))

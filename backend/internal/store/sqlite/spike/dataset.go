@@ -2,36 +2,30 @@ package spike
 
 import (
 	"database/sql"
-	"encoding/binary"
 	"fmt"
-	"math"
 	"math/rand"
 )
 
-// Profile sizes a synthetic dataset. Counts mirror the issue's small/medium/large
-// table; EmbeddingDim is configurable (a realistic and a tiny value).
+// Profile sizes a synthetic dataset. Counts mirror the issue's small/medium/large table.
 type Profile struct {
-	Name         string
-	Files        int
-	Symbols      int
-	Edges        int
-	Embeddings   int
-	EmbeddingDim int
+	Name    string
+	Files   int
+	Symbols int
+	Edges   int
 }
 
 var (
-	ProfileSmall  = Profile{Name: "small", Files: 100, Symbols: 1000, Edges: 3000, Embeddings: 1000, EmbeddingDim: 64}
-	ProfileMedium = Profile{Name: "medium", Files: 2000, Symbols: 25000, Edges: 100000, Embeddings: 25000, EmbeddingDim: 256}
-	ProfileLarge  = Profile{Name: "large", Files: 10000, Symbols: 150000, Edges: 750000, Embeddings: 150000, EmbeddingDim: 768}
+	ProfileSmall  = Profile{Name: "small", Files: 100, Symbols: 1000, Edges: 3000}
+	ProfileMedium = Profile{Name: "medium", Files: 2000, Symbols: 25000, Edges: 100000}
+	ProfileLarge  = Profile{Name: "large", Files: 10000, Symbols: 150000, Edges: 750000}
 )
 
 // Dataset is fully determined by (Profile, seed): same inputs → identical bytes.
 type Dataset struct {
-	Profile    Profile
-	Files      []FileRow
-	Symbols    []SymbolRow
-	Edges      []EdgeRow
-	Embeddings []EmbeddingRow
+	Profile Profile
+	Files   []FileRow
+	Symbols []SymbolRow
+	Edges   []EdgeRow
 }
 
 type FileRow struct {
@@ -46,10 +40,6 @@ type SymbolRow struct {
 type EdgeRow struct {
 	Kind, Src, Dst, Provenance string
 	Confidence                 float64
-}
-type EmbeddingRow struct {
-	SymbolID string
-	Vec      []float32
 }
 
 var langs = []string{"go", "typescript", "javascript", "tsx"}
@@ -96,18 +86,6 @@ func Generate(profile Profile, seed int64) Dataset {
 		}
 	}
 
-	embeddings := profile.Embeddings
-	if embeddings > profile.Symbols {
-		embeddings = profile.Symbols
-	}
-	dataset.Embeddings = make([]EmbeddingRow, embeddings)
-	for i := range dataset.Embeddings {
-		vec := make([]float32, profile.EmbeddingDim)
-		for d := range vec {
-			vec[d] = float32(rng.NormFloat64())
-		}
-		dataset.Embeddings[i] = EmbeddingRow{SymbolID: dataset.Symbols[i].SymbolID, Vec: normalize(vec)}
-	}
 	return dataset
 }
 
@@ -122,39 +100,6 @@ func extFor(lang string) string {
 	default:
 		return "go"
 	}
-}
-
-func normalize(vec []float32) []float32 {
-	var sum float64
-	for _, v := range vec {
-		sum += float64(v) * float64(v)
-	}
-	norm := math.Sqrt(sum)
-	if norm == 0 {
-		return vec
-	}
-	for i := range vec {
-		vec[i] = float32(float64(vec[i]) / norm)
-	}
-	return vec
-}
-
-// EncodeVector packs a float32 vector little-endian for the embeddings BLOB.
-func EncodeVector(vec []float32) []byte {
-	buffer := make([]byte, 4*len(vec))
-	for i, v := range vec {
-		binary.LittleEndian.PutUint32(buffer[i*4:], math.Float32bits(v))
-	}
-	return buffer
-}
-
-// DecodeVector reverses EncodeVector.
-func DecodeVector(blob []byte) []float32 {
-	vec := make([]float32, len(blob)/4)
-	for i := range vec {
-		vec[i] = math.Float32frombits(binary.LittleEndian.Uint32(blob[i*4:]))
-	}
-	return vec
 }
 
 // Load performs a full initial load inside a single IMMEDIATE transaction, the way
@@ -209,11 +154,5 @@ func Load(db *sql.DB, dataset Dataset) error {
 		}
 	}
 
-	embStmt, _ := tx.Prepare("INSERT INTO embeddings(symbol_id,dim,model,vec) VALUES(?,?,?,?)")
-	for _, embedding := range dataset.Embeddings {
-		if _, err := embStmt.Exec(embedding.SymbolID, dataset.Profile.EmbeddingDim, "spike-model", EncodeVector(embedding.Vec)); err != nil {
-			return err
-		}
-	}
 	return tx.Commit()
 }

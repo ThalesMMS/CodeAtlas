@@ -176,7 +176,7 @@ func TestHoverAmbiguousIndexedFallbackReturnsExplicitError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := indexer.New(root, 1_500_000, codeparser.New(), repo, nil).Scan(context.Background()); err != nil {
+	if err := indexer.New(root, 1_500_000, codeparser.New(), repo).Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 	llm := &capturingProvider{response: "must not be called"}
@@ -255,7 +255,7 @@ func semanticTargetRepository(t *testing.T) (string, repository.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo, nil)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repo)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}

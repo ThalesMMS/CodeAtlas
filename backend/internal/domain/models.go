@@ -611,19 +611,6 @@ type Dependency struct {
 	ContentHash  string       `json:"contentHash"`
 }
 
-// EmbeddingIndexMetadata describes the single compatible configuration of a
-// persisted dense index. It never contains the API key or a credentialed URL;
-// Provider is a stable technical identifier.
-type EmbeddingIndexMetadata struct {
-	Enabled         bool      `json:"enabled"`
-	Provider        string    `json:"provider"`
-	Model           string    `json:"model"`
-	Dimension       int       `json:"dimension"`
-	TemplateVersion string    `json:"templateVersion"`
-	Distance        string    `json:"distance"`
-	BuiltAt         time.Time `json:"builtAt"`
-}
-
 type WorkspaceStats struct {
 	Workspace   string    `json:"workspace"`
 	Files       int       `json:"files"`

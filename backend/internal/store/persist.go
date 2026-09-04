@@ -147,19 +147,17 @@ func (p snapshotPersister) cleanStaleTemps() {
 // with deterministically ordered collections.
 func encodeSnapshot(st *state) ([]byte, error) {
 	snapshot := diskSnapshot{
-		Version:           snapshotVersion,
-		StoreVersion:      st.version,
-		NextEdgeID:        st.nextEdgeID,
-		Files:             make([]domain.File, 0, len(st.files)),
-		Identities:        make([]domain.SymbolIdentity, 0, len(st.identities)),
-		Occurrences:       make([]domain.SymbolOccurrence, 0, len(st.occurrences)),
-		Edges:             append([]domain.Edge(nil), st.edges...),
-		Wiki:              make([]domain.WikiPage, 0, len(st.wiki)),
-		Embeddings:        make(map[string][]float64, len(st.embeddings)),
-		EmbeddingMetadata: st.embeddingMetadata,
-		SnapshotID:        computeSnapshotID(st),
-		SnapshotSchema:    snapshotSchema,
-		IndexedAt:         st.indexedAt,
+		Version:        snapshotVersion,
+		StoreVersion:   st.version,
+		NextEdgeID:     st.nextEdgeID,
+		Files:          make([]domain.File, 0, len(st.files)),
+		Identities:     make([]domain.SymbolIdentity, 0, len(st.identities)),
+		Occurrences:    make([]domain.SymbolOccurrence, 0, len(st.occurrences)),
+		Edges:          append([]domain.Edge(nil), st.edges...),
+		Wiki:           make([]domain.WikiPage, 0, len(st.wiki)),
+		SnapshotID:     computeSnapshotID(st),
+		SnapshotSchema: snapshotSchema,
+		IndexedAt:      st.indexedAt,
 	}
 	for _, file := range st.files {
 		snapshot.Files = append(snapshot.Files, file)
@@ -172,9 +170,6 @@ func encodeSnapshot(st *state) ([]byte, error) {
 	}
 	for _, page := range st.wiki {
 		snapshot.Wiki = append(snapshot.Wiki, page)
-	}
-	for id, vector := range st.embeddings {
-		snapshot.Embeddings[id] = append([]float64(nil), vector...)
 	}
 
 	sort.Slice(snapshot.Files, func(i, j int) bool { return snapshot.Files[i].Path < snapshot.Files[j].Path })

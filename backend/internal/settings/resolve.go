@@ -58,19 +58,6 @@ func Resolve(environment Environment, overrides Overrides, credentials SecretVal
 		resolved.addError(key, "SETTINGS_VALUE_INVALID", "value must be an integer")
 		return 0
 	}
-	booleanValue := func(key FieldKey) bool {
-		switch value := raw[key].(type) {
-		case bool:
-			return value
-		case string:
-			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
-			if err == nil {
-				return parsed
-			}
-		}
-		resolved.addError(key, "SETTINGS_VALUE_INVALID", "value must be true or false")
-		return false
-	}
 	durationValue := func(key FieldKey) time.Duration {
 		value := stringValue(key)
 		parsed, err := time.ParseDuration(value)
@@ -90,8 +77,6 @@ func Resolve(environment Environment, overrides Overrides, credentials SecretVal
 		SwiftLSPMode: strings.ToLower(stringValue(FieldSwiftLSPMode)), SwiftLSPPath: stringValue(FieldSwiftLSPPath),
 		PythonLSPMode: strings.ToLower(stringValue(FieldPythonLSPMode)), PythonLSPPath: stringValue(FieldPythonLSPPath),
 		RustLSPMode: strings.ToLower(stringValue(FieldRustLSPMode)), RustLSPPath: stringValue(FieldRustLSPPath),
-		EnableEmbeddings: booleanValue(FieldEnableEmbeddings), EmbeddingModel: stringValue(FieldEmbeddingModel),
-		EmbeddingBaseURL: strings.TrimRight(stringValue(FieldEmbeddingBaseURL), "/"), EmbeddingsAPIKey: stringValue(FieldEmbeddingsAPIKey),
 	}
 	resolved.Values = values
 	resolved.validate()
@@ -133,14 +118,6 @@ func (r *Resolved) validate() {
 	}
 	if r.Values.LLMTimeout <= 0 {
 		r.addError(FieldLLMTimeout, "SETTINGS_VALUE_INVALID", "LLM timeout must be positive")
-	}
-	if r.Values.EnableEmbeddings {
-		if r.Values.EmbeddingModel == "" {
-			r.addError(FieldEmbeddingModel, "EMBEDDING_MODEL_REQUIRED", "embedding model is required")
-		}
-		if r.Values.EmbeddingBaseURL != "" && !validHTTPURL(r.Values.EmbeddingBaseURL) {
-			r.addError(FieldEmbeddingBaseURL, "PROVIDER_URL_INVALID", "embedding base URL must be an http(s) URL")
-		}
 	}
 	r.validateLSP(FieldGoplsMode, FieldGoplsPath, r.Values.GoplsMode, r.Values.GoplsPath)
 	r.validateLSP(FieldTypeScriptLSPMode, FieldTypeScriptLSPPath, r.Values.TypeScriptLSPMode, r.Values.TypeScriptLSPPath)

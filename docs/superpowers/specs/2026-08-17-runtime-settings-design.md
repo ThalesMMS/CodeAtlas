@@ -8,18 +8,18 @@
 
 ## Context
 
-CodeAtlas currently reads configuration once during startup. The OpenAI-compatible provider, embedding behavior, workspace limits, and language-server managers are then passed as fixed dependencies to long-lived services. The web UI has no configuration surface. Changing an endpoint, model, credential, or language-server path therefore requires editing `.env` and restarting the process.
+CodeAtlas currently reads configuration once during startup. The OpenAI-compatible provider, workspace limits, and language-server managers are then passed as fixed dependencies to long-lived services. The web UI has no configuration surface. Changing an endpoint, model, credential, or language-server path therefore requires editing `.env` and restarting the process.
 
 The requested feature adds a small Settings button to the application and makes all `.env.example` values configurable. Settings are global to the operating-system user. Non-secret values are stored in the user's application-config directory, while API keys are stored in Windows Credential Manager or macOS Keychain. Saved UI values override `.env` on a field-by-field basis.
 
-Provider and embedding changes apply without restarting CodeAtlas. Language-server changes replace the affected manager in-process. Workspace, listen address, and maximum file size are saved immediately but require a process restart.
+Provider changes apply without restarting CodeAtlas. Language-server changes replace the affected manager in-process. Workspace, listen address, and maximum file size are saved immediately but require a process restart.
 
 ## Goals
 
 - Configure every variable in `.env.example` from the UI.
 - Use deterministic precedence: `default < environment < saved UI override`.
 - Persist API keys in the operating system's credential vault, never in the JSON settings file.
-- Apply LLM, timeout, embedding, and LSP settings safely at runtime.
+- Apply LLM, timeout, and LSP settings safely at runtime.
 - Preserve in-flight requests while new requests use the newly activated provider.
 - Keep the UI reachable when the LLM provider is missing or invalid so first-run configuration is possible.
 - Never return, log, cache, or render a stored secret.
@@ -46,10 +46,6 @@ Provider and embedding changes apply without restarting CodeAtlas. Language-serv
 | LLM | `CODEATLAS_LLM_MODEL` | No | Validate, probe, hot apply |
 | LLM | `CODEATLAS_LLM_REASONING_EFFORT` | No | Validate, probe, hot apply |
 | LLM | `CODEATLAS_LLM_TIMEOUT` | No | Validate and hot apply |
-| Embeddings | `CODEATLAS_ENABLE_EMBEDDINGS` | No | Hot apply; may enqueue rebuild |
-| Embeddings | `CODEATLAS_EMBEDDING_MODEL` | No | Validate, probe, hot apply; enqueue rebuild |
-| Embeddings | `CODEATLAS_EMBEDDING_BASE_URL` | No | Validate, probe, hot apply; enqueue rebuild |
-| Embeddings | `CODEATLAS_EMBEDDINGS_API_KEY` | Yes | Validate, probe, hot apply; enqueue rebuild |
 | Go LSP | `CODEATLAS_GOPLS` | No | Staged manager replacement |
 | Go LSP | `CODEATLAS_GOPLS_PATH` | No | Staged manager replacement |
 | JS/TS LSP | `CODEATLAS_TYPESCRIPT_LSP` | No | Staged manager replacement |
@@ -72,7 +68,7 @@ Each field is resolved independently:
 compiled default < .env/process environment < saved UI override
 ```
 
-The settings file stores only explicit overrides. A missing override inherits the environment or compiled default. An empty string is a valid explicit value only for fields whose existing configuration contract allows it, such as the optional embedding base URL and TypeScript SDK path.
+The settings file stores only explicit overrides. A missing override inherits the environment or compiled default. An empty string is a valid explicit value only for fields whose existing configuration contract allows it, such as the optional TypeScript SDK path.
 
 Secrets use explicit operations rather than overloaded empty strings:
 
@@ -101,13 +97,10 @@ Example shape:
   "revision": 12,
   "overrides": {
     "llmBaseUrl": "http://127.0.0.1:8000/v1",
-    "llmModel": "default",
-    "enableEmbeddings": true,
-    "embeddingModel": "text-embedding"
+    "llmModel": "default"
   },
   "credentials": {
-    "llmApiKeyGeneration": "01K...",
-    "embeddingsApiKeyGeneration": "01K..."
+    "llmApiKeyGeneration": "01K..."
   }
 }
 ```
@@ -118,11 +111,10 @@ Unknown schema versions and unknown fields are rejected without overwriting the 
 
 Introduce a narrow `CredentialStore` interface with `Get`, `Set`, and `Delete`. The production adapter uses [`github.com/zalando/go-keyring`](https://github.com/zalando/go-keyring), which targets Windows Credential Manager and macOS Keychain. Tests use an in-memory fake.
 
-Use service name `CodeAtlas` and versioned account identifiers:
+Use service name `CodeAtlas` and a versioned account identifier:
 
 ```text
 llm-api-key:<generation>
-embeddings-api-key:<generation>
 ```
 
 Credential rotation is transactional across the keyring and settings file:
@@ -160,25 +152,10 @@ Consequences:
 
 - an in-flight request keeps its original provider for the full call;
 - a request beginning after activation uses the new provider;
-- Explainer, Codemap, DeepWiki, Retrieval, HTTP diagnostics, and capability probes continue depending on one stable interface;
+- Explainer, Codemap, DeepWiki, HTTP diagnostics, and capability probes continue depending on one stable interface;
 - observability wraps each concrete provider before activation so metrics and secret redaction remain intact.
 
 The initial configuration may resolve to `ai.Disabled`. Missing or invalid LLM configuration no longer prevents the HTTP server and embedded UI from starting. The readiness UI exposes Settings from the bootstrap overlay. Applying a valid provider reruns the mandatory provider probe and resumes the readiness transition without restarting the process.
-
-### Embedding runtime
-
-`retrieval.Hybrid` currently captures a fixed provider and enabled flag. Replace these with a runtime embedding snapshot containing provider, enabled state, model fingerprint, and state (`disabled`, `available`, or `rebuilding`).
-
-When an embedding-affecting field changes:
-
-1. Probe the candidate embedding endpoint when embeddings are enabled.
-2. Compare the desired fingerprint with stored embedding metadata.
-3. Disable dense reads for incompatible metadata.
-4. Activate the provider snapshot.
-5. Enqueue or reuse the existing embedding rebuild job.
-6. Re-enable dense reads only after compatible vectors are published.
-
-Lexical and graph retrieval remain available while dense retrieval rebuilds.
 
 ### Language-server replacements
 
@@ -218,7 +195,6 @@ Accepts `application/json` only, with a bounded request body and expected revisi
 - the new sanitized snapshot;
 - live-applied groups;
 - restart-required fields;
-- an embedding rebuild job identifier when applicable;
 - structured field errors without reflecting submitted secrets.
 
 ### `DELETE /api/settings/overrides`
@@ -244,12 +220,11 @@ When CodeAtlas is bound to a non-loopback interface, remote users may use normal
 
 Add a compact gear icon at the far right of `.topbar-actions`, after **Check for changes**. Add the same action to the bootstrap card so an unconfigured provider can be repaired on first use.
 
-The action opens an accessible right-side drawer. On narrow viewports the drawer fills the available width. It contains four sections:
+The action opens an accessible right-side drawer. On narrow viewports the drawer fills the available width. It contains three sections:
 
 1. **General** — workspace, listen address, and maximum file size;
 2. **LLM** — base URL, model, API key replacement, reasoning effort, and timeout;
-3. **Embeddings** — enabled state, model, optional base URL, and optional separate API key;
-4. **Language servers** — mode and executable path for Go, JS/TS, Swift, Python, and Rust, plus TypeScript SDK path.
+3. **Language servers** — mode and executable path for Go, JS/TS, Swift, Python, and Rust, plus TypeScript SDK path.
 
 Each field displays its source (`Settings`, `.env`, or `Default`) and apply mode (`Live` or `Restart required`). Secret fields display only **Saved in system keychain**, **Using .env**, or **Not configured**. The UI never inserts a stored secret into a DOM value or application state.
 
@@ -270,7 +245,6 @@ The drawer traps focus, supports `Escape`, restores focus to the gear button, us
 - Provider probe failure: delete candidate credentials and keep previous provider.
 - Settings-file write failure: delete candidate credentials and keep previous runtime.
 - Provider activation: pointer swap only; no fallible work remains.
-- Embedding rebuild failure: keep lexical retrieval available, dense state unavailable, and surface the existing job error.
 - LSP candidate failure: keep every current runtime component and reject the whole settings update without persistence.
 - Stale browser revision: return `409` with a fresh sanitized snapshot.
 - Cleanup failure for an old credential generation: log only the generation identifier and retry cleanup during a later successful save/startup.
@@ -286,7 +260,6 @@ The drawer traps focus, supports `Escape`, restores focus to the gear button, us
 - versioned credential rotation and rollback at every fallible step;
 - no secret values in snapshots, errors, logs, or JSON;
 - provider snapshot behavior across concurrent in-flight calls;
-- embedding state transitions and fingerprint changes;
 - LSP staged replacement and old-manager preservation;
 - restart-required diff calculation;
 - optimistic revision conflicts.
@@ -298,8 +271,7 @@ The drawer traps focus, supports `Escape`, restores focus to the gear button, us
 - invalid/probe-failed PUT leaves runtime and persistence unchanged;
 - reset to environment;
 - loopback, same-origin, token, content-type, and body-size enforcement;
-- first-run provider configuration from the bootstrap state;
-- embedding rebuild job linkage.
+- first-run provider configuration from the bootstrap state.
 
 ### Frontend tests
 
@@ -316,7 +288,6 @@ The drawer traps focus, supports `Escape`, restores focus to the gear button, us
 
 - start without an LLM provider, open Settings from bootstrap, configure, and reach READY;
 - switch between two fake chat endpoints without restart;
-- change embeddings and observe rebuild before dense availability;
 - reject a broken LSP candidate while the previous one remains active;
 - persist settings, restart CodeAtlas, and confirm UI overrides environment;
 - reset and confirm environment values become effective;
@@ -335,7 +306,7 @@ Windows Credential Manager and macOS Keychain adapters receive platform-specific
 
 ### Persist everything and restart
 
-This avoids runtime references but fails the approved immediate-apply experience for providers, embeddings, and LSPs.
+This avoids runtime references but fails the approved immediate-apply experience for providers and LSPs.
 
 ### Send credentials with every browser request
 
@@ -355,7 +326,6 @@ CodeAtlas may be launched from a terminal, IDE, service manager, or packaging sc
 - Saved overrides win over environment values independently per field.
 - API keys persist only in the OS credential vault and never appear in JSON, API responses, DOM state, errors, or logs.
 - Valid provider changes affect new requests without interrupting existing ones.
-- Embedding changes never query an incompatible dense index.
 - Invalid LSP changes preserve the prior working manager.
 - Startup-only changes are clearly marked and used on the next process start.
 - The Settings UI is reachable when provider configuration is absent.

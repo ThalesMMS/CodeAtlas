@@ -20,7 +20,6 @@ import (
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/semantic"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 )
@@ -44,8 +43,7 @@ func buildDocServerWithProvider(t *testing.T, attachIndexer bool, semanticProvid
 	}
 	t.Cleanup(func() { _ = repository.Close() })
 	provider := staticProvider{response: "ok"}
-	retriever := retrieval.NewHybrid(repository, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
@@ -55,13 +53,13 @@ func buildDocServerWithProvider(t *testing.T, attachIndexer bool, semanticProvid
 	}
 	workspace := service.NewWorkspace(root)
 	explainer := service.NewExplainer(repository, workspace, provider)
-	codemaps := service.NewCodemapService(repository, retriever, provider)
+	codemaps := service.NewCodemapService(repository, provider)
 	deepWiki := service.NewDeepWikiService(repository, provider)
-	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, repository, filepath.Join(t.TempDir(), "tx"), "")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	apiServer := httpapi.New(
-		workspace, repository, attachedIndexer, retriever, explainer, codemaps, deepWiki, committer, provider,
+		workspace, repository, attachedIndexer, explainer, codemaps, deepWiki, committer, provider,
 		coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), logger,
 	)
 	if semanticProvider != nil {

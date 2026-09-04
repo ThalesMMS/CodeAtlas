@@ -43,15 +43,8 @@
         </div>
       </div>
 
-      <div class="global-search">
-        <input id="search-input" type="search" autocomplete="off" placeholder="Search for a symbol, flow, or responsibility…" aria-label="Search for a symbol, flow, or responsibility" aria-controls="search-results" aria-expanded="false" aria-autocomplete="list">
-        <kbd>⌘K</kbd>
-        <div id="search-results" class="search-results hidden" role="listbox"></div>
-      </div>
-
       <div class="topbar-actions">
         <span id="index-status" class="status-pill">initializing</span>
-        <span id="embeddings-status" class="status-pill progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Embeddings index" hidden><span class="status-pill-fill"></span><span class="status-pill-text"></span></span>
         <button id="reindex-button" class="button secondary" type="button">Check for changes</button>
         <button id="settings-button" class="icon-button settings-button" type="button" aria-label="Settings" title="Settings">⚙</button>
       </div>
@@ -80,11 +73,11 @@
         </div>
         <div id="editor-shell" class="editor-shell hidden" role="tabpanel" aria-label="Open file">
           <div id="editor-mount" class="editor-mount" tabindex="-1" aria-label="Code editor"></div>
-          <div id="hover-card" class="hover-card hidden" role="tooltip" aria-live="polite" aria-labelledby="hover-name" aria-describedby="hover-summary" tabindex="-1" aria-busy="false">
+          <div id="hover-card" class="hover-card hidden" role="dialog" aria-modal="false" aria-live="polite" aria-labelledby="hover-name" aria-describedby="hover-summary" tabindex="-1" aria-busy="false">
             <div class="hover-card-head">
               <span id="hover-kind" class="symbol-kind"></span>
               <strong id="hover-name"></strong>
-              <button id="hover-pin-button" class="button secondary small" type="button" aria-pressed="false">Pin</button>
+              <button id="hover-pin-button" class="button secondary small" type="button" aria-pressed="true" aria-label="Unpin quick explanation">Pinned</button>
               <button id="hover-close-button" class="icon-button" type="button" title="Close" aria-label="Close quick explanation">×</button>
             </div>
             <code id="hover-signature"></code>
@@ -148,7 +141,7 @@
             <button class="button primary" type="submit">Generate map</button>
           </form>
           <div id="codemap-result" class="codemap-result empty-state">
-            <p>Describe a flow, bug, or change. The backend retrieves seeds through BM25/embeddings and expands the AST graph.</p>
+            <p>Describe a flow, bug, or change. The backend retrieves seeds through BM25 lexical search and expands the AST graph.</p>
           </div>
         </section>
 
@@ -242,10 +235,6 @@
           <section class="settings-section" data-settings-group="llm" aria-labelledby="settings-llm-title">
             <h3 id="settings-llm-title">LLM</h3>
             <div class="settings-fields" data-settings-fields="llm"></div>
-          </section>
-          <section class="settings-section" data-settings-group="embeddings" aria-labelledby="settings-embeddings-title">
-            <h3 id="settings-embeddings-title">Embeddings</h3>
-            <div class="settings-fields" data-settings-fields="embeddings"></div>
           </section>
           <section class="settings-section" data-settings-group="languageServers" aria-labelledby="settings-languages-title">
             <h3 id="settings-languages-title">Language servers</h3>

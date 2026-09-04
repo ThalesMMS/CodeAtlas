@@ -29,9 +29,6 @@ func (p *retryProviderProbe) ProbeChat(context.Context) ai.ProviderProbeResult {
 	}
 	return ai.ProviderProbeResult{Status: ai.ProbeFailure, ErrorCode: ai.CodeProviderUnreachable, Message: "provider unavailable"}
 }
-func (p *retryProviderProbe) ProbeEmbeddings(context.Context) ai.ProviderProbeResult {
-	return ai.ProviderProbeResult{Status: ai.ProbeDisabled}
-}
 func (p *retryProviderProbe) setSuccess() {
 	p.mu.Lock()
 	p.succeed = true

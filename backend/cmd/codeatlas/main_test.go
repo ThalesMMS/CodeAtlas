@@ -3,21 +3,16 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/capabilities"
 	"github.com/ThalesMMS/CodeAtlas/internal/config"
-	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/gopls"
 	"github.com/ThalesMMS/CodeAtlas/internal/pythonlsp"
-	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/rustlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 	"github.com/ThalesMMS/CodeAtlas/internal/swiftlsp"
@@ -98,12 +93,6 @@ func TestStartupAppliesSavedOverridesBeforeComposition(t *testing.T) {
 	if loaded.Config.DatabasePath != wantDatabase {
 		t.Fatalf("database path = %q, want %q", loaded.Config.DatabasePath, wantDatabase)
 	}
-}
-
-type embeddingReconcileProvider struct {
-	mu        sync.Mutex
-	dimension int
-	calls     int
 }
 
 func TestWorkspaceHasGoFilesSkipsGeneratedTrees(t *testing.T) {
@@ -289,120 +278,4 @@ func TestRustAnalyzerCapabilityIsOptionalWhenUnavailable(t *testing.T) {
 			t.Fatalf("executable path leaked in capability metadata: %q=%q", key, value)
 		}
 	}
-}
-
-func (p *embeddingReconcileProvider) Name() string    { return "test-embeddings" }
-func (p *embeddingReconcileProvider) Available() bool { return true }
-func (p *embeddingReconcileProvider) Complete(context.Context, string, string, int) (string, error) {
-	return "", errors.New("completion endpoint should not be called")
-}
-
-func (p *embeddingReconcileProvider) Embed(_ context.Context, texts []string) ([][]float64, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.calls++
-	out := make([][]float64, len(texts))
-	for i := range texts {
-		vector := make([]float64, p.dimension)
-		for j := range vector {
-			vector[j] = float64(i+j+1) / 10
-		}
-		out[i] = vector
-	}
-	return out, nil
-}
-
-func (p *embeddingReconcileProvider) resetCalls() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.calls = 0
-}
-
-func (p *embeddingReconcileProvider) callCount() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.calls
-}
-
-func newEmbeddingReconcileStore(t *testing.T) repository.Store {
-	t.Helper()
-	store, err := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	if err := store.ReplaceFile(domain.ParsedFile{
-		File: domain.File{Path: "service.go", Language: "go", Hash: "service", IndexedAt: now},
-		Symbols: []domain.Symbol{
-			{ID: "service.go:file", Path: "service.go", Name: "service.go", Kind: "file", Range: domain.Range{Start: domain.Position{Line: 1, Column: 1}, End: domain.Position{Line: 8, Column: 1}}},
-			{ID: "submit", Path: "service.go", Name: "SubmitOrder", QualifiedName: "service.go::SubmitOrder", Kind: "function", Range: domain.Range{Start: domain.Position{Line: 2, Column: 1}, End: domain.Position{Line: 4, Column: 1}}, Signature: "func SubmitOrder()", Summary: "Submits an order.", Code: "func SubmitOrder() {}"},
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return store
-}
-
-func TestReconcileEmbeddingsInvalidatesWhenEmbeddingBaseURLChanges(t *testing.T) {
-	store := newEmbeddingReconcileStore(t)
-	provider := &embeddingReconcileProvider{dimension: 4}
-	retriever := retrieval.NewHybrid(store, provider, true)
-	registry := capabilities.NewRegistry()
-
-	first := config.Config{
-		EnableEmbeddings: true,
-		EmbeddingModel:   "same-model",
-		LLMBaseURL:       "http://chat.invalid/v1",
-		EmbeddingBaseURL: "http://embed-a.invalid/v1",
-	}
-	needsRebuild, err := reconcileEmbeddings(retriever, store, registry, first)(context.Background())
-	if err != nil {
-		t.Fatalf("first reconcile: %v", err)
-	}
-	if !needsRebuild {
-		t.Fatal("an empty dense index must request a background rebuild")
-	}
-	if state := embeddingCapabilityState(registry); state != "rebuilding" {
-		t.Fatalf("capability state = %q, want rebuilding", state)
-	}
-	if err := retriever.RebuildEmbeddings(context.Background()); err != nil {
-		t.Fatalf("first rebuild: %v", err)
-	}
-	firstProvider := store.EmbeddingMetadata().Provider
-	if strings.Contains(firstProvider, "embed-a.invalid") {
-		t.Fatalf("metadata provider %q leaked the embedding endpoint", firstProvider)
-	}
-
-	provider.resetCalls()
-	second := first
-	second.EmbeddingBaseURL = "http://embed-b.invalid/v1"
-	needsRebuild, err = reconcileEmbeddings(retriever, store, registry, second)(context.Background())
-	if err != nil {
-		t.Fatalf("second reconcile: %v", err)
-	}
-	if !needsRebuild {
-		t.Fatal("an endpoint change must request a background rebuild")
-	}
-	if err := retriever.RebuildEmbeddings(context.Background()); err != nil {
-		t.Fatalf("second rebuild: %v", err)
-	}
-	if provider.callCount() <= 1 {
-		t.Fatalf("Embed calls after endpoint change = %d, want probe plus rebuild", provider.callCount())
-	}
-	secondProvider := store.EmbeddingMetadata().Provider
-	if secondProvider == firstProvider {
-		t.Fatalf("metadata provider = %q after endpoint change, want a different fingerprint", secondProvider)
-	}
-	if strings.Contains(secondProvider, "embed-b.invalid") {
-		t.Fatalf("metadata provider %q leaked the embedding endpoint", secondProvider)
-	}
-}
-
-func embeddingCapabilityState(registry *capabilities.Registry) string {
-	for _, result := range registry.Results() {
-		if result.ID == "llm-embeddings" {
-			return result.Metadata["state"]
-		}
-	}
-	return ""
 }

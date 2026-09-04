@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/apperror"
@@ -71,9 +70,6 @@ func (s *Store) Commit(ctx context.Context, change *changeset.ChangeSet) (Commit
 		if err := applyUpsert(ctx, tx, parsed); err != nil {
 			return CommitResult{}, err
 		}
-	}
-	if err := applyEmbeddings(ctx, tx, change.Embeddings()); err != nil {
-		return CommitResult{}, err
 	}
 	if err := garbageCollectImpacted(ctx, tx, before); err != nil {
 		return CommitResult{}, err
@@ -377,113 +373,6 @@ func upsertEdge(ctx context.Context, tx *sql.Tx, edge domain.Edge) error {
 		return apperror.PersistenceFailed(err)
 	}
 	return nil
-}
-
-// applyEmbeddings replaces the embeddings table with the changeset's vectors in the
-// versioned float32-le-v1 format. Every vector is validated (finite, non-zero,
-// dimension-consistent) BEFORE the SQL; a malformed vector aborts the whole
-// ChangeSet (the caller's transaction is rolled back). Vectors for unknown handles
-// are skipped as stale (the prepare phase may include not-yet-committed symbols).
-// Embedding index metadata (dimension/encoding) is refreshed in the same
-// transaction so dense search can validate compatibility.
-func applyEmbeddings(ctx context.Context, tx *sql.Tx, vectors map[string][]float64) error {
-	if vectors == nil {
-		return nil
-	}
-	primaryOccurrences := map[string]string{}
-	if len(vectors) > 0 {
-		var err error
-		primaryOccurrences, err = loadPrimaryOccurrences(ctx, tx)
-		if err != nil {
-			return apperror.StoreCorrupted(err)
-		}
-	}
-	if err := txExec(ctx, tx, "DELETE FROM embeddings"); err != nil {
-		return apperror.PersistenceFailed(err)
-	}
-	dimension := 0
-	stored := 0
-	for _, symbolID := range sortedKeys(vectors) {
-		vector := vectors[symbolID]
-		if len(vector) == 0 {
-			continue
-		}
-		if dimension == 0 {
-			dimension = len(vector)
-		} else if len(vector) != dimension {
-			return apperror.InvalidArgument("embedding dimension is inconsistent across the changeset", nil)
-		}
-		blob, err := encodeVector(vector)
-		if err != nil {
-			return apperror.InvalidArgument("invalid embedding vector: "+err.Error(), nil)
-		}
-		occurrenceID, exists := primaryOccurrences[symbolID]
-		if !exists {
-			continue
-		}
-		sum := sha256.Sum256(blob)
-		if err := txExec(ctx, tx, "INSERT INTO embeddings(symbol_id, occurrence_id, content_hash, dimension, vector) VALUES(?,?,?,?,?)",
-			symbolID, nullIfEmpty(occurrenceID), hex.EncodeToString(sum[:]), dimension, blob); err != nil {
-			return apperror.PersistenceFailed(err)
-		}
-		stored++
-	}
-	return setEmbeddingMetadata(ctx, tx, stored > 0, dimension)
-}
-
-// loadPrimaryOccurrences materializes the identity set and each identity's
-// canonical occurrence in one statement. An empty occurrence is a valid
-// identity with no occurrence and is stored as SQL NULL by callers.
-func loadPrimaryOccurrences(ctx context.Context, tx *sql.Tx) (map[string]string, error) {
-	rows, err := tx.QueryContext(ctx, `WITH ranked AS (
-		SELECT symbol_id, occurrence_id,
-			ROW_NUMBER() OVER (PARTITION BY symbol_id ORDER BY file_path, start_line, start_col) AS position
-		FROM symbol_occurrences
-	)
-	SELECT identities.symbol_id, COALESCE(ranked.occurrence_id, '')
-	FROM symbol_identities AS identities
-	LEFT JOIN ranked ON ranked.symbol_id = identities.symbol_id AND ranked.position = 1`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := make(map[string]string)
-	for rows.Next() {
-		var symbolID, occurrenceID string
-		if err := rows.Scan(&symbolID, &occurrenceID); err != nil {
-			return nil, err
-		}
-		result[symbolID] = occurrenceID
-	}
-	return result, rows.Err()
-}
-
-// setEmbeddingMetadata upserts the index singleton's dimension/encoding/enabled,
-// preserving provider/model/template (set by a full RebuildEmbeddings).
-func setEmbeddingMetadata(ctx context.Context, tx *sql.Tx, enabled bool, dimension int) error {
-	enabledValue := 0
-	if enabled {
-		enabledValue = 1
-	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO embedding_index_metadata
-		(id, enabled, provider, model, dimension, template_version, distance, encoding, built_at)
-		VALUES(1, ?, '', '', ?, '', 'cosine', ?, ?)
-		ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled, dimension=excluded.dimension,
-			encoding=excluded.encoding, built_at=excluded.built_at`,
-		enabledValue, dimension, VectorEncodingVersion, time.Now().UTC().Format(time.RFC3339Nano))
-	if err != nil {
-		return apperror.PersistenceFailed(err)
-	}
-	return nil
-}
-
-func sortedKeys(m map[string][]float64) []string {
-	keys := make([]string, 0, len(m))
-	for key := range m {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // garbageCollect removes relations with no remaining evidence and identities with

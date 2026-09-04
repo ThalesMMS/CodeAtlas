@@ -58,7 +58,7 @@ func DefaultConfig() Config {
 	return Config{
 		MaxQueued:          32,
 		GlobalConcurrency:  2,
-		PerTypeConcurrency: map[string]int{"deepwiki.refresh": 1, "codemap.generate": 1, "repository.reindex": 1, "embeddings.rebuild": 1, "fts.rebuild": 1},
+		PerTypeConcurrency: map[string]int{"deepwiki.refresh": 1, "codemap.generate": 1, "repository.reindex": 1, "fts.rebuild": 1},
 		RetainCompleted:    64,
 		TerminalTTL:        30 * time.Minute,
 		EventBuffer:        32,

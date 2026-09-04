@@ -48,7 +48,7 @@ button { color: inherit; }
 .app-shell { height: 100%; display: grid; grid-template-rows: 58px 1fr; }
 .topbar {
   display: grid;
-  grid-template-columns: 260px minmax(300px, 650px) 1fr;
+  grid-template-columns: 260px 1fr;
   align-items: center;
   gap: 20px;
   padding: 0 16px;
@@ -65,37 +65,11 @@ button { color: inherit; }
 .brand strong { display: block; letter-spacing: -0.01em; }
 .brand small { display: block; max-width: 205px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
 
-.global-search { position: relative; display: flex; align-items: center; }
-.global-search input {
-  width: 100%; height: 36px; padding: 0 52px 0 13px;
-  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
-  outline: none;
-}
-.global-search input:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
-.global-search kbd { position: absolute; right: 9px; color: var(--subtle); border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; font-size: 10px; }
-.search-results {
-  position: absolute; top: 42px; left: 0; right: 0; z-index: 40;
-  max-height: 430px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border-strong);
-  border-radius: 10px; box-shadow: var(--shadow); padding: 6px;
-}
-.search-result { width: 100%; display: grid; grid-template-columns: 90px 1fr; gap: 10px; text-align: left; padding: 10px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
-.search-result:hover, .search-result:focus { background: var(--accent-soft); outline: none; }
-.search-result .symbol-kind { align-self: start; }
-.search-result strong { display: block; font-family: var(--mono); font-size: 12px; }
-.search-result small { display: block; margin-top: 4px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .topbar-actions { display: flex; justify-content: flex-end; align-items: center; gap: 9px; }
 .status-pill { padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .status-pill.active { color: var(--warning); border-color: rgba(245, 198, 106, 0.35); background: rgba(245, 198, 106, 0.08); }
 .status-pill.ok { color: var(--success); border-color: rgba(96, 211, 148, 0.28); }
 .status-pill.error { color: var(--danger); border-color: rgba(255, 122, 138, 0.3); }
-.status-pill.progress { position: relative; overflow: hidden; color: var(--warning); border-color: rgba(245, 198, 106, 0.35); }
-.status-pill.progress .status-pill-fill { position: absolute; inset: 0; background: rgba(245, 198, 106, 0.16); transform-origin: left center; transition: transform 240ms ease; }
-.status-pill.progress .status-pill-text { position: relative; }
-.status-pill.progress.ok { color: var(--success); border-color: rgba(96, 211, 148, 0.28); }
-.status-pill.progress.ok .status-pill-fill { background: rgba(96, 211, 148, 0.12); }
-.status-pill.progress.error { color: var(--danger); border-color: rgba(255, 122, 138, 0.3); }
-.status-pill.progress.error .status-pill-fill { background: rgba(255, 122, 138, 0.12); }
 
 .button, .icon-button {
   border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: 120ms ease;
@@ -494,7 +468,7 @@ button { color: inherit; }
 
 @media (max-width: 1100px) {
   .workspace-layout { grid-template-columns: 210px minmax(430px, 1fr) 340px; }
-  .topbar { grid-template-columns: 220px 1fr auto; }
+  .topbar { grid-template-columns: 220px 1fr; }
 }
 
 /* ---- Bootstrap / diagnostic overlay ---- */

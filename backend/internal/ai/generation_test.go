@@ -26,9 +26,6 @@ func (m *mockProvider) Complete(ctx context.Context, sys, user string, maxTokens
 	}
 	return `{"ok":true}`, nil
 }
-func (m *mockProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ErrUnavailable
-}
 
 // mockStructuredProvider implements both Provider and StructuredCompleter.
 type mockStructuredProvider struct {

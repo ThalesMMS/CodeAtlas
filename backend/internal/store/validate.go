@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
@@ -48,13 +47,12 @@ const (
 
 // Entity identifies which correlated structure a Violation belongs to.
 const (
-	EntityFile      = "file"
-	EntitySymbol    = "symbol"
-	EntityEdge      = "edge"
-	EntityEmbedding = "embedding"
-	EntityWiki      = "wiki"
-	EntityLexical   = "lexical"
-	EntityState     = "state"
+	EntityFile    = "file"
+	EntitySymbol  = "symbol"
+	EntityEdge    = "edge"
+	EntityWiki    = "wiki"
+	EntityLexical = "lexical"
+	EntityState   = "state"
 )
 
 // Stable violation codes. Authoritative (blocking) codes describe referential
@@ -67,10 +65,6 @@ const (
 	ViolationSymbolIDEmpty         = "SYMBOL_ID_EMPTY"
 	ViolationSymbolOrphan          = "SYMBOL_ORPHAN_FILE"
 	ViolationWikiKeyMismatch       = "WIKI_KEY_MISMATCH"
-	ViolationEmbeddingOrphan       = "EMBEDDING_ORPHAN_SYMBOL"
-	ViolationEmbeddingNonFinite    = "EMBEDDING_NON_FINITE"
-	ViolationEmbeddingDimMixed     = "EMBEDDING_DIMENSION_MIXED"
-	ViolationEmbeddingDimMetadata  = "EMBEDDING_DIMENSION_METADATA"
 	ViolationEdgeConfidenceInvalid = "EDGE_CONFIDENCE_INVALID"
 
 	// Quality warnings — recorded, never blocking.
@@ -170,7 +164,7 @@ func (c *violationCollector) result() []Violation {
 
 // ValidateState is a pure auditor of a finalized state: it never mutates or
 // repairs, it only reports. It checks every correlated structure — files,
-// symbols, edges, embeddings, wiki and the derived lexical index — against the
+// symbols, edges, wiki and the derived lexical index — against the
 // documented invariants and returns stable, capped violations. Callers decide
 // policy: HasBlockingViolations gates a load or a commit; warnings and repairable
 // derived drift are logged and (for derived state) rebuilt by finalize.
@@ -179,7 +173,6 @@ func ValidateState(st *state) []Violation {
 	validateFiles(st, c)
 	validateSymbols(st, c)
 	validateEdges(st, c)
-	validateEmbeddings(st, c)
 	validateWiki(st, c)
 	validateDerived(st, c)
 	return c.result()
@@ -282,40 +275,6 @@ func validateEdges(st *state, c *violationCollector) {
 			c.add(Violation{Code: ViolationEdgeConfidenceInvalid, Severity: SeverityError, Entity: EntityEdge, Path: path,
 				Message: fmt.Sprintf("edge confidence %v is not within [0,1]", edge.Confidence)})
 		}
-	}
-}
-
-func validateEmbeddings(st *state, c *violationCollector) {
-	dimension := 0
-	// Iterate deterministically so a "mixed dimension" report is stable.
-	ids := make([]string, 0, len(st.embeddings))
-	for id := range st.embeddings {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		vector := st.embeddings[id]
-		if _, ok := st.symbols[id]; !ok {
-			c.add(Violation{Code: ViolationEmbeddingOrphan, Severity: SeverityError, Entity: EntityEmbedding, Path: id,
-				Message: fmt.Sprintf("embedding %q has no matching symbol", id)})
-		}
-		if dimension == 0 {
-			dimension = len(vector)
-		} else if len(vector) != dimension {
-			c.add(Violation{Code: ViolationEmbeddingDimMixed, Severity: SeverityError, Entity: EntityEmbedding, Path: id,
-				Message: fmt.Sprintf("embedding dimension %d != index dimension %d", len(vector), dimension)})
-		}
-		for _, value := range vector {
-			if math.IsNaN(value) || math.IsInf(value, 0) {
-				c.add(Violation{Code: ViolationEmbeddingNonFinite, Severity: SeverityError, Entity: EntityEmbedding, Path: id,
-					Message: "embedding contains a non-finite value"})
-				break
-			}
-		}
-	}
-	if st.embeddingMetadata.Enabled && dimension != 0 && st.embeddingMetadata.Dimension != dimension {
-		c.add(Violation{Code: ViolationEmbeddingDimMetadata, Severity: SeverityError, Entity: EntityEmbedding, Path: "",
-			Message: fmt.Sprintf("embedding dimension %d != metadata dimension %d", dimension, st.embeddingMetadata.Dimension)})
 	}
 }
 

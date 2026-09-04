@@ -322,17 +322,23 @@ func errorCode(err error) string {
 }
 
 func TestPreservedSecretsDoNotTouchTheChangeSet(t *testing.T) {
-	touched, issues := validateSecretOperations(map[FieldKey]SecretOperation{
-		FieldLLMAPIKey:        {Operation: SecretPreserve},
-		FieldEmbeddingsAPIKey: {Operation: SecretReplace, Value: "new-key"},
+	preserved, issues := validateSecretOperations(map[FieldKey]SecretOperation{
+		FieldLLMAPIKey: {Operation: SecretPreserve},
 	})
 	if len(issues) != 0 {
 		t.Fatalf("issues = %+v", issues)
 	}
-	if _, ok := touched[FieldLLMAPIKey]; ok {
+	if _, ok := preserved[FieldLLMAPIKey]; ok {
 		t.Fatal("a preserved credential was marked as touched")
 	}
-	if _, ok := touched[FieldEmbeddingsAPIKey]; !ok {
+
+	replaced, issues := validateSecretOperations(map[FieldKey]SecretOperation{
+		FieldLLMAPIKey: {Operation: SecretReplace, Value: "new-key"},
+	})
+	if len(issues) != 0 {
+		t.Fatalf("issues = %+v", issues)
+	}
+	if _, ok := replaced[FieldLLMAPIKey]; !ok {
 		t.Fatal("a replaced credential was not marked as touched")
 	}
 }

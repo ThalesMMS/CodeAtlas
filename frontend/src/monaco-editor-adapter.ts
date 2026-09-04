@@ -55,6 +55,9 @@ type ModelRecord = {
 type PointerEvent = {
   clientX: number;
   clientY: number;
+  // Explain is an explicit gesture, so the host needs the Shift state that was
+  // live when the pointer moved, not whenever the throttled handler runs.
+  shiftKey?: boolean;
   editorPosition?: EditorPosition | null;
 };
 
@@ -255,6 +258,7 @@ export function createMonacoEditorAdapter() {
           const pointer: PointerEvent = {
             clientX: browserEvent.clientX,
             clientY: browserEvent.clientY,
+            shiftKey: browserEvent.shiftKey === true,
             editorPosition: event.target.position ? fromMonacoPosition(event.target.position) : null,
           };
           listeners.mousemove.forEach((listener) => listener(pointer));

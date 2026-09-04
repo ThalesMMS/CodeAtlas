@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an accessible Settings drawer that configures every documented CodeAtlas environment setting, persists per-user overrides, keeps API keys in the operating-system credential vault, and safely applies provider, embedding, and language-server changes at runtime.
+**Goal:** Add an accessible Settings drawer that configures every documented CodeAtlas environment setting, persists per-user overrides, keeps API keys in the operating-system credential vault, and safely applies provider and language-server changes at runtime.
 
-**Architecture:** A versioned settings manager resolves defaults, environment values, and saved overrides into immutable snapshots. It prepares every fallible runtime replacement before atomically persisting a revision, then activates AI, embedding, and semantic-provider references with infallible swaps; startup-only values are retained as next-start configuration. Local-only revisioned HTTP endpoints expose sanitized snapshots to a drawer available from both the top bar and bootstrap overlay.
+**Architecture:** A versioned settings manager resolves defaults, environment values, and saved overrides into immutable snapshots. It prepares every fallible runtime replacement before atomically persisting a revision, then activates AI and semantic-provider references with infallible swaps; startup-only values are retained as next-start configuration. Local-only revisioned HTTP endpoints expose sanitized snapshots to a drawer available from both the top bar and bootstrap overlay.
 
 **Tech Stack:** Go 1.23+, `sync/atomic`, `net/http`, `github.com/zalando/go-keyring`, Windows Credential Manager, macOS Keychain, Vite 8, TypeScript 6, browser JavaScript, Node test runner, Playwright E2E.
 
@@ -12,13 +12,12 @@
 
 ## Global Constraints
 
-- The catalog contains exactly the 23 names in `.env.example`; internal variables such as watch/probe/database controls remain environment-only.
+- The catalog contains exactly the 19 names in `.env.example`; internal variables such as watch/probe/database controls remain environment-only.
 - Precedence is field-specific: compiled default, then `.env`/process environment, then an explicit saved override.
 - Non-secret settings are global per OS user under `os.UserConfigDir()/CodeAtlas/settings.json`.
-- `CODEATLAS_LLM_API_KEY` and `CODEATLAS_EMBEDDINGS_API_KEY` never enter settings JSON, API responses, browser state, DOM values, logs, error details, fixtures, or commits.
+- `CODEATLAS_LLM_API_KEY` never enters settings JSON, API responses, browser state, DOM values, logs, error details, fixtures, or commits.
 - Secrets use `preserve`, `replace`, and `inherit`; an empty string is never overloaded as a secret operation.
 - Provider calls started before a swap finish on the old immutable provider. New calls use the new provider, including `ai.StructuredCompleter` and capability probes.
-- An embedding fingerprint mismatch disables dense reads until one transactional rebuild publishes compatible vectors; lexical retrieval remains available.
 - A changed LSP candidate starts and receives the current open-document set before the semantic router swaps. Failure preserves every previous manager and rejects the whole revision.
 - Workspace, listen address, and maximum file size are persisted but never mutated in the running composition root.
 - Settings administration requires a loopback peer, loopback `Host`, same-origin validation, and the per-process settings token. It remains available before `READY`.
@@ -44,7 +43,7 @@
 - Produces: `settings.FieldKey`, `Source`, `ApplyMode`, `Values`, `Overrides`, `Resolved`, and `FieldError`
 - Produces: `settings.DocumentedFields() []FieldDefinition` in `.env.example` order
 - Produces: `settings.Resolve(environment Environment, overrides Overrides, credentials SecretValues) Resolved`
-- Produces: exported configuration validators for bootstrap, provider, embeddings, and LSP groups
+- Produces: exported configuration validators for bootstrap, provider, and LSP groups
 
 - [ ] **Step 1: Write the failing catalog and precedence tests**
 
@@ -60,12 +59,10 @@ var documentedKeys = []FieldKey{
 	"CODEATLAS_SWIFT_LSP", "CODEATLAS_SWIFT_LSP_PATH",
 	"CODEATLAS_PYTHON_LSP", "CODEATLAS_PYTHON_LSP_PATH",
 	"CODEATLAS_RUST_LSP", "CODEATLAS_RUST_LSP_PATH",
-	"CODEATLAS_ENABLE_EMBEDDINGS", "CODEATLAS_EMBEDDING_MODEL",
-	"CODEATLAS_EMBEDDING_BASE_URL", "CODEATLAS_EMBEDDINGS_API_KEY",
 }
 ```
 
-Add table tests proving default `<` environment `<` saved override independently for strings, enums, booleans, durations, integers, and both secrets. Assert explicit empty overrides survive only for embedding base URL and TypeScript SDK path; `inherit` removes the override.
+Add table tests proving default `<` environment `<` saved override independently for strings, enums, booleans, durations, integers, and the secret. Assert explicit empty overrides survive only for the TypeScript SDK path; `inherit` removes the override.
 
 Add a recovery test: missing/invalid LLM endpoint, model, reasoning effort, or timeout yields provider field errors and an unconfigured candidate, but does not reject an otherwise valid workspace/listen bootstrap. Invalid workspace, listen address, or maximum file size remains fatal before bind.
 
@@ -107,7 +104,6 @@ Split validation into:
 ```go
 func ValidateBootstrap(Config) error
 func ValidateProvider(Config) []ValidationIssue
-func ValidateEmbeddings(Config) []ValidationIssue
 func ValidateLanguageServers(Config) []ValidationIssue
 ```
 
@@ -201,7 +197,7 @@ git commit -m "feat: persist versioned user settings"
 - Produces: `CredentialStore { Get(context.Context, string) (string, error); Set(context.Context, string, string) error; Delete(context.Context, string) error }`
 - Produces: `SecretOperation{Operation: preserve|replace|inherit, Value string}`
 - Produces: `CredentialTransaction` prepare/rollback/cleanup operations
-- Production service: `CodeAtlas`; accounts: `llm-api-key:<generation>` and `embeddings-api-key:<generation>`
+- Production service: `CodeAtlas`; account: `llm-api-key:<generation>`
 
 - [ ] **Step 1: Write failing fake-vault tests**
 
@@ -325,7 +321,7 @@ git commit -m "feat: coordinate revisioned settings updates"
 
 - [ ] **Step 1: Write failing concurrent delegation tests**
 
-Create blocking old/new providers. Start `Complete`, `CompleteStructured`, `Embed`, `ProbeChat`, and `ProbeEmbeddings` on old, swap, then release. Every in-flight result must be old and every subsequent result new. Run 100 concurrent readers/swaps under `-race` and prove `Name`/`Available` always come from a complete snapshot.
+Create blocking old/new providers. Start `Complete`, `CompleteStructured`, and `ProbeChat` on old, swap, then release. Every in-flight result must be old and every subsequent result new. Run 100 concurrent readers/swaps under `-race` and prove `Name`/`Available` always come from a complete snapshot.
 
 Add an observability test proving each concrete candidate is wrapped before activation and retains native structured completion. Do not wrap the runtime reference in a way that hides `StructuredCompleter` or `CapabilityProbe`.
 
@@ -427,71 +423,7 @@ git commit -m "feat: replace language servers in process"
 
 ---
 
-### Task 7: Make embeddings and dense availability dynamic
-
-**Files:**
-- Create: `backend/internal/retrieval/runtime.go`
-- Create: `backend/internal/retrieval/runtime_test.go`
-- Modify: `backend/internal/retrieval/hybrid.go`
-- Modify: `backend/internal/retrieval/embedding.go`
-- Modify: `backend/internal/retrieval/embedding_test.go`
-- Modify: `backend/internal/httpapi/server.go`
-- Modify: `backend/internal/httpapi/scheduler_test.go`
-
-**Interfaces:**
-- Produces: `retrieval.EmbeddingRuntime` states `disabled`, `available`, `rebuilding`, `unavailable`
-- Produces: `EmbeddingFingerprint{Provider, Model, ConfigurationHash, Dimension, TemplateVersion, Distance}`
-- Produces: prepare/activate/mark-available/mark-failed operations
-- Consumes: shared `ai.Runtime` and the existing `embeddings.rebuild` job path
-
-- [ ] **Step 1: Write failing state/fingerprint tests**
-
-Require this matrix:
-
-| State | Query embedding | Dense read | Incremental embedding | Lexical |
-|---|---:|---:|---:|---:|
-| disabled | no | no | no | yes |
-| rebuilding | no | no | no | yes |
-| unavailable | no | no | no | yes |
-| available + compatible | yes | yes | yes | yes |
-
-Changing enabled/model/base URL/credential generation must probe a dimension, compare metadata, enter rebuilding on mismatch, and become available only after compatible metadata commits. A failed job leaves lexical search working and state unavailable.
-
-- [ ] **Step 2: Run and prove failure**
-
-```powershell
-Set-Location backend
-go test ./internal/retrieval ./internal/httpapi -run 'TestEmbeddingRuntime|TestHybridUsesDenseOnlyWhenRuntimeAvailable' -count=1
-```
-
-Expected: `Hybrid` still captures fixed provider/enabled fields.
-
-- [ ] **Step 3: Implement immutable embedding snapshots**
-
-Keep `NewHybrid(store, provider, enabled)` for existing tests but make it construct a runtime; add a production constructor accepting the shared runtime. Load one embedding snapshot per Search/Generate/Reconcile operation.
-
-Activate incompatible changes as rebuilding and submit/reuse the existing `embeddings:repository` deduplication key. Derive `ConfigurationHash` from the normalized embedding endpoint and saved credential generation, store only its SHA-256-derived opaque provider identity in existing embedding metadata, and never persist the endpoint or key. The job captures its fingerprint, publishes vectors transactionally, and calls `MarkAvailable` only if still current; a superseded job cannot reactivate an old fingerprint.
-
-- [ ] **Step 4: Run retrieval/job race tests**
-
-```powershell
-Set-Location backend
-go test ./internal/retrieval ./internal/httpapi -count=1
-go test -race ./internal/retrieval -count=1
-```
-
-Expected: stale jobs cannot enable incompatible dense indexes.
-
-- [ ] **Step 5: Commit dynamic embeddings**
-
-```powershell
-git add backend/internal/retrieval/runtime.go backend/internal/retrieval/runtime_test.go backend/internal/retrieval/hybrid.go backend/internal/retrieval/embedding.go backend/internal/retrieval/embedding_test.go backend/internal/httpapi/server.go backend/internal/httpapi/scheduler_test.go
-git commit -m "feat: apply embedding settings without restart"
-```
-
----
-
-### Task 8: Compose concrete runtime preparation and startup settings
+### Task 7: Compose concrete runtime preparation and startup settings
 
 **Files:**
 - Create: `backend/internal/app/settings_runtime.go`
@@ -501,13 +433,13 @@ git commit -m "feat: apply embedding settings without restart"
 - Modify: `backend/internal/app/runtime_test.go`
 
 **Interfaces:**
-- Produces: concrete `settings.RuntimePreparer` combining AI, embedding, and LSP candidates
+- Produces: concrete `settings.RuntimePreparer` combining AI and LSP candidates
 - Produces: startup settings manager loaded before workspace/store/listener construction
 - Preserves: fixed running bootstrap values while exposing saved next-start values
 
 - [ ] **Step 1: Write failing all-or-nothing tests**
 
-With fake AI probes, embedding runtime, and LSP coordinator, change all live groups plus workspace. Require every probe/candidate prepare before persistence; one LSP failure aborts AI/embedding and leaves workspace unsaved. Success performs one file commit before swaps and returns workspace in `restartRequired`.
+With fake AI probes and an LSP coordinator, change all live groups plus workspace. Require every probe/candidate prepare before persistence; one LSP failure aborts the AI candidate and leaves workspace unsaved. Success performs one file commit before swaps and returns workspace in `restartRequired`.
 
 - [ ] **Step 2: Run and prove failure**
 
@@ -520,13 +452,13 @@ Expected: concrete runtime preparation/wiring is absent.
 
 - [ ] **Step 3: Build candidates without mutating live state**
 
-For AI changes, construct raw `OpenAICompatible`, keep its `CapabilityProbe`, wrap the business interface with `observability.ObserveProvider`, and prepare one `ai.RuntimeCandidate`. Probe chat when chat fields change or the runtime is unconfigured; probe embeddings when enabled and embedding fields change.
+For AI changes, construct raw `OpenAICompatible`, keep its `CapabilityProbe`, wrap the business interface with `observability.ObserveProvider`, and prepare one `ai.RuntimeCandidate`. Probe chat when chat fields change or the runtime is unconfigured.
 
-Combine AI, `EmbeddingRuntime.Prepare`, and `lspruntime.Coordinator.Prepare`. Return one prepared object whose `Activate` only swaps pointers/publishes state and schedules bounded old-resource cleanup.
+Combine AI and `lspruntime.Coordinator.Prepare`. Return one prepared object whose `Activate` only swaps pointers/publishes state and schedules bounded old-resource cleanup.
 
 - [ ] **Step 4: Load settings before fixed composition**
 
-In `run()`: load environment/defaults and the document; resolve vault generations; validate workspace/listen/max; capture running values; construct dynamic AI/embedding/semantic references; construct services against them; attach the concrete preparer. Isolate user-config roots in process tests so developer globals cannot affect workspaces/flags.
+In `run()`: load environment/defaults and the document; resolve vault generations; validate workspace/listen/max; capture running values; construct dynamic AI/semantic references; construct services against them; attach the concrete preparer. Isolate user-config roots in process tests so developer globals cannot affect workspaces/flags.
 
 - [ ] **Step 5: Run app/main tests**
 
@@ -546,7 +478,7 @@ git commit -m "feat: compose persisted runtime settings"
 
 ---
 
-### Task 9: Make first-run provider configuration recoverable
+### Task 8: Make first-run provider configuration recoverable
 
 **Files:**
 - Modify: `backend/internal/readiness/state.go`
@@ -604,7 +536,7 @@ git commit -m "feat: await provider configuration at startup"
 
 ---
 
-### Task 10: Expose a local-only sanitized settings API
+### Task 9: Expose a local-only sanitized settings API
 
 **Files:**
 - Create: `backend/internal/httpapi/settings.go`
@@ -622,7 +554,7 @@ git commit -m "feat: await provider configuration at startup"
 
 - [ ] **Step 1: Write failing API tests**
 
-Use a real loopback test server where peer addresses matter. Cover sanitized/no-store GET with 23 fields; valid PUT with applied/restart/job result; `409 SETTINGS_REVISION_CONFLICT`; prepared reset; `403` for non-loopback peer/Host, bad token, cross-origin Origin; `415` for mutation without JSON; `413` before decode over 64 KiB; unknown fields; and absence of request body/vault errors from logs/details.
+Use a real loopback test server where peer addresses matter. Cover sanitized/no-store GET with 19 fields; valid PUT with applied/restart result; `409 SETTINGS_REVISION_CONFLICT`; prepared reset; `403` for non-loopback peer/Host, bad token, cross-origin Origin; `415` for mutation without JSON; `413` before decode over 64 KiB; unknown fields; and absence of request body/vault errors from logs/details.
 
 - [ ] **Step 2: Write failing token-injection tests**
 
@@ -661,7 +593,7 @@ git commit -m "feat: expose local settings administration API"
 
 ---
 
-### Task 11: Build the discreet accessible Settings drawer
+### Task 10: Build the discreet accessible Settings drawer
 
 **Files:**
 - Create: `frontend/settings.js`
@@ -679,7 +611,7 @@ git commit -m "feat: expose local settings administration API"
 
 - [ ] **Step 1: Write failing structure/inventory tests**
 
-Require `#settings-button` with accessible name Settings after `#reindex-button`, and `#bootstrap-settings-button` inside bootstrap actions. Parse `.env.example`; require all 23 keys exactly once across General, LLM, Embeddings, Language servers. Secret descriptors must never accept a prefilled value.
+Require `#settings-button` with accessible name Settings after `#reindex-button`, and `#bootstrap-settings-button` inside bootstrap actions. Parse `.env.example`; require all 19 keys exactly once across General, LLM, Language servers. Secret descriptors must never accept a prefilled value.
 
 - [ ] **Step 2: Write failing pure controller tests**
 
@@ -696,7 +628,7 @@ Expected: buttons/controller/drawer are absent.
 
 - [ ] **Step 4: Add drawer markup and styling**
 
-Add a hidden right drawer with `role="dialog"`, `aria-modal`, labelled heading, close button, four sections, status region, and **Reset to .env**, **Cancel**, **Test and apply**. Reuse theme tokens. Keep the gear subordinate to reindex; use `min(100vw, 34rem)` full height on narrow screens. Render server values only via nodes/`textContent`, never server-derived `innerHTML`.
+Add a hidden right drawer with `role="dialog"`, `aria-modal`, labelled heading, close button, three sections, status region, and **Reset to .env**, **Cancel**, **Test and apply**. Reuse theme tokens. Keep the gear subordinate to reindex; use `min(100vw, 34rem)` full height on narrow screens. Render server values only via nodes/`textContent`, never server-derived `innerHTML`.
 
 - [ ] **Step 5: Bind during `boot()` before readiness**
 
@@ -721,7 +653,7 @@ git commit -m "feat: add runtime settings drawer"
 
 ---
 
-### Task 12: Verify E2E behavior, packaging, and documentation
+### Task 11: Verify E2E behavior, packaging, and documentation
 
 **Files:**
 - Create: `e2e/tests/settings.test.mjs`
@@ -748,22 +680,21 @@ Create a temp config root per process. Set `APPDATA` on Windows, `HOME` on macOS
 
 1. Start without LLM base/model, configure from bootstrap, reach ready.
 2. Block an old chat request, switch fake endpoint, prove old finishes on A and next uses B.
-3. Change embedding fingerprint, observe linked rebuild, lexical during rebuild, then dense compatible.
-4. Apply broken LSP path; PUT fails and old session still answers.
-5. Save workspace/listen/max, see running/saved, restart, confirm overrides beat conflicting env.
-6. Reset and confirm environment becomes effective.
-7. Synthetic non-loopback settings request is rejected.
-8. HTML/JSON/stdout/stderr/reports contain zero sentinel API-key matches.
+3. Apply broken LSP path; PUT fails and old session still answers.
+4. Save workspace/listen/max, see running/saved, restart, confirm overrides beat conflicting env.
+5. Reset and confirm environment becomes effective.
+6. Synthetic non-loopback settings request is rejected.
+7. HTML/JSON/stdout/stderr/reports contain zero sentinel API-key matches.
 
 - [ ] **Step 3: Run focused cross-layer suites**
 
 ```powershell
 Set-Location backend
-go test -race ./internal/settings ./internal/ai ./internal/semantic ./internal/lspruntime ./internal/retrieval ./internal/app ./internal/httpapi -count=1
+go test -race ./internal/settings ./internal/ai ./internal/semantic ./internal/lspruntime ./internal/app ./internal/httpapi -count=1
 Set-Location ..\frontend
 npm run check
 Set-Location ..\e2e
-npm test -- --test-name-pattern="settings|runtime provider|embedding settings|LSP settings"
+npm test -- --test-name-pattern="settings|runtime provider|LSP settings"
 ```
 
 Expected: every command passes and reports are secret-free.
@@ -774,7 +705,7 @@ Environment-gated tests create one randomized `CodeAtlas-test` account, read it,
 
 - [ ] **Step 5: Update README**
 
-Document entry points, all 23 fields/source badges, both settings paths, vault storage, precedence, live versus restart groups, reset, loopback-only administration, and no automatic secret import. Preserve and review the existing uncommitted packaging edits before staging README.
+Document entry points, all 19 fields/source badges, both settings paths, vault storage, precedence, live versus restart groups, reset, loopback-only administration, and no automatic secret import. Preserve and review the existing uncommitted packaging edits before staging README.
 
 - [ ] **Step 6: Run complete verification**
 
@@ -813,11 +744,10 @@ Do not stage `.env`, temp config roots, generated databases, vault values, or un
 
 ## Final Acceptance Checklist
 
-- [ ] Inventory matches `.env.example` exactly and covers all 23 variables.
+- [ ] Inventory matches `.env.example` exactly and covers all 19 variables.
 - [ ] Saved non-secrets survive restart and win independently over environment.
 - [ ] API keys survive restart only in the OS vault and never appear in JSON/API/DOM/logs.
 - [ ] Provider swaps preserve structured output, probes, observability, and in-flight isolation.
-- [ ] Embedding changes keep lexical available and never read incompatible dense vectors.
 - [ ] Failed LSP candidates preserve prior manager and open-document behavior.
 - [ ] Startup-only fields show running versus next-start and apply after restart.
 - [ ] First-run Settings advances the same process from awaiting configuration to ready.

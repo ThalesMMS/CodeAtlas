@@ -18,11 +18,10 @@ import (
 )
 
 type storeCommandConfig struct {
-	workspace        string
-	databasePath     string
-	legacyJSONPath   string
-	maxFileBytes     int64
-	enableEmbeddings bool
+	workspace      string
+	databasePath   string
+	legacyJSONPath string
+	maxFileBytes   int64
 }
 
 func runStoreCommand(args []string) int {
@@ -39,10 +38,9 @@ func runStoreCommand(args []string) int {
 
 	ctx := context.Background()
 	options := storemigrate.StartupOptions{
-		WorkspaceRoot:     cfg.workspace,
-		DatabasePath:      cfg.databasePath,
-		LegacyJSONPath:    cfg.legacyJSONPath,
-		EmbeddingsEnabled: cfg.enableEmbeddings,
+		WorkspaceRoot:  cfg.workspace,
+		DatabasePath:   cfg.databasePath,
+		LegacyJSONPath: cfg.legacyJSONPath,
 		RecoverLegacyTransactions: func() error {
 			journalDir := filepath.Join(filepath.Dir(cfg.databasePath), "transactions")
 			return service.RecoverTransactionsForIndexes(cfg.workspace, journalDir, cfg.legacyJSONPath, cfg.databasePath)
@@ -77,7 +75,7 @@ func runStoreCommand(args []string) int {
 			return 1
 		}
 		defer store.Close()
-		scanner := indexer.New(cfg.workspace, cfg.maxFileBytes, codeparser.New(), store, nil)
+		scanner := indexer.New(cfg.workspace, cfg.maxFileBytes, codeparser.New(), store)
 		if err := scanner.Scan(ctx); err != nil {
 			printStoreCommandError(err)
 			return 1
@@ -125,7 +123,6 @@ func parseStoreCommandFlags(command string, args []string) (storeCommandConfig, 
 	workspaceFlag := flags.String("workspace", envOrDefault("CODEATLAS_WORKSPACE", "."), "workspace directory to index")
 	dbFlag := flags.String("db", envOrDefault("CODEATLAS_DB", ""), "SQLite database path")
 	maxFileBytesFlag := flags.Int64("max-file-bytes", int64(envIntDefault("CODEATLAS_MAX_FILE_BYTES", 1_500_000)), "maximum source file size")
-	embeddingsFlag := flags.Bool("embeddings", envBoolDefault("CODEATLAS_ENABLE_EMBEDDINGS", false), "plan with embeddings enabled")
 	if err := flags.Parse(args); err != nil {
 		return storeCommandConfig{}, nil, err
 	}
@@ -149,11 +146,10 @@ func parseStoreCommandFlags(command string, args []string) (storeCommandConfig, 
 		return storeCommandConfig{}, nil, err
 	}
 	cfg := storeCommandConfig{
-		workspace:        workspace,
-		databasePath:     dbPath,
-		legacyJSONPath:   filepath.Join(filepath.Dir(dbPath), "index.json"),
-		maxFileBytes:     *maxFileBytesFlag,
-		enableEmbeddings: *embeddingsFlag,
+		workspace:      workspace,
+		databasePath:   dbPath,
+		legacyJSONPath: filepath.Join(filepath.Dir(dbPath), "index.json"),
+		maxFileBytes:   *maxFileBytesFlag,
 	}
 	return cfg, flags.Args(), nil
 }
@@ -193,18 +189,6 @@ func envIntDefault(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func envBoolDefault(key string, fallback bool) bool {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.ParseBool(value)
 	if err != nil {
 		return fallback
 	}

@@ -179,10 +179,6 @@ func ModelOutputInvalid(cause error) *AppError {
 	return newAppError(CodeModelOutputInvalid, "The model response failed grounding validation.", true, nil, cause)
 }
 
-func EmbeddingUnavailable(cause error) *AppError {
-	return newAppError(CodeEmbeddingUnavailable, "Dense search (embeddings) is unavailable.", true, nil, cause)
-}
-
 func StoreCorrupted(cause error) *AppError {
 	return newAppError(CodeStoreCorrupted, "The index is corrupted.", false, nil, cause)
 }

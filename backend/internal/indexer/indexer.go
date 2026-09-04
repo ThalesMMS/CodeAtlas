@@ -16,7 +16,6 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/mutation"
 	"github.com/ThalesMMS/CodeAtlas/internal/observability"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 )
 
 // Parser parses a file's source into symbols and edges. The concrete
@@ -31,7 +30,6 @@ type Indexer struct {
 	maxFileBytes int64
 	parser       Parser
 	store        repository.Store
-	retriever    *retrieval.Hybrid
 	broker       *Broker
 	logger       *slog.Logger
 	metrics      *observability.Metrics
@@ -60,10 +58,10 @@ type parsedCandidate struct {
 	err    error
 }
 
-func New(root string, maxFileBytes int64, parser Parser, store repository.Store, retriever *retrieval.Hybrid) *Indexer {
+func New(root string, maxFileBytes int64, parser Parser, store repository.Store) *Indexer {
 	return &Indexer{
 		root: root, maxFileBytes: maxFileBytes, parser: parser, store: store,
-		retriever: retriever, broker: NewBroker(), scanState: ScanIdle,
+		broker: NewBroker(), scanState: ScanIdle,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), clock: observability.RealClock,
 		readFile: os.ReadFile,
 	}

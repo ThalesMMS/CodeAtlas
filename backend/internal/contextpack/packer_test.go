@@ -202,7 +202,7 @@ func TestReciprocalRankFusion(t *testing.T) {
 	if top <= lower {
 		t.Fatalf("rank 1 (%f) should outrank rank 5 (%f)", top, lower)
 	}
-	both := reciprocalRankFusion(Candidate{LexicalRank: 3, DenseRank: 3})
+	both := reciprocalRankFusion(Candidate{LexicalRank: 3, PackageAPIRank: 3})
 	if both <= reciprocalRankFusion(Candidate{LexicalRank: 3}) {
 		t.Fatal("appearing in both lists should not lower the fused score")
 	}

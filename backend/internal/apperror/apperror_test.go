@@ -28,9 +28,13 @@ func TestHTTPStatusForEveryCode(t *testing.T) {
 		{CodeIndexingInProgress, http.StatusConflict},
 		{CodeStoreVersionConflict, http.StatusConflict},
 		{CodeDocumentVersionConflict, http.StatusConflict},
+		{CodeDocumentAlreadyOpen, http.StatusConflict},
+		{CodeDocumentDirty, http.StatusConflict},
+		{CodeDocumentNotFound, http.StatusNotFound},
 		{CodeDocumentConflictChanged, http.StatusConflict},
 		{CodeDocumentConflictNotFound, http.StatusNotFound},
 		{CodeDocumentResolutionInProgress, http.StatusConflict},
+		{CodeOverlayLimitExceeded, http.StatusTooManyRequests},
 		{CodeDeepWikiInProgress, http.StatusConflict},
 		{CodeJobQueueFull, http.StatusTooManyRequests},
 		{CodeJobNotFound, http.StatusNotFound},
@@ -40,11 +44,20 @@ func TestHTTPStatusForEveryCode(t *testing.T) {
 		{CodeProviderUnavailable, http.StatusServiceUnavailable},
 		{CodeProviderTimeout, http.StatusGatewayTimeout},
 		{CodeProviderUnauthorized, http.StatusServiceUnavailable},
-		{CodeEmbeddingUnavailable, http.StatusServiceUnavailable},
+		{CodeModelOutputInvalid, http.StatusBadGateway},
 		{CodeStoreCorrupted, http.StatusServiceUnavailable},
 		{CodePersistenceFailed, http.StatusServiceUnavailable},
 		{CodeInternalError, http.StatusInternalServerError},
 		{CodeRequestCanceled, 499},
+		{CodeDatabaseOpenFailed, http.StatusServiceUnavailable},
+		{CodeDatabaseMigrationFailed, http.StatusServiceUnavailable},
+		{CodeDatabaseMigrationChecksumMismatch, http.StatusServiceUnavailable},
+		{CodeDatabaseVersionTooNew, http.StatusServiceUnavailable},
+		{CodeArtifactInputSnapshotStale, http.StatusConflict},
+		{CodeArtifactNotFound, http.StatusNotFound},
+	}
+	if len(cases) != len(statusByCode) {
+		t.Fatalf("table pins %d codes but statusByCode has %d; pin a status for every code", len(cases), len(statusByCode))
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.code), func(t *testing.T) {
@@ -66,7 +79,7 @@ func TestEveryCodeHasAStatus(t *testing.T) {
 		CodeDocumentResolutionInProgress, CodeOverlayLimitExceeded, CodeDeepWikiInProgress,
 		CodeJobQueueFull, CodeJobNotFound, CodeJobRevisionConflict, CodeJobTypeUnsupported, CodeJobResultUnavailable,
 		CodeProviderUnavailable, CodeProviderTimeout, CodeProviderUnauthorized, CodeModelOutputInvalid,
-		CodeEmbeddingUnavailable, CodeStoreCorrupted, CodePersistenceFailed, CodeInternalError, CodeRequestCanceled,
+		CodeStoreCorrupted, CodePersistenceFailed, CodeInternalError, CodeRequestCanceled,
 		CodeDatabaseOpenFailed, CodeDatabaseMigrationFailed, CodeDatabaseMigrationChecksumMismatch, CodeDatabaseVersionTooNew,
 		CodeArtifactInputSnapshotStale, CodeArtifactNotFound,
 	}
@@ -139,7 +152,7 @@ func TestConstructorsSetExpectedFields(t *testing.T) {
 	retryable := []*AppError{
 		IndexingInProgress(), StoreVersionConflict(), DeepWikiGenerationInProgress(),
 		JobQueueFull(), JobRevisionConflict("job:1"), JobResultUnavailable("job:1"),
-		ProviderUnavailable(nil), ProviderTimeout(nil), EmbeddingUnavailable(nil), AppNotReady("x"),
+		ProviderUnavailable(nil), ProviderTimeout(nil), AppNotReady("x"),
 	}
 	for _, err := range retryable {
 		if !err.Retryable {

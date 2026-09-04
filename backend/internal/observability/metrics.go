@@ -17,9 +17,6 @@ type Metrics struct {
 	llmCalls      atomic.Int64
 	llmSuccess    atomic.Int64
 	llmFailure    atomic.Int64
-	embedCalls    atomic.Int64
-	embedSuccess  atomic.Int64
-	embedFailure  atomic.Int64
 	commits       atomic.Int64
 	commitsFailed atomic.Int64
 	sseDropped    atomic.Int64
@@ -45,9 +42,6 @@ type MetricsSnapshot struct {
 	LLMCallsTotal      int64     `json:"llmCallsTotal"`
 	LLMSuccessTotal    int64     `json:"llmSuccessTotal"`
 	LLMFailureTotal    int64     `json:"llmFailureTotal"`
-	EmbedCallsTotal    int64     `json:"embedCallsTotal"`
-	EmbedSuccessTotal  int64     `json:"embedSuccessTotal"`
-	EmbedFailureTotal  int64     `json:"embedFailureTotal"`
 	CommitsTotal       int64     `json:"commitsTotal"`
 	CommitsFailedTotal int64     `json:"commitsFailedTotal"`
 	SSEEventsDropped   int64     `json:"sseEventsDropped"`
@@ -101,18 +95,6 @@ func (m *Metrics) LLMCall(ok bool) {
 		m.llmSuccess.Add(1)
 	} else {
 		m.llmFailure.Add(1)
-	}
-}
-
-func (m *Metrics) EmbedCall(ok bool) {
-	if m == nil {
-		return
-	}
-	m.embedCalls.Add(1)
-	if ok {
-		m.embedSuccess.Add(1)
-	} else {
-		m.embedFailure.Add(1)
 	}
 }
 
@@ -179,9 +161,6 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 	snapshot.LLMCallsTotal = m.llmCalls.Load()
 	snapshot.LLMSuccessTotal = m.llmSuccess.Load()
 	snapshot.LLMFailureTotal = m.llmFailure.Load()
-	snapshot.EmbedCallsTotal = m.embedCalls.Load()
-	snapshot.EmbedSuccessTotal = m.embedSuccess.Load()
-	snapshot.EmbedFailureTotal = m.embedFailure.Load()
 	snapshot.CommitsTotal = m.commits.Load()
 	snapshot.CommitsFailedTotal = m.commitsFailed.Load()
 	snapshot.SSEEventsDropped = m.sseDropped.Load()

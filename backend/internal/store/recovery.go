@@ -100,10 +100,6 @@ func (s *Store) applySnapshot(snapshot diskSnapshot) error {
 	for _, page := range snapshot.Wiki {
 		st.wiki[page.Slug] = page
 	}
-	for id, vector := range snapshot.Embeddings {
-		st.embeddings[id] = vector
-	}
-	st.embeddingMetadata = snapshot.EmbeddingMetadata
 	st.version = snapshot.StoreVersion
 	st.indexedAt = snapshot.IndexedAt
 

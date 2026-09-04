@@ -11,11 +11,6 @@ const settingsFieldInventory = Object.freeze([
   Object.freeze({ key: 'CODEATLAS_LLM_REASONING_EFFORT', label: 'Reasoning effort', group: 'llm', kind: 'string', prefill: true }),
   Object.freeze({ key: 'CODEATLAS_LLM_TIMEOUT', label: 'LLM timeout', group: 'llm', kind: 'duration', prefill: true }),
 
-  Object.freeze({ key: 'CODEATLAS_ENABLE_EMBEDDINGS', label: 'Enable embeddings', group: 'embeddings', kind: 'boolean', prefill: true }),
-  Object.freeze({ key: 'CODEATLAS_EMBEDDING_MODEL', label: 'Embedding model', group: 'embeddings', kind: 'string', prefill: true }),
-  Object.freeze({ key: 'CODEATLAS_EMBEDDING_BASE_URL', label: 'Embedding base URL', group: 'embeddings', kind: 'string', prefill: true }),
-  Object.freeze({ key: 'CODEATLAS_EMBEDDINGS_API_KEY', label: 'Embeddings API key', group: 'embeddings', kind: 'secret', prefill: false }),
-
   Object.freeze({ key: 'CODEATLAS_GOPLS', label: 'Go language server mode', group: 'languageServers', kind: 'string', prefill: true }),
   Object.freeze({ key: 'CODEATLAS_GOPLS_PATH', label: 'gopls executable', group: 'languageServers', kind: 'string', prefill: true }),
   Object.freeze({ key: 'CODEATLAS_TYPESCRIPT_LSP', label: 'TypeScript language server mode', group: 'languageServers', kind: 'string', prefill: true }),
@@ -250,7 +245,7 @@ function createSettingsController(options = {}) {
         view.clearSecrets();
         view.markApplied?.(result.applied);
         const applied = Array.isArray(result.applied) && result.applied.length
-          ? `Applied: ${result.applied.join(', ')}.${result.embeddingJobId ? ` Rebuild job: ${result.embeddingJobId}.` : ''}`
+          ? `Applied: ${result.applied.join(', ')}.`
           : 'Settings saved.';
         view.setStatus(applied, 'success');
         options.announce?.(applied);
@@ -465,7 +460,7 @@ function createDOMSettingsView(options = {}) {
     },
     render(snapshot) {
       const fields = flattenedFields(snapshot);
-      for (const group of ['general', 'llm', 'embeddings', 'languageServers']) {
+      for (const group of ['general', 'llm', 'languageServers']) {
         const container = doc.querySelector(`[data-settings-fields="${group}"]`);
         if (!container) continue;
         container.replaceChildren();
@@ -597,7 +592,7 @@ function createDOMSettingsView(options = {}) {
     },
     markApplied(groups) {
       for (const node of drawer?.querySelectorAll('.settings-applied') || []) node.remove();
-      const knownGroups = new Set(['general', 'llm', 'embeddings', 'languageServers']);
+      const knownGroups = new Set(['general', 'llm', 'languageServers']);
       for (const group of (Array.isArray(groups) ? groups : []).filter((value) => knownGroups.has(value))) {
         for (const row of drawer?.querySelectorAll(`[data-settings-group="${group}"] [data-settings-field][data-settings-apply-mode="live"]`) || []) {
           const badge = doc.createElement('span');

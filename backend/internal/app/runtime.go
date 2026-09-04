@@ -18,25 +18,19 @@ import (
 // concrete implementations in cmd/codeatlas; tests inject fakes to exercise the
 // startup/readiness failure matrix without external network or shell processes.
 type RuntimeDeps struct {
-	Logger           *slog.Logger
-	Coordinator      *readiness.Coordinator
-	Registry         *capabilities.Registry
-	Probes           []capabilities.Probe
-	ProviderProbe    ai.CapabilityProbe
-	EnableEmbeddings bool
-	MigrateStore     func(context.Context) error
-	InitialIndex     func(context.Context) error
-	RunIndexer       func(context.Context)
-	// ReconcileEmbeddings validates the dense index before indexing and reports
-	// whether a background rebuild must be scheduled after READY.
-	ReconcileEmbeddings func(context.Context) (bool, error)
-	// ScheduleEmbeddingRebuild submits the embeddings.rebuild job once READY.
-	ScheduleEmbeddingRebuild func(context.Context)
-	Server                   *http.Server
-	Listen                   func() (net.Listener, error)
-	OnListening              func(net.Addr)
-	Persist                  func() error
-	ShutdownTimeout          time.Duration
+	Logger          *slog.Logger
+	Coordinator     *readiness.Coordinator
+	Registry        *capabilities.Registry
+	Probes          []capabilities.Probe
+	ProviderProbe   ai.CapabilityProbe
+	MigrateStore    func(context.Context) error
+	InitialIndex    func(context.Context) error
+	RunIndexer      func(context.Context)
+	Server          *http.Server
+	Listen          func() (net.Listener, error)
+	OnListening     func(net.Addr)
+	Persist         func() error
+	ShutdownTimeout time.Duration
 	// RecoveryError, when non-nil, marks a failed startup workspace-transaction
 	// recovery; the bootstrap fails immediately without probing.
 	RecoveryError error
@@ -69,18 +63,15 @@ func Run(ctx context.Context, deps RuntimeDeps) error {
 	go func() {
 		defer close(bootstrapDone)
 		runBootstrap(runCtx, bootstrapDeps{
-			logger:                   deps.Logger,
-			coordinator:              deps.Coordinator,
-			registry:                 deps.Registry,
-			probes:                   deps.Probes,
-			providerProbe:            deps.ProviderProbe,
-			enableEmbeddings:         deps.EnableEmbeddings,
-			migrateStore:             deps.MigrateStore,
-			initialIndex:             deps.InitialIndex,
-			runIndexer:               deps.RunIndexer,
-			reconcileEmbeddings:      deps.ReconcileEmbeddings,
-			scheduleEmbeddingRebuild: deps.ScheduleEmbeddingRebuild,
-			recoveryError:            deps.RecoveryError,
+			logger:        deps.Logger,
+			coordinator:   deps.Coordinator,
+			registry:      deps.Registry,
+			probes:        deps.Probes,
+			providerProbe: deps.ProviderProbe,
+			migrateStore:  deps.MigrateStore,
+			initialIndex:  deps.InitialIndex,
+			runIndexer:    deps.RunIndexer,
+			recoveryError: deps.RecoveryError,
 		})
 	}()
 

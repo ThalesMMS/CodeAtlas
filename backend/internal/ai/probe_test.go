@@ -141,128 +141,14 @@ func TestProbeChatRespectsCancellation(t *testing.T) {
 	}
 }
 
-func TestProbeEmbeddingsDisabled(t *testing.T) {
-	t.Parallel()
-	result := probeProvider(t, Options{BaseURL: "http://example.invalid", Model: "default"}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeDisabled {
-		t.Fatalf("ProbeEmbeddings = %#v, want disabled", result)
-	}
-}
-
-func TestProbeEmbeddingsModelMissing(t *testing.T) {
-	t.Parallel()
-	result := probeProvider(t, Options{BaseURL: "http://example.invalid", Model: "default", EnableEmbeddings: true}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeFailure || result.ErrorCode != CodeEmbeddingModelMissing {
-		t.Fatalf("ProbeEmbeddings = %#v, want failure/%s", result, CodeEmbeddingModelMissing)
-	}
-}
-
-func TestProbeEmbeddingsSuccess(t *testing.T) {
-	t.Parallel()
-	server := jsonServer(http.StatusOK, `{"data":[{"embedding":[0.1,0.2,0.3,0.4]}]}`)
-	defer server.Close()
-	result := probeProvider(t, Options{BaseURL: server.URL, Model: "default", EmbeddingModel: "embed", EnableEmbeddings: true}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeSuccess {
-		t.Fatalf("ProbeEmbeddings = %#v, want success", result)
-	}
-	if result.Metadata["dimension"] != "4" {
-		t.Fatalf("dimension metadata = %q, want 4", result.Metadata["dimension"])
-	}
-}
-
-func TestProbeEmbeddingsResponseValidation(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name string
-		body string
-	}{
-		{"no-vectors", `{"data":[]}`},
-		{"too-many-vectors", `{"data":[{"embedding":[0.1]},{"embedding":[0.2]}]}`},
-		{"empty-vector", `{"data":[{"embedding":[]}]}`},
-		{"non-finite", `{"data":[{"embedding":[1e999]}]}`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			server := jsonServer(http.StatusOK, tc.body)
-			defer server.Close()
-			result := probeProvider(t, Options{BaseURL: server.URL, Model: "default", EmbeddingModel: "embed", EnableEmbeddings: true}).ProbeEmbeddings(context.Background())
-			if result.Status != ProbeFailure || result.ErrorCode != CodeEmbeddingResponseInvalid {
-				t.Fatalf("ProbeEmbeddings(%s) = %#v, want failure/%s", tc.name, result, CodeEmbeddingResponseInvalid)
-			}
-		})
-	}
-}
-
-func TestProbeEmbeddingsUsesSeparateEmbeddingBaseURL(t *testing.T) {
-	t.Parallel()
-	var requestPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestPath = r.URL.Path
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
-	}))
-	defer server.Close()
-
-	result := probeProvider(t, Options{
-		BaseURL:          "http://chat.invalid/v1",
-		EmbeddingBaseURL: server.URL + "/v1",
-		Model:            "chat-model",
-		EmbeddingModel:   "embed",
-		EnableEmbeddings: true,
-	}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeSuccess {
-		t.Fatalf("ProbeEmbeddings = %#v, want success", result)
-	}
-	if requestPath != "/v1/embeddings" {
-		t.Fatalf("request path = %q, want /v1/embeddings", requestPath)
-	}
-}
-
-func TestProbeEmbeddingsUsesEmbeddingsAPIKey(t *testing.T) {
-	t.Parallel()
-	var authorization string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authorization = r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
-	}))
-	defer server.Close()
-
-	result := probeProvider(t, Options{
-		BaseURL:          "http://chat.invalid/v1",
-		EmbeddingBaseURL: server.URL,
-		APIKey:           "chat-key",
-		EmbeddingsAPIKey: "embeddings-key",
-		Model:            "chat-model",
-		EmbeddingModel:   "embed",
-		EnableEmbeddings: true,
-	}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeSuccess {
-		t.Fatalf("ProbeEmbeddings = %#v, want success", result)
-	}
-	if authorization != "Bearer embeddings-key" {
-		t.Fatalf("Authorization = %q, want embeddings API key", authorization)
-	}
-}
-
-func TestProbeEmbeddingsModelInvalid(t *testing.T) {
-	t.Parallel()
-	server := jsonServer(http.StatusNotFound, `{"error":"unknown model"}`)
-	defer server.Close()
-	result := probeProvider(t, Options{BaseURL: server.URL, Model: "default", EmbeddingModel: "embed", EnableEmbeddings: true}).ProbeEmbeddings(context.Background())
-	if result.Status != ProbeFailure || result.ErrorCode != CodeEmbeddingModelInvalid {
-		t.Fatalf("ProbeEmbeddings = %#v, want failure/%s", result, CodeEmbeddingModelInvalid)
-	}
-}
-
-func TestDisabledProviderProbes(t *testing.T) {
+func TestDisabledProviderProbeChatReportsUnconfiguredFailure(t *testing.T) {
 	t.Parallel()
 	disabled := Disabled{}
-	if got := disabled.ProbeChat(context.Background()); got.Status != ProbeFailure {
+	got := disabled.ProbeChat(context.Background())
+	if got.Status != ProbeFailure {
 		t.Fatalf("Disabled.ProbeChat = %#v, want failure", got)
 	}
-	if got := disabled.ProbeEmbeddings(context.Background()); got.Status != ProbeDisabled {
-		t.Fatalf("Disabled.ProbeEmbeddings = %#v, want disabled", got)
+	if got.ErrorCode != CodeProviderURLInvalid {
+		t.Fatalf("Disabled.ProbeChat ErrorCode = %q, want %s", got.ErrorCode, CodeProviderURLInvalid)
 	}
 }

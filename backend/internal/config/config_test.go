@@ -20,10 +20,6 @@ func llmEnv(t *testing.T) {
 	t.Setenv("CODEATLAS_LLM_MODEL", "default")
 	t.Setenv("CODEATLAS_LLM_REASONING_EFFORT", "")
 	t.Setenv("CODEATLAS_LLM_TIMEOUT", "")
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "false")
-	t.Setenv("CODEATLAS_EMBEDDING_BASE_URL", "")
-	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "")
-	t.Setenv("CODEATLAS_EMBEDDINGS_API_KEY", "")
 	t.Setenv("CODEATLAS_PROBE_TIMEOUT", "")
 	t.Setenv("CODEATLAS_GOPLS", "")
 	t.Setenv("CODEATLAS_GOPLS_PATH", "")
@@ -109,7 +105,6 @@ func TestLoadWithSettingsAppliesTypedOverridesBeforeMalformedEnvironment(t *test
 	workspace := t.TempDir()
 	t.Setenv("CODEATLAS_WORKSPACE", filepath.Join(t.TempDir(), "missing"))
 	t.Setenv("CODEATLAS_MAX_FILE_BYTES", "many")
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "yes")
 	t.Setenv("CODEATLAS_LLM_TIMEOUT", "eventually")
 
 	cfg, err := LoadWithSettings(settings.Values{
@@ -124,7 +119,7 @@ func TestLoadWithSettingsAppliesTypedOverridesBeforeMalformedEnvironment(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Workspace != workspace || cfg.MaxFileBytes != 2048 || cfg.EnableEmbeddings || cfg.LLMTimeout != time.Minute {
+	if cfg.Workspace != workspace || cfg.MaxFileBytes != 2048 || cfg.LLMTimeout != time.Minute {
 		t.Fatalf("LoadWithSettings() = %#v", cfg)
 	}
 }
@@ -191,38 +186,7 @@ func TestLoadDefaultsToSQLiteDatabasePath(t *testing.T) {
 	}
 }
 
-func TestLoadReportsMissingEmbeddingModelAsRecoverable(t *testing.T) {
-	resetFlags(t)
-	llmEnv(t)
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
-	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if issues := ValidateProvider(cfg); len(issues) == 0 || issues[len(issues)-1].EnvironmentKey != "CODEATLAS_EMBEDDING_MODEL" {
-		t.Fatalf("ValidateProvider() = %#v, want missing embedding model", issues)
-	}
-}
-
-func TestLoadAcceptsEmbeddingsWithModel(t *testing.T) {
-	resetFlags(t)
-	llmEnv(t)
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
-	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "embed-model")
-	t.Setenv("CODEATLAS_EMBEDDINGS_API_KEY", "embeddings-key")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if !cfg.EnableEmbeddings || cfg.EmbeddingModel != "embed-model" || cfg.EmbeddingsAPIKey != "embeddings-key" {
-		t.Fatalf("config = %#v, want embeddings enabled with model", cfg)
-	}
-}
-
-func TestLoadRejectsMalformedIntegerAndBooleanEnvironment(t *testing.T) {
+func TestLoadRejectsMalformedIntegerEnvironment(t *testing.T) {
 	tests := []struct {
 		name  string
 		key   string
@@ -231,7 +195,6 @@ func TestLoadRejectsMalformedIntegerAndBooleanEnvironment(t *testing.T) {
 		{name: "integer syntax", key: "CODEATLAS_MAX_FILE_BYTES", value: "many"},
 		{name: "integer zero", key: "CODEATLAS_MAX_FILE_BYTES", value: "0"},
 		{name: "integer negative", key: "CODEATLAS_MAX_FILE_BYTES", value: "-1"},
-		{name: "boolean", key: "CODEATLAS_ENABLE_EMBEDDINGS", value: "yes"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -243,39 +206,6 @@ func TestLoadRejectsMalformedIntegerAndBooleanEnvironment(t *testing.T) {
 				t.Fatalf("Load() error = %v, want invalid %s", err, test.key)
 			}
 		})
-	}
-}
-
-func TestLoadAcceptsEmbeddingBaseURL(t *testing.T) {
-	resetFlags(t)
-	llmEnv(t)
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
-	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "embed-model")
-	t.Setenv("CODEATLAS_EMBEDDING_BASE_URL", "http://127.0.0.1:11434/v1/")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.EmbeddingBaseURL != "http://127.0.0.1:11434/v1" {
-		t.Fatalf("EmbeddingBaseURL = %q, want %q", cfg.EmbeddingBaseURL, "http://127.0.0.1:11434/v1")
-	}
-}
-
-func TestLoadReportsInvalidEmbeddingBaseURLSchemeAsRecoverable(t *testing.T) {
-	resetFlags(t)
-	llmEnv(t)
-	t.Setenv("CODEATLAS_ENABLE_EMBEDDINGS", "true")
-	t.Setenv("CODEATLAS_EMBEDDING_MODEL", "embed-model")
-	t.Setenv("CODEATLAS_EMBEDDING_BASE_URL", "ftp://example.com")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	issues := ValidateProvider(cfg)
-	if len(issues) == 0 || issues[len(issues)-1].EnvironmentKey != "CODEATLAS_EMBEDDING_BASE_URL" {
-		t.Fatalf("ValidateProvider() = %#v, want invalid embedding base URL", issues)
 	}
 }
 

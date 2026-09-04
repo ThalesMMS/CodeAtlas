@@ -3,15 +3,12 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,7 +30,6 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/pythonlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/rustlsp"
 	"github.com/ThalesMMS/CodeAtlas/internal/scheduler"
 	"github.com/ThalesMMS/CodeAtlas/internal/semantic"
@@ -70,13 +66,9 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 	metrics := observability.NewMetrics()
 	rawProvider := ai.NewOpenAICompatible(ai.Options{
 		BaseURL:               cfg.LLMBaseURL,
-		EmbeddingBaseURL:      cfg.EmbeddingBaseURL,
 		APIKey:                cfg.LLMAPIKey,
-		EmbeddingsAPIKey:      cfg.EmbeddingsAPIKey,
 		Model:                 cfg.LLMModel,
 		ReasoningEffort:       cfg.LLMReasoningEffort,
-		EmbeddingModel:        cfg.EmbeddingModel,
-		EnableEmbeddings:      cfg.EnableEmbeddings,
 		StructuredProbeSchema: aiout.ExplanationSchema(),
 		ProbeTimeout:          cfg.ProbeTimeout,
 		RequestTimeout:        cfg.LLMTimeout,
@@ -135,11 +127,8 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 		10*time.Second,
 	)
 	defer lspCoordinator.Shutdown(context.Background())
-	embeddingRuntime := retrieval.NewEmbeddingRuntime(providerRuntime, cfg.EnableEmbeddings)
-	retriever := retrieval.NewHybridWithRuntime(storeRef, embeddingRuntime)
-	retriever.SetLogger(logger)
 	settingsRuntime := app.NewSettingsRuntime(app.SettingsRuntimeOptions{
-		AIRuntime: providerRuntime, EmbeddingRuntime: embeddingRuntime, EmbeddingStore: storeRef,
+		AIRuntime:      providerRuntime,
 		LSPCoordinator: lspCoordinator, Logger: logger, Metrics: metrics, ProbeTimeout: cfg.ProbeTimeout,
 		StructuredProbeSchema: aiout.ExplanationSchema(),
 		OnProviderActivated:   coordinator.SignalConfigurationRetry,
@@ -158,7 +147,7 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 	}
 	internalMutations := mutation.NewMemoryRegistry(mutation.RegistryConfig{})
 	defer internalMutations.Close()
-	backgroundIndexer := indexer.New(cfg.Workspace, cfg.MaxFileBytes, parserEngine, storeRef, retriever)
+	backgroundIndexer := indexer.New(cfg.Workspace, cfg.MaxFileBytes, parserEngine, storeRef)
 	backgroundIndexer.SetObservability(logger, metrics)
 	backgroundIndexer.SetMutationRegistry(internalMutations)
 	indexScheduler, err := scheduler.NewController(scheduler.Options{
@@ -176,15 +165,15 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 	explainer := service.NewExplainer(storeRef, workspace, provider)
 	semanticCollector := semevidence.NewCollector(semanticProvider, 4*time.Second, 24)
 	explainer.SetSemanticSources(semanticProvider, semanticCollector)
-	codemaps := service.NewCodemapService(storeRef, retriever, provider)
+	codemaps := service.NewCodemapService(storeRef, provider)
 	codemaps.SetSemanticSource(semanticCollector)
 	deepWiki := service.NewDeepWikiService(storeRef, provider)
 	deepWiki.SetSemanticSource(semanticCollector)
-	saver := service.NewSavePreparer(workspace, storeRef, parserEngine, retriever, cfg.MaxFileBytes)
+	saver := service.NewSavePreparer(workspace, storeRef, parserEngine, cfg.MaxFileBytes)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, storeRef, journalDir, cfg.DatabasePath)
 	committer.SetMutationRegistry(internalMutations)
 
-	api := httpapi.New(workspace, storeRef, backgroundIndexer, retriever, explainer, codemaps, deepWiki, committer, provider, coordinator, registry, logger)
+	api := httpapi.New(workspace, storeRef, backgroundIndexer, explainer, codemaps, deepWiki, committer, provider, coordinator, registry, logger)
 	api.SetSemanticProvider(semanticProvider)
 	api.SetMetrics(metrics)
 	api.SetScheduler(indexScheduler)
@@ -193,8 +182,6 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 	if requestRestart != nil {
 		api.SetRestartHandler(requestRestart)
 	}
-	settingsRuntime.SetEmbeddingScheduler(api.ScheduleEmbeddingRebuild)
-	api.SetEmbeddingRebuildHook(func() { publishEmbeddingCapability(storeRef, registry, "valid") })
 	httpServer := &http.Server{
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -214,18 +201,16 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 
 	logger.Info("CodeAtlas starting", "address", "http://"+cfg.ListenAddress, "workspace", cfg.Workspace, "provider", provider.Name())
 	err = app.Run(ctx, app.RuntimeDeps{
-		Logger:           logger,
-		Coordinator:      coordinator,
-		Registry:         registry,
-		Probes:           capabilities.LocalProbes(cfg.Workspace, filepath.Dir(cfg.DatabasePath), cfg.DatabasePath),
-		ProviderProbe:    providerProbe,
-		EnableEmbeddings: cfg.EnableEmbeddings,
+		Logger:        logger,
+		Coordinator:   coordinator,
+		Registry:      registry,
+		Probes:        capabilities.LocalProbes(cfg.Workspace, filepath.Dir(cfg.DatabasePath), cfg.DatabasePath),
+		ProviderProbe: providerProbe,
 		MigrateStore: func(ctx context.Context) error {
 			store, report, err := storemigrate.OpenSQLiteForStartup(ctx, storemigrate.StartupOptions{
-				WorkspaceRoot:     cfg.Workspace,
-				DatabasePath:      cfg.DatabasePath,
-				LegacyJSONPath:    legacyJSONPath,
-				EmbeddingsEnabled: cfg.EnableEmbeddings,
+				WorkspaceRoot:  cfg.Workspace,
+				DatabasePath:   cfg.DatabasePath,
+				LegacyJSONPath: legacyJSONPath,
 				RecoverLegacyTransactions: func() error {
 					return service.RecoverTransactionsForIndexesObserved(
 						cfg.Workspace, journalDir, metrics.JournalRecovered, legacyJSONPath, cfg.DatabasePath,
@@ -239,21 +224,12 @@ func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment 
 			logger.Info("SQLite store ready", "mode", report.Plan.Mode, "migrated", report.Migrated, "database", cfg.DatabasePath)
 			return nil
 		},
-		InitialIndex:        backgroundIndexer.Scan,
-		RunIndexer:          indexScheduler.Run,
-		ReconcileEmbeddings: reconcileEmbeddings(retriever, storeRef, registry, cfg),
-		ScheduleEmbeddingRebuild: func(ctx context.Context) {
-			jobID, err := api.ScheduleEmbeddingRebuild(ctx)
-			if err != nil {
-				logger.Error("failed to schedule embeddings rebuild", "error", err)
-				return
-			}
-			logger.Info("embeddings rebuild scheduled", "jobId", string(jobID))
-		},
-		Server:      httpServer,
-		Listen:      func() (net.Listener, error) { return net.Listen("tcp", cfg.ListenAddress) },
-		OnListening: onListening,
-		Persist:     nil,
+		InitialIndex: backgroundIndexer.Scan,
+		RunIndexer:   indexScheduler.Run,
+		Server:       httpServer,
+		Listen:       func() (net.Listener, error) { return net.Listen("tcp", cfg.ListenAddress) },
+		OnListening:  onListening,
+		Persist:      nil,
 	})
 	if err != nil {
 		logger.Error("runtime stopped with an error", "error", err)
@@ -319,10 +295,6 @@ func loadStartupSettings(ctx context.Context, cfg config.Config, environment set
 	cfg.PythonLSPPath = values.PythonLSPPath
 	cfg.RustLSPMode = values.RustLSPMode
 	cfg.RustLSPPath = values.RustLSPPath
-	cfg.EnableEmbeddings = values.EnableEmbeddings
-	cfg.EmbeddingModel = values.EmbeddingModel
-	cfg.EmbeddingBaseURL = values.EmbeddingBaseURL
-	cfg.EmbeddingsAPIKey = values.EmbeddingsAPIKey
 	return startupSettings{Config: cfg, Document: document, Resolved: resolved}, nil
 }
 
@@ -738,74 +710,4 @@ func rustLSPCapability(manager *rustlsp.Manager, duration time.Duration) capabil
 		result.State = capabilities.CapabilityDisabled
 	}
 	return result
-}
-
-// reconcileEmbeddings returns the startup dense-index reconciliation step. It is
-// a no-op when embeddings are disabled; otherwise it rebuilds incompatible/legacy
-// vectors and publishes the resulting metadata to the capability registry.
-// reconcileEmbeddings validates the dense index before the initial scan. It
-// never generates vectors: an incompatible or empty index is reported as
-// needing a rebuild, which the runtime schedules as a background job after
-// READY so startup is never blocked on the embedding provider.
-func reconcileEmbeddings(retriever *retrieval.Hybrid, repository repository.Store, registry *capabilities.Registry, cfg config.Config) func(context.Context) (bool, error) {
-	return func(ctx context.Context) (bool, error) {
-		if !cfg.EnableEmbeddings {
-			return false, nil
-		}
-		needsRebuild, err := retriever.PrepareStartup(ctx, embeddingProviderID(cfg), cfg.EmbeddingModel)
-		if err != nil {
-			return false, err
-		}
-		state := "valid"
-		if needsRebuild {
-			state = "rebuilding"
-		}
-		publishEmbeddingCapability(repository, registry, state)
-		return needsRebuild, nil
-	}
-}
-
-// publishEmbeddingCapability refreshes the llm-embeddings capability metadata
-// from the persisted dense index.
-func publishEmbeddingCapability(repository repository.Store, registry *capabilities.Registry, state string) {
-	metadata := repository.EmbeddingMetadata()
-	registry.UpdateCapability(capabilities.Result{
-		ID:          "llm-embeddings",
-		Requirement: capabilities.Required,
-		State:       capabilities.CapabilityAvailable,
-		CheckedAt:   time.Now().UTC(),
-		Metadata: map[string]string{
-			"dimension":       strconv.Itoa(metadata.Dimension),
-			"model":           metadata.Model,
-			"provider":        metadata.Provider,
-			"templateVersion": metadata.TemplateVersion,
-			"distance":        metadata.Distance,
-			"vectorCount":     strconv.Itoa(repository.EmbeddingCount()),
-			"state":           state,
-		},
-	})
-}
-
-func embeddingProviderID(cfg config.Config) string {
-	endpoint := strings.TrimSpace(cfg.EmbeddingBaseURL)
-	if endpoint == "" {
-		endpoint = cfg.LLMBaseURL
-	}
-	normalized := normalizeEndpointForFingerprint(endpoint)
-	sum := sha256.Sum256([]byte(normalized))
-	return "openai-compatible:embeddings:" + hex.EncodeToString(sum[:8])
-}
-
-func normalizeEndpointForFingerprint(endpoint string) string {
-	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
-	parsed, err := url.Parse(endpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return endpoint
-	}
-	parsed.User = nil
-	parsed.Fragment = ""
-	parsed.Scheme = strings.ToLower(parsed.Scheme)
-	parsed.Host = strings.ToLower(parsed.Host)
-	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	return parsed.String()
 }

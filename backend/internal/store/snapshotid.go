@@ -15,7 +15,7 @@ import (
 // snapshotSchema is the version of the canonical-hash definition. Bumping it (for
 // a parser/schema/template change that alters the meaning of the index)
 // invalidates every previously computed SnapshotID.
-const snapshotSchema = 4
+const snapshotSchema = 5
 
 // canonicalSnapshot is the deterministic, ordered projection of the authoritative
 // state that is hashed into a SnapshotID. It intentionally excludes volatile and
@@ -29,7 +29,6 @@ type canonicalSnapshot struct {
 	Identities        []canonicalIdentity   `json:"identities"`
 	Occurrences       []canonicalOccurrence `json:"occurrences"`
 	Edges             []canonicalEdge       `json:"edges"`
-	Embedding         canonicalEmbedding    `json:"embedding"`
 }
 
 type canonicalFile struct {
@@ -66,21 +65,6 @@ type canonicalEdge struct {
 	Path         string `json:"path"`
 	Line         int    `json:"line"`
 	Confidence   string `json:"confidence"`
-}
-
-type canonicalEmbedding struct {
-	Enabled         bool              `json:"enabled"`
-	Provider        string            `json:"provider"`
-	Model           string            `json:"model"`
-	Dimension       int               `json:"dimension"`
-	TemplateVersion string            `json:"templateVersion"`
-	Distance        string            `json:"distance"`
-	Vectors         []canonicalVector `json:"vectors"`
-}
-
-type canonicalVector struct {
-	SymbolID string   `json:"symbolId"`
-	Values   []string `json:"values"`
 }
 
 // computeSnapshotID builds the canonical representation, serializes it with the
@@ -122,26 +106,6 @@ func computeSnapshotID(st *state) domain.SnapshotID {
 		})
 	}
 	sort.Slice(canonical.Edges, func(i, j int) bool { return canonicalEdgeLess(canonical.Edges[i], canonical.Edges[j]) })
-
-	canonical.Embedding = canonicalEmbedding{
-		Enabled:         st.embeddingMetadata.Enabled,
-		Provider:        st.embeddingMetadata.Provider,
-		Model:           st.embeddingMetadata.Model,
-		Dimension:       st.embeddingMetadata.Dimension,
-		TemplateVersion: st.embeddingMetadata.TemplateVersion,
-		Distance:        st.embeddingMetadata.Distance,
-		Vectors:         make([]canonicalVector, 0, len(st.embeddings)),
-	}
-	for id, vector := range st.embeddings {
-		values := make([]string, len(vector))
-		for i, value := range vector {
-			values[i] = strconv.FormatFloat(value, 'g', -1, 64)
-		}
-		canonical.Embedding.Vectors = append(canonical.Embedding.Vectors, canonicalVector{SymbolID: id, Values: values})
-	}
-	sort.Slice(canonical.Embedding.Vectors, func(i, j int) bool {
-		return canonical.Embedding.Vectors[i].SymbolID < canonical.Embedding.Vectors[j].SymbolID
-	})
 
 	encoded, err := json.Marshal(canonical)
 	if err != nil {

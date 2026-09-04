@@ -8,11 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/indexer"
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/watcher"
 )
 
@@ -22,8 +20,7 @@ func TestIntegrationWatcherHintsCommitFinalStateOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	retriever := retrieval.NewHybrid(repo, ai.Disabled{}, false)
-	idx := indexer.New(root, 1_500_000, codeparser.New(), repo, retriever)
+	idx := indexer.New(root, 1_500_000, codeparser.New(), repo)
 	fakeWatcher := newFakeWorkspaceWatcher()
 	clock := NewManualClock(time.Unix(1700000000, 0).UTC())
 	controller, err := NewController(Options{

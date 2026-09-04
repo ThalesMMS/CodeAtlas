@@ -38,10 +38,6 @@ type Values struct {
 	PythonLSPPath      string
 	RustLSPMode        string
 	RustLSPPath        string
-	EnableEmbeddings   bool
-	EmbeddingModel     string
-	EmbeddingBaseURL   string
-	EmbeddingsAPIKey   string
 }
 
 type FieldError struct {

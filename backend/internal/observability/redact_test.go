@@ -32,8 +32,8 @@ func TestRedactionCanariesNeverSurvive(t *testing.T) {
 
 func TestRedactURLKeepsHostAndPath(t *testing.T) {
 	t.Parallel()
-	out := RedactURL("https://user:pw@api.host:8000/v1/embeddings?token=abc")
-	if !strings.Contains(out, "api.host:8000") || !strings.Contains(out, "/v1/embeddings") {
+	out := RedactURL("https://user:pw@api.host:8000/v1/chat/completions?token=abc")
+	if !strings.Contains(out, "api.host:8000") || !strings.Contains(out, "/v1/chat/completions") {
 		t.Fatalf("RedactURL dropped useful diagnostics: %s", out)
 	}
 }

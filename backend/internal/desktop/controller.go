@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+// ApplicationName is the name the desktop shell shows for CodeAtlas: the
+// window title and the menu bar's "Quit <name>" item.
+const ApplicationName = "CodeAtlas"
+
 type Controller struct {
 	Factory WindowFactory
 	Server  ServerFunc
@@ -37,9 +41,10 @@ func (c Controller) Run(parent context.Context) error {
 		return err
 	}
 	defer window.Destroy()
-	window.SetTitle("CodeAtlas")
+	window.SetTitle(ApplicationName)
 	window.SetSize(1280, 800, SizeDefault)
 	window.SetSize(900, 600, SizeMinimum)
+	installQuitMenu(window)
 	bindFolderPicker(window)
 
 	runCtx, cancel := context.WithCancel(parent)
@@ -150,6 +155,17 @@ func (c Controller) serve(ctx context.Context, window Window, listening chan<- n
 		}
 		window.Dispatch(func() { window.SetHTML(RestartingHTML()) })
 	}
+}
+
+// installQuitMenu adds the standard Quit item on platforms that show an
+// application menu bar. A webview window starts without one, so the quit
+// shortcut would otherwise do nothing; windows without a menu bar skip it.
+func installQuitMenu(window Window) {
+	menu, ok := window.(QuitMenu)
+	if !ok {
+		return
+	}
+	menu.InstallQuitMenu(ApplicationName)
 }
 
 // bindFolderPicker exposes the native folder chooser to the page when the

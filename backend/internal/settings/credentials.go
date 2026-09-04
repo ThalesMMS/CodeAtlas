@@ -51,20 +51,18 @@ func PrepareCredentialTransaction(ctx context.Context, store CredentialStore, cu
 		return nil, errors.New("credential store is unavailable")
 	}
 	tx := &CredentialTransaction{
-		store: store, values: make(SecretValues, 2), references: current,
+		store: store, values: make(SecretValues, 1), references: current,
 	}
-	for _, key := range []FieldKey{FieldLLMAPIKey, FieldEmbeddingsAPIKey} {
-		operation := operations[key]
-		if operation.Operation == "" {
-			operation.Operation = SecretPreserve
-		}
-		if err := tx.prepareOne(ctx, key, currentGeneration(current, key), environment[key], operation); err != nil {
-			_ = tx.Rollback(context.Background())
-			return nil, err
-		}
+	operation := operations[FieldLLMAPIKey]
+	if operation.Operation == "" {
+		operation.Operation = SecretPreserve
+	}
+	if err := tx.prepareOne(ctx, FieldLLMAPIKey, currentGeneration(current, FieldLLMAPIKey), environment[FieldLLMAPIKey], operation); err != nil {
+		_ = tx.Rollback(context.Background())
+		return nil, err
 	}
 	for key := range operations {
-		if key != FieldLLMAPIKey && key != FieldEmbeddingsAPIKey {
+		if key != FieldLLMAPIKey {
 			_ = tx.Rollback(context.Background())
 			return nil, fmt.Errorf("credential operation is not allowed for %s", key)
 		}
@@ -154,27 +152,16 @@ func (t *CredentialTransaction) CleanupSuperseded(ctx context.Context) error {
 	return errors.Join(failures...)
 }
 
-func credentialAccount(key FieldKey, generation string) string {
-	prefix := "llm-api-key:"
-	if key == FieldEmbeddingsAPIKey {
-		prefix = "embeddings-api-key:"
-	}
-	return prefix + generation
+func credentialAccount(_ FieldKey, generation string) string {
+	return "llm-api-key:" + generation
 }
 
-func currentGeneration(references CredentialReferences, key FieldKey) string {
-	if key == FieldEmbeddingsAPIKey {
-		return references.EmbeddingsAPIKeyGeneration
-	}
+func currentGeneration(references CredentialReferences, _ FieldKey) string {
 	return references.LLMAPIKeyGeneration
 }
 
-func setCurrentGeneration(references *CredentialReferences, key FieldKey, generation string) {
-	if key == FieldEmbeddingsAPIKey {
-		references.EmbeddingsAPIKeyGeneration = generation
-	} else {
-		references.LLMAPIKeyGeneration = generation
-	}
+func setCurrentGeneration(references *CredentialReferences, _ FieldKey, generation string) {
+	references.LLMAPIKeyGeneration = generation
 }
 
 func newCredentialGeneration() (string, error) {

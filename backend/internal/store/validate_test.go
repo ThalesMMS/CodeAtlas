@@ -42,8 +42,6 @@ func validFinalizedState() *state {
 		domain.SymbolOccurrence{ID: "occ_fn", SymbolID: "id_fn", Path: "pkg/svc.go", Range: domain.Range{Start: domain.Position{Line: 2, Column: 1}, End: domain.Position{Line: 5, Column: 1}}, Signature: "func Submit()", BodyHash: "h2"})
 	st.edges = []domain.Edge{{ID: 1, FromSymbolID: "id_file", ToSymbolID: "id_fn", ToName: "Submit", Type: "contains", Path: "pkg/svc.go", Line: 2, Confidence: 0.95}}
 	st.nextEdgeID = 2
-	st.embeddings["id_fn"] = []float64{0.1, 0.2, 0.3}
-	st.embeddingMetadata = domain.EmbeddingIndexMetadata{Enabled: true, Provider: "openai-compatible", Model: "default", Dimension: 3, TemplateVersion: "v1", Distance: "cosine", BuiltAt: now}
 	st.wiki["overview"] = domain.WikiPage{Slug: "overview", Title: "Overview", Markdown: "# Overview", SourceHash: hash, Provider: "test", UpdatedAt: now}
 	st.finalize()
 	return st
@@ -135,39 +133,6 @@ func TestValidateEdgeInvariants(t *testing.T) {
 	}
 	if !HasBlockingViolations(v) {
 		t.Error("NaN/out-of-range confidence should be blocking")
-	}
-}
-
-func TestValidateEmbeddingInvariants(t *testing.T) {
-	t.Parallel()
-	st := validFinalizedState()
-	st.embeddings["ghost"] = []float64{0.1, 0.2, 0.3} // orphan
-	st.embeddings["id_file"] = []float64{0.1, 0.2}    // mixed dimension
-	st.symbols["id_nan"] = domain.Symbol{ID: "id_nan", Path: "pkg/svc.go", Name: "N", Kind: "function", Language: "go", Range: validatorTestRange()}
-	st.embeddings["id_nan"] = []float64{0.1, math.Inf(1), 0.3} // non-finite
-	st.finalize()
-
-	v := ValidateState(st)
-	for _, code := range []string{ViolationEmbeddingOrphan, ViolationEmbeddingDimMixed, ViolationEmbeddingNonFinite} {
-		if !hasCode(v, code) {
-			t.Errorf("missing expected embedding violation %s; got %v", code, codes(v))
-		}
-	}
-	if !HasBlockingViolations(v) {
-		t.Error("embedding corruption should be blocking")
-	}
-}
-
-func TestValidateEmbeddingDimensionAgainstMetadata(t *testing.T) {
-	t.Parallel()
-	st := validFinalizedState()
-	st.embeddingMetadata.Dimension = 99 // metadata claims a different dimension than the vectors
-	v := ValidateState(st)
-	if !hasCode(v, ViolationEmbeddingDimMetadata) {
-		t.Fatalf("expected metadata-dimension violation; got %v", codes(v))
-	}
-	if !HasBlockingViolations(v) {
-		t.Error("metadata dimension mismatch should be blocking")
 	}
 }
 
@@ -304,7 +269,6 @@ func TestValidateConcurrentWithMutations(t *testing.T) {
 func FuzzDecodeAndValidate(f *testing.F) {
 	f.Add([]byte(`{"version":3}`))
 	f.Add([]byte(`{"version":3,"symbols":[{"id":"s","path":"a.go"}],"edges":[{"id":1,"type":"calls"}]}`))
-	f.Add([]byte(`{"version":3,"embeddings":{"x":[1.0,2.0]}}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var snapshot diskSnapshot
 		if err := json.Unmarshal(data, &snapshot); err != nil {
@@ -321,10 +285,6 @@ func FuzzDecodeAndValidate(f *testing.F) {
 		for _, page := range snapshot.Wiki {
 			st.wiki[page.Slug] = page
 		}
-		for id, vector := range snapshot.Embeddings {
-			st.embeddings[id] = vector
-		}
-		st.embeddingMetadata = snapshot.EmbeddingMetadata
 		st.rebuildLexical()
 
 		violations := ValidateState(st)

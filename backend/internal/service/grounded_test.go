@@ -41,9 +41,6 @@ func (p *scriptedProvider) Complete(_ context.Context, _ string, userPrompt stri
 	}
 	return p.responses[index], nil
 }
-func (p *scriptedProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
-}
 
 func TestGenerateGroundedPreservesContextErrors(t *testing.T) {
 	t.Parallel()

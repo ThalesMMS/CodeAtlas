@@ -17,15 +17,13 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/contextpack"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/textutil"
 )
 
 type CodemapService struct {
-	store     repository.Store
-	retriever *retrieval.Hybrid
-	provider  ai.Provider
-	packer    *contextpack.Packer
+	store    repository.Store
+	provider ai.Provider
+	packer   *contextpack.Packer
 }
 
 const (
@@ -36,11 +34,11 @@ const (
 	codemapMaxAttempts     = 3
 )
 
-func NewCodemapService(store repository.Store, retriever *retrieval.Hybrid, provider ai.Provider) *CodemapService {
+func NewCodemapService(store repository.Store, provider ai.Provider) *CodemapService {
 	packer := contextpack.NewPacker(store, map[contextpack.Feature]contextpack.Policy{
 		contextpack.FeatureCodemap: contextpack.NewCodemapPolicy(),
 	})
-	return &CodemapService{store: store, retriever: retriever, provider: provider, packer: packer}
+	return &CodemapService{store: store, provider: provider, packer: packer}
 }
 
 // SetSemanticSource adds optional language-server evidence to Codemap context

@@ -3,7 +3,7 @@ package changeset_test
 import (
 	"bytes"
 	"errors"
-	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -27,7 +27,6 @@ func TestBuildValidChangeSet(t *testing.T) {
 		WithExpectedVersion(7).
 		Upsert(validParsed("pkg/a.go", "s1")).
 		Delete("pkg/old.go").
-		Embed("s1", []float64{0.1, 0.2, 0.3}).
 		Build(fixedTime)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -35,8 +34,8 @@ func TestBuildValidChangeSet(t *testing.T) {
 	if cs.ExpectedVersion() != 7 || cs.IsNoop() {
 		t.Fatalf("unexpected change set: version=%d noop=%v", cs.ExpectedVersion(), cs.IsNoop())
 	}
-	if len(cs.Upserts()) != 1 || len(cs.DeletedPaths()) != 1 || len(cs.Embeddings()) != 1 {
-		t.Fatalf("collections = %d/%d/%d, want 1/1/1", len(cs.Upserts()), len(cs.DeletedPaths()), len(cs.Embeddings()))
+	if len(cs.Upserts()) != 1 || len(cs.DeletedPaths()) != 1 {
+		t.Fatalf("collections = %d/%d, want 1/1", len(cs.Upserts()), len(cs.DeletedPaths()))
 	}
 	if cs.ID() == "" || !bytes.HasPrefix([]byte(cs.ID()), []byte("sha256:")) {
 		t.Fatalf("ID = %q, want sha256:... ", cs.ID())
@@ -98,37 +97,6 @@ func TestValidationInvariants(t *testing.T) {
 			},
 			changeset.CodeDuplicateOccurrence,
 		},
-		{
-			"embedding for unknown symbol",
-			func() *changeset.Builder {
-				return changeset.NewBuilder().Upsert(validParsed("a.go", "s1")).Embed("ghost", []float64{0.1})
-			},
-			changeset.CodeEmbeddingUnknownSym,
-		},
-		{
-			"empty embedding vector",
-			func() *changeset.Builder {
-				return changeset.NewBuilder().Upsert(validParsed("a.go", "s1")).Embed("s1", []float64{})
-			},
-			changeset.CodeEmbeddingInvalidVec,
-		},
-		{
-			"non-finite embedding",
-			func() *changeset.Builder {
-				return changeset.NewBuilder().Upsert(validParsed("a.go", "s1")).Embed("s1", []float64{math.Inf(1)})
-			},
-			changeset.CodeEmbeddingInvalidVec,
-		},
-		{
-			"embedding dimension mismatch",
-			func() *changeset.Builder {
-				return changeset.NewBuilder().
-					Upsert(validParsed("a.go", "s1", "s2")).
-					Embed("s1", []float64{0.1, 0.2}).
-					Embed("s2", []float64{0.3})
-			},
-			changeset.CodeEmbeddingDimMismatch,
-		},
 		{"empty change set", func() *changeset.Builder { return changeset.NewBuilder() }, changeset.CodeEmpty},
 	}
 	for _, tc := range cases {
@@ -157,11 +125,35 @@ func TestAllowEmptyNoop(t *testing.T) {
 	}
 }
 
+func TestIsNoopTracksContentOnly(t *testing.T) {
+	t.Parallel()
+	// Diagnostics and an expected version are metadata: neither turns an empty
+	// change into real work. Only upserts and deletions do.
+	metadataOnly, err := changeset.NewBuilder().
+		AllowEmpty().
+		WithExpectedVersion(9).
+		Diagnose(changeset.Diagnostic{Severity: changeset.SeverityWarning, Code: "W1"}).
+		Build(fixedTime)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if !metadataOnly.IsNoop() {
+		t.Fatal("metadata alone must not make a change set non-noop")
+	}
+
+	deleteOnly, err := changeset.NewBuilder().Delete("gone.go").Build(fixedTime)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if deleteOnly.IsNoop() {
+		t.Fatal("a deletion must make the change set non-noop")
+	}
+}
+
 func TestDeepCopyIsolatesInputMutation(t *testing.T) {
 	t.Parallel()
 	parsed := validParsed("a.go", "s1")
-	vector := []float64{0.1, 0.2}
-	cs, err := changeset.NewBuilder().Upsert(parsed).Embed("s1", vector).Build(fixedTime)
+	cs, err := changeset.NewBuilder().Upsert(parsed).Build(fixedTime)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -169,32 +161,39 @@ func TestDeepCopyIsolatesInputMutation(t *testing.T) {
 	// Mutate the caller's inputs after construction.
 	parsed.Symbols[0].ID = "tampered"
 	parsed.Symbols[0].Name = "tampered"
-	vector[0] = 99
 
 	got := cs.Upserts()
 	if got[0].Symbols[0].ID != "s1" || got[0].Symbols[0].Name != "s1" {
 		t.Fatalf("input mutation leaked into change set: %#v", got[0].Symbols[0])
 	}
-	if cs.Embeddings()["s1"][0] != 0.1 {
-		t.Fatalf("embedding mutation leaked: %v", cs.Embeddings()["s1"])
-	}
 }
 
 func TestAccessorsReturnCopies(t *testing.T) {
 	t.Parallel()
-	cs, err := changeset.NewBuilder().Upsert(validParsed("a.go", "s1")).Embed("s1", []float64{1, 2}).Build(fixedTime)
+	cs, err := changeset.NewBuilder().
+		Upsert(validParsed("a.go", "s1")).
+		Delete("old.go").
+		Diagnose(changeset.Diagnostic{Severity: changeset.SeverityWarning, Code: "W1"}).
+		Build(fixedTime)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 	cs.Upserts()[0].Symbols[0].ID = "tampered"
-	cs.DeletedPaths() // no-op but must not panic
-	cs.Embeddings()["s1"][0] = 99
+	cs.DeletedPaths()[0] = "tampered.go"
+	cs.Diagnostics()[0].Code = "TAMPERED"
+	cs.Canonical()[0] = 'x'
 
 	if cs.Upserts()[0].Symbols[0].ID != "s1" {
 		t.Fatal("mutating an accessor result changed internal state")
 	}
-	if cs.Embeddings()["s1"][0] != 1 {
-		t.Fatal("mutating embeddings accessor changed internal state")
+	if cs.DeletedPaths()[0] != "old.go" {
+		t.Fatalf("mutating deleted paths accessor changed internal state: %v", cs.DeletedPaths())
+	}
+	if cs.Diagnostics()[0].Code != "W1" {
+		t.Fatalf("mutating diagnostics accessor changed internal state: %v", cs.Diagnostics())
+	}
+	if cs.Canonical()[0] == 'x' {
+		t.Fatal("mutating canonical accessor changed internal state")
 	}
 }
 
@@ -207,7 +206,6 @@ func TestCanonicalRepresentationIsDeterministic(t *testing.T) {
 		Upsert(validParsed("a.go", "a1")).
 		Delete("b.go").
 		Delete("a/old.go").
-		Embed("a1", []float64{0.5, 0.5}).
 		Build(fixedTime)
 	if err != nil {
 		t.Fatalf("first Build() error = %v", err)
@@ -218,7 +216,6 @@ func TestCanonicalRepresentationIsDeterministic(t *testing.T) {
 		Upsert(validParsed("z.go", "z1")).
 		Delete("a/old.go").
 		Delete("b.go").
-		Embed("a1", []float64{0.5, 0.5}).
 		Build(fixedTime.Add(48 * time.Hour))
 	if err != nil {
 		t.Fatalf("second Build() error = %v", err)
@@ -229,6 +226,120 @@ func TestCanonicalRepresentationIsDeterministic(t *testing.T) {
 	}
 	if !bytes.Equal(first.Canonical(), second.Canonical()) {
 		t.Fatalf("canonical bytes differ:\n%s\n%s", first.Canonical(), second.Canonical())
+	}
+}
+
+func TestCanonicalRepresentationSeparatesContent(t *testing.T) {
+	t.Parallel()
+	base, err := changeset.NewBuilder().
+		WithExpectedVersion(3).
+		Upsert(validParsed("a.go", "a1")).
+		Build(fixedTime)
+	if err != nil {
+		t.Fatalf("base Build() error = %v", err)
+	}
+	otherVersion, err := changeset.NewBuilder().
+		WithExpectedVersion(4).
+		Upsert(validParsed("a.go", "a1")).
+		Build(fixedTime)
+	if err != nil {
+		t.Fatalf("otherVersion Build() error = %v", err)
+	}
+	otherContent, err := changeset.NewBuilder().
+		WithExpectedVersion(3).
+		Upsert(validParsed("a.go", "a2")).
+		Build(fixedTime)
+	if err != nil {
+		t.Fatalf("otherContent Build() error = %v", err)
+	}
+
+	if base.ID() == otherVersion.ID() {
+		t.Fatal("expected version must contribute to the change set identity")
+	}
+	if base.ID() == otherContent.ID() {
+		t.Fatal("upserted symbols must contribute to the change set identity")
+	}
+}
+
+// TestCanonicalNormalizesWithinFile pins the intra-file ordering that
+// normalizeUpserts imposes before hashing. The only fixture that ever put more
+// than one symbol in a single file was a vector-dimension case removed with dense
+// retrieval, which left the symbol and edge sort comparators unexercised
+// even though they are pure lexical-index behaviour. Ordering matters more now,
+// not less: canonicalBytes no longer hashes vectors, so upserts and deletedPaths
+// are the whole of a ChangeSet's identity.
+func TestCanonicalNormalizesWithinFile(t *testing.T) {
+	t.Parallel()
+	build := func(symbols []domain.Symbol, edges []domain.Edge) *changeset.ChangeSet {
+		t.Helper()
+		parsed := domain.ParsedFile{
+			File:    domain.File{Path: "pkg/a.go", Language: "go"},
+			Symbols: symbols,
+			Edges:   edges,
+		}
+		cs, err := changeset.NewBuilder().Upsert(parsed).Build(fixedTime)
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+		return cs
+	}
+	sym := func(id, occurrence string) domain.Symbol {
+		return domain.Symbol{ID: id, OccurrenceID: occurrence, Path: "pkg/a.go", Name: id, Kind: "function"}
+	}
+	edge := func(from, to string, line int) domain.Edge {
+		return domain.Edge{FromSymbolID: from, ToSymbolID: to, ToName: to, Type: "calls", Path: "pkg/a.go", Line: line}
+	}
+
+	scrambled := build(
+		[]domain.Symbol{sym("s2", "occ:2"), sym("s1", "occ:1b"), sym("s1", "occ:1a")},
+		[]domain.Edge{edge("s2", "s1", 20), edge("s1", "s2", 10)},
+	)
+	ordered := build(
+		[]domain.Symbol{sym("s1", "occ:1a"), sym("s1", "occ:1b"), sym("s2", "occ:2")},
+		[]domain.Edge{edge("s1", "s2", 10), edge("s2", "s1", 20)},
+	)
+
+	if scrambled.ID() != ordered.ID() {
+		t.Fatalf("input ordering leaked into identity: %q vs %q", scrambled.ID(), ordered.ID())
+	}
+	if !bytes.Equal(scrambled.Canonical(), ordered.Canonical()) {
+		t.Fatalf("canonical bytes differ:\n%s\n%s", scrambled.Canonical(), ordered.Canonical())
+	}
+
+	got := scrambled.Upserts()[0]
+	gotSymbols := make([]string, len(got.Symbols))
+	for i, symbol := range got.Symbols {
+		gotSymbols[i] = symbol.ID + "/" + symbol.OccurrenceID
+	}
+	wantSymbols := []string{"s1/occ:1a", "s1/occ:1b", "s2/occ:2"}
+	if !slices.Equal(gotSymbols, wantSymbols) {
+		t.Fatalf("symbols = %v, want %v (sorted by id, then occurrence id)", gotSymbols, wantSymbols)
+	}
+	gotEdges := make([]string, len(got.Edges))
+	for i, e := range got.Edges {
+		gotEdges[i] = e.FromSymbolID + "->" + e.ToSymbolID
+	}
+	wantEdges := []string{"s1->s2", "s2->s1"}
+	if !slices.Equal(gotEdges, wantEdges) {
+		t.Fatalf("edges = %v, want %v", gotEdges, wantEdges)
+	}
+}
+
+// TestDeepCopyIsolatesEdgeMutation covers the Edges arm of cloneParsedFile, the
+// sibling of the Symbols arm already guarded by TestDeepCopyIsolatesInputMutation.
+func TestDeepCopyIsolatesEdgeMutation(t *testing.T) {
+	t.Parallel()
+	parsed := validParsed("a.go", "s1")
+	parsed.Edges = []domain.Edge{{FromSymbolID: "s1", ToName: "helper", Type: "calls", Path: "a.go", Line: 3}}
+	cs, err := changeset.NewBuilder().Upsert(parsed).Build(fixedTime)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	parsed.Edges[0].ToName = "tampered"
+
+	if got := cs.Upserts()[0].Edges[0].ToName; got != "helper" {
+		t.Fatalf("edge mutation leaked into change set: ToName = %q, want %q", got, "helper")
 	}
 }
 

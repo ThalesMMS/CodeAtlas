@@ -37,9 +37,7 @@ type ReadView interface {
 	Graph(seedIDs []string, depth, maxNodes int) ([]domain.Symbol, []domain.Edge)
 	EdgesForSymbol(id string) []domain.Edge
 	AllEdges() []domain.Edge
-	Embeddings() map[string][]float64
 	Search(query string, limit int) ([]domain.SearchHit, error)
-	SearchDense(ctx context.Context, queryVector []float64, limit int) ([]DenseHit, error)
 	ApplyOverlay(parsed domain.ParsedFile) error
 	Close() error
 }
@@ -120,8 +118,6 @@ func (s *Store) OpenReadView(ctx context.Context) (ReadView, error) {
 	if err := view.loadEdges(viewCtx, tx); err != nil {
 		return nil, err
 	}
-	// Embeddings are NOT materialized: dense search streams them (bounded memory),
-	// and Embeddings() is a lazy legacy accessor. See dense.go.
 	view.buildFlat()
 	view.resolveEdges()
 	view.buildAdjacency()

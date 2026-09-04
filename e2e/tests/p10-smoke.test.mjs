@@ -50,9 +50,20 @@ test('P10 smoke harness starts fake provider, temp workspace and real backend wi
   assert.equal(tree.status, 200);
   assert.ok(Array.isArray(tree.body.children), 'tree response should expose workspace children');
 
-  const search = await backend.json('/api/search?q=Submit');
-  assert.equal(search.status, 200);
-  assert.ok(Array.isArray(search.body), 'search response should expose result array');
+  // Codemap seeds are picked by the internal FTS5/BM25 lexical index, so a
+  // succeeding job proves the retrieval path answers a real repository query.
+  const codemapRef = await backend.json('/api/codemaps', {
+    method: 'POST',
+    body: { query: 'order Service Submit repository Save Go', maxNodes: 16 },
+  });
+  assert.equal(codemapRef.status, 202, JSON.stringify(codemapRef.body));
+  await waitForJob(backend, codemapRef.body.job.id, 30_000);
+  const codemap = await backend.json(`/api/jobs/${encodeURIComponent(codemapRef.body.job.id)}/result`, { timeoutMs: 30_000 });
+  assert.equal(codemap.status, 200, JSON.stringify(codemap.body));
+  assert.ok(
+    codemap.body.nodes.some((node) => node.path === 'internal/order/service.go'),
+    'lexical seeds should reach the queried Go symbols',
+  );
 
   const opened = await backend.json('/api/documents/open', {
     method: 'POST',
@@ -133,3 +144,19 @@ test('P10 smoke harness exposes provider failure as recoverable configuration st
   assert.equal(readiness.body.state, 'AWAITING_CONFIGURATION');
   assert.ok(performance.now() - startedAt < 10_000, 'recoverable readiness should not wait for the full timeout');
 });
+
+async function waitForJob(backend, id, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latest;
+  while (Date.now() < deadline) {
+    const response = await backend.json(`/api/jobs/${encodeURIComponent(id)}`);
+    assert.equal(response.status, 200);
+    latest = response.body.job;
+    if (latest.state === 'succeeded') return latest;
+    if (['failed', 'stale', 'canceled'].includes(latest.state)) {
+      assert.fail(`job ${id} reached ${latest.state}: ${JSON.stringify(latest.error)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail(`job ${id} did not succeed: ${JSON.stringify(latest)}`);
+}

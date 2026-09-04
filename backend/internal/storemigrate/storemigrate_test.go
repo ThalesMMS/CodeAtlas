@@ -1,6 +1,7 @@
 package storemigrate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,11 +108,10 @@ func TestPlannerSelectsConservativeMode(t *testing.T) {
 		want  Mode
 	}{
 		{"fresh", PlanInput{JSONExists: false}, ModeFresh},
-		{"force rebuild", PlanInput{JSONExists: true, JSONSchema: 4, SupportedJSONSchema: 4, IdentityCompatible: true, ForceRebuild: true}, ModeRebuild},
-		{"newer schema", PlanInput{JSONExists: true, JSONSchema: 99, SupportedJSONSchema: 4, IdentityCompatible: true}, ModeRebuild},
-		{"identity incompatible", PlanInput{JSONExists: true, JSONSchema: 4, SupportedJSONSchema: 4, IdentityCompatible: false}, ModeRebuild},
-		{"embeddings incompatible", PlanInput{JSONExists: true, JSONSchema: 4, SupportedJSONSchema: 4, IdentityCompatible: true, EmbeddingsEnabled: true, EmbeddingCompatible: false}, ModeRebuild},
-		{"compatible import", PlanInput{JSONExists: true, JSONSchema: 4, SupportedJSONSchema: 4, IdentityCompatible: true}, ModeImport},
+		{"force rebuild", PlanInput{JSONExists: true, JSONSchema: 5, SupportedJSONSchema: 5, IdentityCompatible: true, ForceRebuild: true}, ModeRebuild},
+		{"newer schema", PlanInput{JSONExists: true, JSONSchema: 99, SupportedJSONSchema: 5, IdentityCompatible: true}, ModeRebuild},
+		{"identity incompatible", PlanInput{JSONExists: true, JSONSchema: 5, SupportedJSONSchema: 5, IdentityCompatible: false}, ModeRebuild},
+		{"compatible import", PlanInput{JSONExists: true, JSONSchema: 5, SupportedJSONSchema: 5, IdentityCompatible: true}, ModeImport},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestPlannerSelectsConservativeMode(t *testing.T) {
 func TestCompatibleImportPlansWikiArtifacts(t *testing.T) {
 	t.Parallel()
 	plan := Plan(PlanInput{
-		JSONExists: true, JSONSchema: 4, SupportedJSONSchema: 4,
+		JSONExists: true, JSONSchema: supportedJSONSnapshotSchema, SupportedJSONSchema: supportedJSONSnapshotSchema,
 		IdentityCompatible: true, Counts: Counts{WikiPages: 2},
 	})
 	if plan.Mode != ModeImport || !plan.ImportArtifacts || plan.EstimatedCounts.WikiPages != 2 {
@@ -177,5 +177,61 @@ func TestJournalAdvancesPhases(t *testing.T) {
 	}
 	if read.Phase != PhaseCompleted || read.Mode != ModeImport {
 		t.Fatalf("journal did not persist final phase: %+v", read)
+	}
+}
+
+// TestOlderSnapshotSchemaIsNoLongerImportable pins the #163 schema bump: a JSON
+// snapshot written at snapshot schema 4 (whose canonical projection still hashed
+// the dense index) is no longer identity-compatible, so it must plan as a full
+// rebuild instead of being imported as if its ids still meant the same thing.
+func TestOlderSnapshotSchemaIsNoLongerImportable(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "index.json")
+	document := `{"version":1,"snapshotSchema":4,"snapshotId":"snap-4",` +
+		`"files":[{"path":"pkg/svc.go"}],"identities":[],"occurrences":[],"edges":[],"wiki":[]}`
+	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input, err := inspectJSONSource(path, false)
+	if err != nil {
+		t.Fatalf("inspectJSONSource: %v", err)
+	}
+	if input.JSONSchema != 4 || input.SupportedJSONSchema != supportedJSONSnapshotSchema {
+		t.Fatalf("schemas = %d/%d, want 4/%d", input.JSONSchema, input.SupportedJSONSchema, supportedJSONSnapshotSchema)
+	}
+	if input.IdentityCompatible {
+		t.Fatal("a schema-4 snapshot must not be reported as identity compatible")
+	}
+	if plan := Plan(input); plan.Mode != ModeRebuild {
+		t.Fatalf("mode = %q, want %q (reasons: %v)", plan.Mode, ModeRebuild, plan.Reasons)
+	}
+}
+
+// TestCurrentSnapshotSchemaPlansCompatibleImport is the positive counterpart: a
+// snapshot at the schema this build writes stays importable.
+func TestCurrentSnapshotSchemaPlansCompatibleImport(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "index.json")
+	document := fmt.Sprintf(
+		`{"version":1,"snapshotSchema":%d,"snapshotId":"snap-current",`+
+			`"files":[{"path":"pkg/svc.go"}],"identities":[{"id":"pkg/svc.go#Pay"}],`+
+			`"occurrences":[],"edges":[],"wiki":[{"slug":"overview"}]}`,
+		supportedJSONSnapshotSchema)
+	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input, err := inspectJSONSource(path, false)
+	if err != nil {
+		t.Fatalf("inspectJSONSource: %v", err)
+	}
+	if !input.IdentityCompatible {
+		t.Fatalf("current-schema snapshot must be identity compatible: %+v", input)
+	}
+	plan := Plan(input)
+	if plan.Mode != ModeImport || !plan.ImportArtifacts {
+		t.Fatalf("plan = %+v, want an artifact-preserving import", plan)
+	}
+	if plan.EstimatedCounts.Files != 1 || plan.EstimatedCounts.Symbols != 1 || plan.EstimatedCounts.WikiPages != 1 {
+		t.Fatalf("estimated counts = %+v, want the censused source", plan.EstimatedCounts)
 	}
 }

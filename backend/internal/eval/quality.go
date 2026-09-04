@@ -15,7 +15,6 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 	"github.com/ThalesMMS/CodeAtlas/internal/textutil"
 )
@@ -105,8 +104,7 @@ func runQuality(ctx context.Context, store repository.Store, corpusRoots []strin
 	if err != nil {
 		return QualityReport{}, fmt.Errorf("quality see more: %w", err)
 	}
-	retriever := retrieval.NewHybrid(store, ai.Disabled{}, false)
-	codemap, err := service.NewCodemapService(store, retriever, provider).Generate(ctx, domain.CodemapRequest{
+	codemap, err := service.NewCodemapService(store, provider).Generate(ctx, domain.CodemapRequest{
 		Query: "What is the handler's role in the main function?", MaxNodes: 36,
 	})
 	if err != nil {

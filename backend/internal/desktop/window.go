@@ -27,6 +27,14 @@ type Window interface {
 	Bind(name string, function any) error
 }
 
+// QuitMenu is implemented by windows whose platform hosts an application menu
+// bar. Installing it adds the standard Quit item, which is what binds the
+// platform's quit shortcut; the item closes the window so the application shuts
+// down through the same path as its close button.
+type QuitMenu interface {
+	InstallQuitMenu(applicationName string)
+}
+
 type WindowFactory interface {
 	New() (Window, error)
 	ShowFatal(title, message string)

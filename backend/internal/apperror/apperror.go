@@ -54,7 +54,6 @@ const (
 	CodeProviderTimeout      Code = "PROVIDER_TIMEOUT"
 	CodeProviderUnauthorized Code = "PROVIDER_UNAUTHORIZED"
 	CodeModelOutputInvalid   Code = "MODEL_OUTPUT_INVALID"
-	CodeEmbeddingUnavailable Code = "EMBEDDING_UNAVAILABLE"
 	CodeStoreCorrupted       Code = "STORE_CORRUPTED"
 	CodePersistenceFailed    Code = "PERSISTENCE_FAILED"
 	CodeInternalError        Code = "INTERNAL_ERROR"
@@ -108,7 +107,6 @@ var statusByCode = map[Code]int{
 	CodeProviderUnavailable:          http.StatusServiceUnavailable,    // 503
 	CodeProviderTimeout:              http.StatusGatewayTimeout,        // 504
 	CodeProviderUnauthorized:         http.StatusServiceUnavailable,    // 503 (local client; no credential leak)
-	CodeEmbeddingUnavailable:         http.StatusServiceUnavailable,    // 503
 	CodeStoreCorrupted:               http.StatusServiceUnavailable,    // 503
 	CodePersistenceFailed:            http.StatusServiceUnavailable,    // 503 (treated as potentially recoverable)
 	CodeInternalError:                http.StatusInternalServerError,   // 500

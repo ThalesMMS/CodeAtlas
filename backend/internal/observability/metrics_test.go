@@ -18,7 +18,6 @@ func TestMetricsConcurrentUpdatesAreSafe(t *testing.T) {
 			for i := 0; i < iterations; i++ {
 				metrics.IndexScanStarted()
 				metrics.LLMCall(i%2 == 0)
-				metrics.EmbedCall(i%3 == 0)
 				metrics.Commit(true)
 				metrics.HTTPRequest()
 				metrics.SetReadinessState("READY")

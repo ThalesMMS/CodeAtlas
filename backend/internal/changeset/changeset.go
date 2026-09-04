@@ -1,8 +1,7 @@
 // Package changeset defines an immutable, validated description of a complete
-// index update: files to upsert, paths to delete and embeddings produced during
-// preparation. A ChangeSet never writes files, persists the store, calls the
-// embedding provider or publishes events; it only describes a change so a later
-// phase can apply it atomically.
+// index update: files to upsert and paths to delete. A ChangeSet never writes
+// files, persists the store or publishes events; it only describes a change so a
+// later phase can apply it atomically.
 package changeset
 
 import (
@@ -10,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -46,9 +44,6 @@ const (
 	CodeSymbolPathMismatch   = "CHANGESET_SYMBOL_PATH_MISMATCH"
 	CodeDuplicateSymbolID    = "CHANGESET_DUPLICATE_SYMBOL_ID"
 	CodeDuplicateOccurrence  = "CHANGESET_DUPLICATE_OCCURRENCE_ID"
-	CodeEmbeddingUnknownSym  = "CHANGESET_EMBEDDING_UNKNOWN_SYMBOL"
-	CodeEmbeddingInvalidVec  = "CHANGESET_EMBEDDING_INVALID_VECTOR"
-	CodeEmbeddingDimMismatch = "CHANGESET_EMBEDDING_DIMENSION_MISMATCH"
 	CodeEmpty                = "CHANGESET_EMPTY"
 )
 
@@ -80,7 +75,6 @@ type ChangeSet struct {
 	createdAt       time.Time
 	upserts         []domain.ParsedFile
 	deletedPaths    []string
-	embeddings      map[string][]float64
 	diagnostics     []Diagnostic
 	canonical       []byte
 }
@@ -90,9 +84,9 @@ func (c *ChangeSet) ExpectedVersion() uint64 { return c.expectedVersion }
 func (c *ChangeSet) CreatedAt() time.Time    { return c.createdAt }
 func (c *ChangeSet) Canonical() []byte       { return append([]byte(nil), c.canonical...) }
 
-// IsNoop reports whether the change carries no upserts, deletions or embeddings.
+// IsNoop reports whether the change carries no upserts or deletions.
 func (c *ChangeSet) IsNoop() bool {
-	return len(c.upserts) == 0 && len(c.deletedPaths) == 0 && len(c.embeddings) == 0
+	return len(c.upserts) == 0 && len(c.deletedPaths) == 0
 }
 
 // HasErrors reports whether any diagnostic is error-severity. The indexer policy
@@ -118,10 +112,6 @@ func (c *ChangeSet) DeletedPaths() []string {
 	return append([]string(nil), c.deletedPaths...)
 }
 
-func (c *ChangeSet) Embeddings() map[string][]float64 {
-	return cloneEmbeddings(c.embeddings)
-}
-
 func (c *ChangeSet) Diagnostics() []Diagnostic {
 	return append([]Diagnostic(nil), c.diagnostics...)
 }
@@ -133,13 +123,10 @@ type Builder struct {
 	allowEmpty      bool
 	upserts         []domain.ParsedFile
 	deletedPaths    []string
-	embeddings      map[string][]float64
 	diagnostics     []Diagnostic
 }
 
-func NewBuilder() *Builder {
-	return &Builder{embeddings: make(map[string][]float64)}
-}
+func NewBuilder() *Builder { return &Builder{} }
 
 func (b *Builder) WithExpectedVersion(version uint64) *Builder {
 	b.expectedVersion = version
@@ -159,11 +146,6 @@ func (b *Builder) Upsert(parsed domain.ParsedFile) *Builder {
 
 func (b *Builder) Delete(deletedPath string) *Builder {
 	b.deletedPaths = append(b.deletedPaths, deletedPath)
-	return b
-}
-
-func (b *Builder) Embed(symbolID string, vector []float64) *Builder {
-	b.embeddings[symbolID] = vector
 	return b
 }
 
@@ -223,16 +205,11 @@ func (b *Builder) Build(createdAt time.Time) (*ChangeSet, error) {
 		}
 	}
 
-	embeddings, err := normalizeEmbeddings(b.embeddings, symbolIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	if !b.allowEmpty && len(upserts) == 0 && len(deletedPaths) == 0 && len(embeddings) == 0 {
+	if !b.allowEmpty && len(upserts) == 0 && len(deletedPaths) == 0 {
 		return nil, validationError(CodeEmpty, "", "change set has no content")
 	}
 
-	canonical := canonicalBytes(b.expectedVersion, upserts, deletedPaths, embeddings)
+	canonical := canonicalBytes(b.expectedVersion, upserts, deletedPaths)
 	digest := sha256.Sum256(canonical)
 
 	return &ChangeSet{
@@ -241,7 +218,6 @@ func (b *Builder) Build(createdAt time.Time) (*ChangeSet, error) {
 		createdAt:       createdAt.UTC(),
 		upserts:         upserts,
 		deletedPaths:    deletedPaths,
-		embeddings:      embeddings,
 		diagnostics:     append([]Diagnostic(nil), b.diagnostics...),
 		canonical:       canonical,
 	}, nil
@@ -288,34 +264,6 @@ func normalizePaths(input []string) ([]string, error) {
 	return paths, nil
 }
 
-func normalizeEmbeddings(input map[string][]float64, symbolIDs map[string]struct{}) (map[string][]float64, error) {
-	if len(input) == 0 {
-		return map[string][]float64{}, nil
-	}
-	dimension := -1
-	embeddings := make(map[string][]float64, len(input))
-	for symbolID, vector := range input {
-		if _, ok := symbolIDs[symbolID]; !ok {
-			return nil, validationError(CodeEmbeddingUnknownSym, "", "embedding for unknown symbol "+symbolID)
-		}
-		if len(vector) == 0 {
-			return nil, validationError(CodeEmbeddingInvalidVec, "", "empty embedding vector for "+symbolID)
-		}
-		for _, value := range vector {
-			if math.IsNaN(value) || math.IsInf(value, 0) {
-				return nil, validationError(CodeEmbeddingInvalidVec, "", "non-finite embedding value for "+symbolID)
-			}
-		}
-		if dimension == -1 {
-			dimension = len(vector)
-		} else if len(vector) != dimension {
-			return nil, validationError(CodeEmbeddingDimMismatch, "", "embedding dimensions differ within the change set")
-		}
-		embeddings[symbolID] = append([]float64(nil), vector...)
-	}
-	return embeddings, nil
-}
-
 // validatePath rejects empty, absolute, dot, or escaping paths and returns the
 // path normalized to forward slashes.
 func validatePath(candidate string) (string, error) {
@@ -343,27 +291,15 @@ func edgeKey(edge domain.Edge) string {
 
 // canonicalBytes produces a stable serialization of the authoritative change,
 // excluding volatile fields (id, createdAt, diagnostics).
-func canonicalBytes(expectedVersion uint64, upserts []domain.ParsedFile, deletedPaths []string, embeddings map[string][]float64) []byte {
-	type canonicalEmbedding struct {
-		SymbolID string    `json:"symbolId"`
-		Vector   []float64 `json:"vector"`
-	}
-	embeddingList := make([]canonicalEmbedding, 0, len(embeddings))
-	for symbolID, vector := range embeddings {
-		embeddingList = append(embeddingList, canonicalEmbedding{SymbolID: symbolID, Vector: vector})
-	}
-	sort.Slice(embeddingList, func(i, j int) bool { return embeddingList[i].SymbolID < embeddingList[j].SymbolID })
-
+func canonicalBytes(expectedVersion uint64, upserts []domain.ParsedFile, deletedPaths []string) []byte {
 	canonical := struct {
-		ExpectedVersion uint64               `json:"expectedVersion"`
-		Upserts         []domain.ParsedFile  `json:"upserts"`
-		DeletedPaths    []string             `json:"deletedPaths"`
-		Embeddings      []canonicalEmbedding `json:"embeddings"`
+		ExpectedVersion uint64              `json:"expectedVersion"`
+		Upserts         []domain.ParsedFile `json:"upserts"`
+		DeletedPaths    []string            `json:"deletedPaths"`
 	}{
 		ExpectedVersion: expectedVersion,
 		Upserts:         upserts,
 		DeletedPaths:    deletedPaths,
-		Embeddings:      embeddingList,
 	}
 	data, _ := json.Marshal(canonical)
 	return data
@@ -378,12 +314,4 @@ func cloneParsedFile(parsed domain.ParsedFile) domain.ParsedFile {
 		clone.Edges = append([]domain.Edge(nil), parsed.Edges...)
 	}
 	return clone
-}
-
-func cloneEmbeddings(input map[string][]float64) map[string][]float64 {
-	out := make(map[string][]float64, len(input))
-	for symbolID, vector := range input {
-		out[symbolID] = append([]float64(nil), vector...)
-	}
-	return out
 }

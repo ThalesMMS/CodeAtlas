@@ -14,7 +14,7 @@ import (
 )
 
 // Schema 3 replaces full-row streaming on every commit with an incremental,
-// deterministic bucketed Merkle index. Derived FTS/embeddings remain excluded.
+// deterministic bucketed Merkle index. The derived FTS index remains excluded.
 const snapshotSchema = 3
 
 // rowQueryer is satisfied by both *sql.DB and *sql.Tx.

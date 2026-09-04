@@ -141,7 +141,7 @@ func TestFailPreservesFirstCauseAndAccumulates(t *testing.T) {
 		t.Fatalf("state = %q, want FAILED", got)
 	}
 	// Subsequent failures must not overwrite the first cause.
-	if err := c.Fail("EMBEDDING_FAILED", "embeddings unreachable"); err != nil {
+	if err := c.Fail("INITIAL_INDEX_FAILED", "initial indexing failed"); err != nil {
 		t.Fatalf("second Fail error = %v", err)
 	}
 	snap := c.Snapshot()

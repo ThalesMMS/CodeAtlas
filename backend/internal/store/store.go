@@ -24,20 +24,18 @@ type Store struct {
 }
 
 type diskSnapshot struct {
-	Version           int                           `json:"version"`
-	StoreVersion      uint64                        `json:"storeVersion"`
-	NextEdgeID        uint64                        `json:"nextEdgeId,omitempty"`
-	Files             []domain.File                 `json:"files"`
-	Identities        []domain.SymbolIdentity       `json:"identities,omitempty"`
-	Occurrences       []domain.SymbolOccurrence     `json:"occurrences,omitempty"`
-	Symbols           []domain.Symbol               `json:"symbols,omitempty"` // legacy (pre-v1) detection only
-	Edges             []domain.Edge                 `json:"edges"`
-	Wiki              []domain.WikiPage             `json:"wiki"`
-	Embeddings        map[string][]float64          `json:"embeddings,omitempty"`
-	EmbeddingMetadata domain.EmbeddingIndexMetadata `json:"embeddingMetadata,omitempty"`
-	SnapshotID        domain.SnapshotID             `json:"snapshotId,omitempty"`
-	SnapshotSchema    int                           `json:"snapshotSchema,omitempty"`
-	IndexedAt         time.Time                     `json:"indexedAt"`
+	Version        int                       `json:"version"`
+	StoreVersion   uint64                    `json:"storeVersion"`
+	NextEdgeID     uint64                    `json:"nextEdgeId,omitempty"`
+	Files          []domain.File             `json:"files"`
+	Identities     []domain.SymbolIdentity   `json:"identities,omitempty"`
+	Occurrences    []domain.SymbolOccurrence `json:"occurrences,omitempty"`
+	Symbols        []domain.Symbol           `json:"symbols,omitempty"` // legacy (pre-v1) detection only
+	Edges          []domain.Edge             `json:"edges"`
+	Wiki           []domain.WikiPage         `json:"wiki"`
+	SnapshotID     domain.SnapshotID         `json:"snapshotId,omitempty"`
+	SnapshotSchema int                       `json:"snapshotSchema,omitempty"`
+	IndexedAt      time.Time                 `json:"indexedAt"`
 }
 
 func Open(path string) (*Store, error) {
@@ -128,20 +126,6 @@ func (s *Store) metadataLocked() domain.SnapshotMetadata {
 		Schema:            snapshotSchema,
 		IdentityAlgorithm: symbols.IdentityAlgorithmVersion,
 	}
-}
-
-// EmbeddingMetadata returns the persisted dense-index configuration.
-func (s *Store) EmbeddingMetadata() domain.EmbeddingIndexMetadata {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.current.embeddingMetadata
-}
-
-// EmbeddingCount returns the number of stored vectors.
-func (s *Store) EmbeddingCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.current.embeddings)
 }
 
 func (s *Store) ReplaceFile(parsed domain.ParsedFile) {
@@ -288,16 +272,6 @@ func (s *Store) WikiPages() []domain.WikiPage {
 	}
 	sort.Slice(pages, func(i, j int) bool { return pages[i].Slug < pages[j].Slug })
 	return pages
-}
-
-func (s *Store) Embeddings() map[string][]float64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make(map[string][]float64, len(s.current.embeddings))
-	for id, vector := range s.current.embeddings {
-		result[id] = append([]float64(nil), vector...)
-	}
-	return result
 }
 
 func (s *Store) Counts() (files, symbols, edges, wiki int, indexedAt time.Time) {

@@ -11,28 +11,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/contenthash"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/mutation"
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 )
 
-func newTestIndexer(t *testing.T, parser Parser, provider ai.Provider, embeddings bool) (*Indexer, string, repository.Store) {
+func newTestIndexer(t *testing.T, parser Parser) (*Indexer, string, repository.Store) {
 	t.Helper()
 	root := t.TempDir()
 	repository, err := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if provider == nil {
-		provider = ai.Disabled{}
-	}
-	retriever := retrieval.NewHybrid(repository, provider, embeddings)
-	return New(root, 1_500_000, parser, repository, retriever), root, repository
+	return New(root, 1_500_000, parser, repository), root, repository
 }
 
 func writeSource(t *testing.T, root, relative, content string) {
@@ -116,16 +110,9 @@ func (p *blockingParser) Parse(path string, _ []byte) ([]domain.Symbol, []domain
 	return []domain.Symbol{{ID: path, Path: path, Name: path, Kind: "file", Range: domain.Range{Start: domain.Position{Line: 1, Column: 1}, End: domain.Position{Line: 2, Column: 1}}}}, nil, "go", nil
 }
 
-type failingEmbedProvider struct{ ai.Disabled }
-
-func (failingEmbedProvider) Available() bool { return true }
-func (failingEmbedProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, errors.New("synthetic embedding failure")
-}
-
 func TestScanHappyPathAddsUpdatesDeletes(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	writeSource(t, root, "b.go", goSource)
 
@@ -163,7 +150,7 @@ func TestScanHappyPathAddsUpdatesDeletes(t *testing.T) {
 
 func TestScanIndexesSwiftSources(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "Sources/Commerce/Order.swift", "import Foundation\nstruct Order { let id: String }\n")
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -194,7 +181,7 @@ func TestScanIndexesSwiftSources(t *testing.T) {
 
 func TestScanIndexesPythonSources(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "commerce/order.py", "class Order:\n    id: str\n")
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -222,7 +209,7 @@ func TestScanIndexesPythonSources(t *testing.T) {
 
 func TestScanIndexesRustSources(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "src/order.rs", "pub struct Order { pub id: String }\n")
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -250,7 +237,7 @@ func TestScanIndexesRustSources(t *testing.T) {
 
 func TestScanNoChangesIsNoop(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -266,7 +253,7 @@ func TestScanNoChangesIsNoop(t *testing.T) {
 
 func TestScanIndexesAllowlistedProjectFilesAndNeverEnv(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "go.mod", "module example.com/sample\n\ngo 1.23\n")
 	writeSource(t, root, "go.sum", strings.Repeat("dependency checksum\n", 600))
 	writeSource(t, root, "README.md", strings.Repeat("documented setup line\n", 600))
@@ -318,7 +305,7 @@ func assertUnchanged(t *testing.T, indexer *Indexer, repository repository.Store
 
 func TestScanWalkErrorIsFatal(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -335,7 +322,7 @@ func TestScanWalkErrorIsFatal(t *testing.T) {
 
 func TestScanReadErrorIsFatal(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -357,7 +344,7 @@ func TestScanReadErrorIsFatal(t *testing.T) {
 
 func TestScanParseErrorQuarantinesFileAndCommitsOthers(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "bad.go", "package sample\n\nfunc Bad() int { return 1 }\n")
 	writeSource(t, root, "good.go", "package sample\n\nfunc Good() int { return 1 }\n")
 	if err := indexer.Scan(context.Background()); err != nil {
@@ -391,22 +378,9 @@ func TestScanParseErrorQuarantinesFileAndCommitsOthers(t *testing.T) {
 	}
 }
 
-func TestScanEmbeddingErrorIsFatal(t *testing.T) {
-	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), failingEmbedProvider{}, true)
-	writeSource(t, root, "a.go", goSource)
-	if err := indexer.Scan(context.Background()); err == nil {
-		t.Fatal("Scan succeeded despite an embedding error")
-	}
-	assertUnchanged(t, indexer, repository, 0, 0)
-	if len(repository.Embeddings()) != 0 {
-		t.Fatal("failed embedding scan left orphan vectors")
-	}
-}
-
 func TestScanCancellationIsFatal(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -421,7 +395,7 @@ func TestScanCancellationIsFatal(t *testing.T) {
 func TestScanReindexInProgress(t *testing.T) {
 	t.Parallel()
 	parser := &blockingParser{started: make(chan struct{}), release: make(chan struct{})}
-	indexer, root, _ := newTestIndexer(t, parser, nil, false)
+	indexer, root, _ := newTestIndexer(t, parser)
 	writeSource(t, root, "a.go", goSource)
 
 	done := make(chan error, 1)
@@ -445,7 +419,7 @@ func TestScanReindexInProgress(t *testing.T) {
 
 func TestReconcilePathsReadsFinalStateAndDeletesMissingInOneCommit(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	writeSource(t, root, "b.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
@@ -474,7 +448,7 @@ func TestReconcilePathsReadsFinalStateAndDeletesMissingInOneCommit(t *testing.T)
 
 func TestReconcileSubtreeDiffsCurrentFilesAgainstIndexedPrefix(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "pkg/a.go", goSource)
 	writeSource(t, root, "pkg/old.go", goSource)
 	writeSource(t, root, "other/keep.go", goSource)
@@ -507,7 +481,7 @@ func TestReconcileSubtreeDiffsCurrentFilesAgainstIndexedPrefix(t *testing.T) {
 
 func TestReconcileRejectsStaleExpectedRevision(t *testing.T) {
 	t.Parallel()
-	indexer, root, repo := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repo := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -540,7 +514,7 @@ func TestReconcileFullAndSubtreeDeleteKnownFilesThatBecomeOversized(t *testing.T
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+			indexer, root, repository := newTestIndexer(t, codeparser.New())
 			writeSource(t, root, "pkg/a.go", goSource)
 			if err := indexer.Scan(context.Background()); err != nil {
 				t.Fatalf("setup Scan() error = %v", err)
@@ -564,7 +538,7 @@ func TestReconcileFullAndSubtreeDeleteKnownFilesThatBecomeOversized(t *testing.T
 
 func TestReconcileSubtreeDeletesDescendantsWhenDirectoryBecomesFile(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "pkg/a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -590,7 +564,7 @@ func TestReconcileSubtreeDeletesDescendantsWhenDirectoryBecomesFile(t *testing.T
 
 func TestReconcilePathsConfirmsSelfWriteWithoutSecondCommit(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -634,7 +608,7 @@ func TestReconcilePathsConfirmsSelfWriteWithoutSecondCommit(t *testing.T) {
 
 func TestReconcileFullConfirmsSelfWriteWithoutSecondCommit(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -678,7 +652,7 @@ func TestReconcileFullConfirmsSelfWriteWithoutSecondCommit(t *testing.T) {
 
 func TestReconcileSubtreeConfirmsSelfWriteWithoutSecondCommit(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "pkg/a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -732,13 +706,13 @@ func TestCommittedSaveIsConfirmedByRealIndexerHashFormat(t *testing.T) {
 	parser := codeparser.New()
 	registry := mutation.NewMemoryRegistry(mutation.RegistryConfig{DefaultTTL: time.Minute})
 	defer registry.Close()
-	idx := New(root, 1_500_000, parser, repository, nil)
+	idx := New(root, 1_500_000, parser, repository)
 	idx.SetMutationRegistry(registry)
 	if err := idx.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
 	}
 	workspace := service.NewWorkspace(root)
-	preparer := service.NewSavePreparer(workspace, repository, parser, nil, 1_500_000)
+	preparer := service.NewSavePreparer(workspace, repository, parser, 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(preparer, workspace, repository, filepath.Join(t.TempDir(), "tx"), indexPath)
 	committer.SetMutationRegistry(registry)
 	current, err := os.ReadFile(filepath.Join(root, "a.go"))
@@ -775,7 +749,7 @@ func TestCommittedSaveIsConfirmedByRealIndexerHashFormat(t *testing.T) {
 
 func TestReconcileFullNormalizesBareHexScannerHashOnce(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	bareHash := strings.TrimPrefix(contenthash.HashContent([]byte(goSource)), "sha256:")
 	if err := repository.ReplaceFile(domain.ParsedFile{
@@ -812,7 +786,7 @@ func TestReconcileFullNormalizesBareHexScannerHashOnce(t *testing.T) {
 
 func TestReconcilePathsConfirmsSelfWriteAfterMixedBatchCommit(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	writeSource(t, root, "b.go", "package sample\n\nfunc Other() int { return 1 }\n")
 	if err := indexer.Scan(context.Background()); err != nil {
@@ -859,7 +833,7 @@ func TestReconcilePathsConfirmsSelfWriteAfterMixedBatchCommit(t *testing.T) {
 
 func TestReconcilePathsTreatsDifferentHashAfterInternalSaveAsExternalChange(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)

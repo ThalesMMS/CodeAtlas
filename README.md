@@ -12,7 +12,7 @@ CodeAtlas is a local-first code intelligence workspace with a Go backend and an 
 - **Codemaps** for query-driven architecture and execution-flow maps.
 - **DeepWiki** for repository documentation generated from indexed code.
 
-CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship graphs, BM25 retrieval, optional embeddings, and optional language-server evidence. Generated explanations require an OpenAI-compatible chat endpoint; CodeAtlas returns explicit errors when that provider is unavailable instead of inventing fallback prose.
+CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship graphs, BM25 retrieval, and optional language-server evidence. Generated explanations require an OpenAI-compatible chat endpoint; CodeAtlas returns explicit errors when that provider is unavailable instead of inventing fallback prose.
 
 > [!NOTE]
 > CodeAtlas is an experimental developer tool. Review generated explanations and proposed changes before relying on them.
@@ -22,9 +22,8 @@ CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship gr
 - Local workspace scanning, incremental indexing, and file watching.
 - Monaco-based editing with versioned document overlays and safe saves.
 - Grounded AI output with citations, inferences, uncertainties, and confidence metadata.
-- Search across files, symbols, documentation, and structural relationships.
 - Optional semantic evidence from `gopls`, `typescript-language-server`, `sourcekit-lsp`, `pyright-langserver`, and `rust-analyzer`.
-- SQLite FTS5 storage and optional dense retrieval through an embeddings endpoint.
+- SQLite FTS5 storage with BM25 lexical retrieval over indexed symbols.
 - Offline evaluation fixtures and browser-based end-to-end tests.
 
 ## Requirements
@@ -37,7 +36,7 @@ CodeAtlas combines deterministic Tree-sitter parsing, symbol and relationship gr
 - An OpenAI-compatible `/chat/completions` endpoint for generated explanations;
   it can be configured after CodeAtlas starts.
 
-Language servers and embeddings are optional. Their absence reduces semantic precision but does not disable deterministic AST indexing.
+Language servers are optional. Their absence reduces semantic precision but does not disable deterministic AST indexing.
 
 ## Quick start
 
@@ -199,10 +198,6 @@ Settings shows both the saved and running values.
 | LLM | `CODEATLAS_LLM_MODEL` | string | Live | Chat model exposed by the provider. |
 | LLM | `CODEATLAS_LLM_REASONING_EFFORT` | string / empty | Live | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. |
 | LLM | `CODEATLAS_LLM_TIMEOUT` | Go duration / `10m` | Live | Business-request timeout. |
-| Embeddings | `CODEATLAS_ENABLE_EMBEDDINGS` | boolean / `false` | Live | Enables dense retrieval. |
-| Embeddings | `CODEATLAS_EMBEDDING_MODEL` | string / empty | Live | Embedding model; required when embeddings are enabled. |
-| Embeddings | `CODEATLAS_EMBEDDING_BASE_URL` | HTTP(S) URL / empty | Live | Separate endpoint; empty uses the LLM base URL. |
-| Embeddings | `CODEATLAS_EMBEDDINGS_API_KEY` | secret / empty | Live | Separate credential; empty uses the LLM credential. |
 | Language servers | `CODEATLAS_GOPLS` | `auto` / `true` / `false` | Live | Go language-server mode. |
 | Language servers | `CODEATLAS_GOPLS_PATH` | path / `gopls` | Live | Go language-server executable. |
 | Language servers | `CODEATLAS_TYPESCRIPT_LSP` | `auto` / `true` / `false` | Live | JavaScript/TypeScript language-server mode. |
@@ -216,20 +211,18 @@ Settings shows both the saved and running values.
 | Language servers | `CODEATLAS_RUST_LSP_PATH` | path / `rust-analyzer` | Live | Rust language-server executable. |
 
 The drawer labels each value as **Settings**, **.env**, or **Default**, and as
-**Live** or **Restart required**. LLM, embeddings, and language-server changes
-are prepared and probed before an atomic runtime swap. Existing in-flight LLM
-requests and working language-server sessions finish on their old runtime.
-Changing embeddings schedules a linked rebuild while lexical retrieval remains
-available. Workspace, listen address, and maximum file size are saved
-immediately and become running values after a restart. The restart banner
-offers **Restart CodeAtlas**, which calls `POST /api/settings/restart` to stop
-the runtime and start it again in the same process with the saved values; the
-desktop window and the browser page reconnect automatically once the new
-listener is bound (a changed listen address in browser mode still requires
-opening the new URL). Explicit `-workspace` and `-listen` flags keep winning
-over saved values across in-process restarts. The **Workspace** field also
-offers **Choose folder…** in the desktop builds, which opens the native folder
-dialog and fills in the selected path.
+**Live** or **Restart required**. LLM and language-server changes are prepared
+and probed before an atomic runtime swap. Existing in-flight LLM requests and
+working language-server sessions finish on their old runtime. Workspace, listen
+address, and maximum file size are saved immediately and become running values
+after a restart. The restart banner offers **Restart CodeAtlas**, which calls
+`POST /api/settings/restart` to stop the runtime and start it again in the same
+process with the saved values; the desktop window and the browser page reconnect
+automatically once the new listener is bound (a changed listen address in
+browser mode still requires opening the new URL). Explicit `-workspace` and
+`-listen` flags keep winning over saved values across in-process restarts. The
+**Workspace** field also offers **Choose folder…** in the desktop builds, which
+opens the native folder dialog and fills in the selected path.
 
 ### Persistence and API keys
 
@@ -326,7 +319,7 @@ Real language-server integration is opt-in because installed binaries and toolch
 
 ## Privacy and safety
 
-CodeAtlas reads the workspace path you explicitly configure. Source excerpts included in generated explanations are sent to the LLM or embeddings endpoints you configure, so review the provider's data-handling policy before analyzing private code.
+CodeAtlas reads the workspace path you explicitly configure. Source excerpts included in generated explanations are sent to the LLM endpoint you configure, so review the provider's data-handling policy before analyzing private code.
 
 The server binds to loopback by default. If you expose it on another interface, place it behind appropriate authentication and network controls. CodeAtlas does not install dependencies, run workspace scripts, invoke build systems, accept language-server workspace edits, or apply language-server commands.
 

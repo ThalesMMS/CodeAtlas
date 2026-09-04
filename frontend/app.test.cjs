@@ -551,8 +551,9 @@ test('accessibility shortcuts skip IME composition and editable text input', () 
     isComposing: false,
     target: { tagName: 'BODY' },
   }), true);
-  assert.strictEqual(app.shortcutDisplayLabel('focusSearch', 'darwin'), '⌘K');
-  assert.strictEqual(app.shortcutDisplayLabel('focusSearch', 'linux'), 'Ctrl+K');
+  assert.strictEqual(app.shortcutDisplayLabel('save', 'darwin'), '⌘S');
+  assert.strictEqual(app.shortcutDisplayLabel('save', 'linux'), 'Ctrl+S');
+  assert.strictEqual(app.shortcutDisplayLabel('nope', 'darwin'), '');
 });
 
 test('accessibility focus fallback prefers editor, workspace then first focusable', () => {
@@ -715,6 +716,26 @@ test('hover card frame scheduler coalesces writes and supports cancellation', ()
   scheduler.cancel();
   frames.shift()();
   assert.deepStrictEqual(writes, [{ x: 3 }]);
+});
+
+test('only a Shift-held pointer move arms a hover explanation', () => {
+  assert.strictEqual(app.shouldArmHoverForPointer({ clientX: 10, clientY: 20, shiftKey: true }), true);
+  assert.strictEqual(app.shouldArmHoverForPointer({ clientX: 10, clientY: 20, shiftKey: false }), false);
+  // Adapters that predate the modifier field must not arm a paid request.
+  assert.strictEqual(app.shouldArmHoverForPointer({ clientX: 10, clientY: 20 }), false);
+  assert.strictEqual(app.shouldArmHoverForPointer(null), false);
+});
+
+test('a bare Shift press arms hover while chords and auto-repeat do not', () => {
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'Shift' }), true);
+  // Holding Shift down must not re-arm on every auto-repeat.
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'Shift', repeat: true }), false);
+  // Shift inside a chord belongs to that shortcut, not to Explain.
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'Shift', ctrlKey: true }), false);
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'Shift', metaKey: true }), false);
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'Shift', altKey: true }), false);
+  assert.strictEqual(app.shouldArmHoverForModifierKey({ key: 'A', shiftKey: true }), false);
+  assert.strictEqual(app.shouldArmHoverForModifierKey(null), false);
 });
 
 test('visible hover card keeps its original anchor while the pointer approaches it', () => {
@@ -1684,28 +1705,4 @@ test('waitForRestartedBackend reloads after the grace period when the restart wa
   assert.equal(result, true);
   assert.equal(reloaded, 1);
   assert.ok(clock >= 3000);
-});
-
-test('embedding rebuild status surfaces running progress and failures only', () => {
-  const store = app.createJobStore(4);
-  assert.strictEqual(app.embeddingRebuildStatus(store), null);
-
-  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'running', revision: 1, progress: { indeterminate: true, unit: 'symbol' } } });
-  let status = app.embeddingRebuildStatus(store);
-  assert.strictEqual(status.percent, null);
-  assert.strictEqual(status.text, 'Embeddings: preparing…');
-
-  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'running', revision: 2, progress: { completed: 320, total: 1280, percent: 25, unit: 'symbol' } } });
-  status = app.embeddingRebuildStatus(store);
-  assert.strictEqual(status.percent, 25);
-  assert.strictEqual(status.text, 'Embeddings 25% 320/1280');
-
-  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'succeeded', revision: 3, progress: { completed: 1280, total: 1280, percent: 100 } } });
-  assert.strictEqual(app.embeddingRebuildStatus(store), null, 'a finished rebuild hides the indicator');
-
-  app.applyJobEvent(store, { job: { id: 'e2', type: 'embeddings.rebuild', state: 'failed', revision: 1, error: { code: 'EMBEDDINGS_UNAVAILABLE' } } });
-  assert.strictEqual(app.embeddingRebuildStatus(store).className, 'error');
-
-  app.applyJobEvent(store, { job: { id: 'r1', type: 'repository.reindex', state: 'running', revision: 1, progress: { percent: 10 } } });
-  assert.strictEqual(app.embeddingRebuildStatus(store).className, 'error', 'other job types never drive the embeddings indicator');
 });

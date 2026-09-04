@@ -13,31 +13,23 @@ import (
 )
 
 type OpenAICompatible struct {
-	baseURL          string
-	embeddingBaseURL string
-	apiKey           string
-	embeddingsAPIKey string
-	model            string
-	reasoningEffort  string
-	embeddingModel   string
-	enableEmbeddings bool
-	structuredProbe  json.RawMessage
-	probeTimeout     time.Duration
-	client           *http.Client
-	requestSlots     chan struct{}
+	baseURL         string
+	apiKey          string
+	model           string
+	reasoningEffort string
+	structuredProbe json.RawMessage
+	probeTimeout    time.Duration
+	client          *http.Client
+	requestSlots    chan struct{}
 }
 
 // Options configures an OpenAI-compatible provider. ProbeTimeout drives the
 // diagnostic probes (see probe.go); RequestTimeout bounds business HTTP calls.
 type Options struct {
-	BaseURL          string
-	EmbeddingBaseURL string
-	APIKey           string
-	EmbeddingsAPIKey string
-	Model            string
-	ReasoningEffort  string
-	EmbeddingModel   string
-	EnableEmbeddings bool
+	BaseURL         string
+	APIKey          string
+	Model           string
+	ReasoningEffort string
 	// StructuredProbeSchema, when set, makes ProbeChat verify that the provider
 	// can compile the same json_schema dialect used by business requests.
 	StructuredProbeSchema json.RawMessage
@@ -52,7 +44,7 @@ const (
 	maxProviderErrorBodyBytes = int64(16 << 20)
 	providerMaxIdleConns      = 20
 	providerMaxIdlePerHost    = 10
-	// Chat, embeddings, probes, and schema fallbacks share the endpoint budget.
+	// Chat, probes and schema fallbacks share the endpoint budget.
 	providerMaxConcurrency = 2
 )
 
@@ -68,29 +60,17 @@ func NewOpenAICompatible(opts Options) Provider {
 	if requestTimeout <= 0 {
 		requestTimeout = defaultRequestTimeout
 	}
-	embeddingBaseURL := strings.TrimSpace(opts.EmbeddingBaseURL)
-	if embeddingBaseURL == "" {
-		embeddingBaseURL = opts.BaseURL
-	}
-	embeddingsAPIKey := opts.EmbeddingsAPIKey
-	if embeddingsAPIKey == "" {
-		embeddingsAPIKey = opts.APIKey
-	}
 	transport := providerTransport()
 	transport.MaxIdleConns = providerMaxIdleConns
 	transport.MaxIdleConnsPerHost = providerMaxIdlePerHost
 	return &OpenAICompatible{
-		baseURL:          strings.TrimRight(opts.BaseURL, "/"),
-		embeddingBaseURL: strings.TrimRight(embeddingBaseURL, "/"),
-		apiKey:           opts.APIKey,
-		embeddingsAPIKey: embeddingsAPIKey,
-		model:            opts.Model,
-		reasoningEffort:  strings.ToLower(strings.TrimSpace(opts.ReasoningEffort)),
-		embeddingModel:   opts.EmbeddingModel,
-		enableEmbeddings: opts.EnableEmbeddings,
-		structuredProbe:  append(json.RawMessage(nil), opts.StructuredProbeSchema...),
-		probeTimeout:     probeTimeout,
-		requestSlots:     make(chan struct{}, providerMaxConcurrency),
+		baseURL:         strings.TrimRight(opts.BaseURL, "/"),
+		apiKey:          opts.APIKey,
+		model:           opts.Model,
+		reasoningEffort: strings.ToLower(strings.TrimSpace(opts.ReasoningEffort)),
+		structuredProbe: append(json.RawMessage(nil), opts.StructuredProbeSchema...),
+		probeTimeout:    probeTimeout,
+		requestSlots:    make(chan struct{}, providerMaxConcurrency),
 		client: &http.Client{
 			Timeout:   requestTimeout,
 			Transport: transport,
@@ -313,37 +293,6 @@ func isSchemaGenerationFailure(err error) bool {
 	return strings.Contains(message, "failed to produce") &&
 		(strings.Contains(message, "schema-valid structured response") ||
 			strings.Contains(message, "schema valid structured response"))
-}
-
-func (p *OpenAICompatible) Embed(ctx context.Context, texts []string) ([][]float64, error) {
-	if p.embeddingModel == "" {
-		return nil, fmt.Errorf("embedding model is not configured")
-	}
-	requestBody := map[string]any{
-		"model": p.embeddingModel,
-		"input": texts,
-	}
-	var response struct {
-		Data []struct {
-			Index     int       `json:"index"`
-			Embedding []float64 `json:"embedding"`
-		} `json:"data"`
-	}
-	if err := p.postJSON(ctx, p.embeddingBaseURL+"/embeddings", p.embeddingsAPIKey, requestBody, &response); err != nil {
-		return nil, err
-	}
-	vectors := make([][]float64, len(texts))
-	for _, item := range response.Data {
-		if item.Index >= 0 && item.Index < len(vectors) {
-			vectors[item.Index] = item.Embedding
-		}
-	}
-	for i, vector := range vectors {
-		if len(vector) == 0 {
-			return nil, fmt.Errorf("embedding response missing index %d", i)
-		}
-	}
-	return vectors, nil
 }
 
 func (p *OpenAICompatible) postJSON(ctx context.Context, endpoint, apiKey string, body any, target any) error {

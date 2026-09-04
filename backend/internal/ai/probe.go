@@ -7,10 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,9 +19,8 @@ import (
 type ProbeStatus string
 
 const (
-	ProbeSuccess  ProbeStatus = "success"
-	ProbeFailure  ProbeStatus = "failure"
-	ProbeDisabled ProbeStatus = "disabled"
+	ProbeSuccess ProbeStatus = "success"
+	ProbeFailure ProbeStatus = "failure"
 )
 
 // Stable, machine-readable error codes for provider probe failures.
@@ -36,9 +33,6 @@ const (
 	CodeChatModelInvalid            = "CHAT_MODEL_INVALID"
 	CodeChatResponseInvalid         = "CHAT_RESPONSE_INVALID"
 	CodeStructuredOutputUnsupported = "STRUCTURED_OUTPUT_UNSUPPORTED"
-	CodeEmbeddingModelMissing       = "EMBEDDING_MODEL_MISSING"
-	CodeEmbeddingModelInvalid       = "EMBEDDING_MODEL_INVALID"
-	CodeEmbeddingResponseInvalid    = "EMBEDDING_RESPONSE_INVALID"
 )
 
 // ProviderProbeResult is the structured outcome of one provider probe. Message
@@ -58,7 +52,6 @@ type ProviderProbeResult struct {
 // workspace content) through ProviderProbeResult.Message.
 type CapabilityProbe interface {
 	ProbeChat(ctx context.Context) ProviderProbeResult
-	ProbeEmbeddings(ctx context.Context) ProviderProbeResult
 }
 
 // Compile-time guarantees that the providers implement the probe interface.
@@ -73,10 +66,6 @@ func successResult(start time.Time, metadata map[string]string) ProviderProbeRes
 
 func failureResult(start time.Time, code, message string) ProviderProbeResult {
 	return ProviderProbeResult{Status: ProbeFailure, ErrorCode: code, Message: sanitizeText(message), Duration: time.Since(start)}
-}
-
-func disabledResult(start time.Time, message string) ProviderProbeResult {
-	return ProviderProbeResult{Status: ProbeDisabled, Message: sanitizeText(message), Duration: time.Since(start)}
 }
 
 // ProbeChat sends a minimal, deterministic request to <baseURL>/chat/completions
@@ -167,63 +156,9 @@ func classifyStructuredStatus(start time.Time, status int) ProviderProbeResult {
 	}
 }
 
-// ProbeEmbeddings verifies the embeddings endpoint when enabled. When embeddings
-// are disabled the capability is reported as disabled, not as a failure. The
-// probe vector is never persisted into the index.
-func (p *OpenAICompatible) ProbeEmbeddings(parent context.Context) ProviderProbeResult {
-	start := time.Now()
-	if !p.enableEmbeddings {
-		return disabledResult(start, "embeddings disabled")
-	}
-	if strings.TrimSpace(p.embeddingModel) == "" {
-		return failureResult(start, CodeEmbeddingModelMissing, "embedding model is not configured")
-	}
-	ctx, cancel := context.WithTimeout(parent, p.probeTimeout)
-	defer cancel()
-
-	body := map[string]any{
-		"model": p.embeddingModel,
-		"input": "codeatlas embeddings probe",
-	}
-	var response struct {
-		Data []struct {
-			Embedding []float64 `json:"embedding"`
-		} `json:"data"`
-	}
-	outcome := p.sendProbe(ctx, p.embeddingBaseURL+"/embeddings", p.embeddingsAPIKey, body, &response)
-	if outcome.transport != nil {
-		code, message := classifyTransport(outcome.transport)
-		return failureResult(start, code, message)
-	}
-	if outcome.statusCode < 200 || outcome.statusCode >= 300 {
-		return classifyEmbeddingStatus(start, outcome.statusCode, outcome.snippet)
-	}
-	if outcome.decodeErr != nil {
-		return failureResult(start, CodeEmbeddingResponseInvalid, "embedding response was not decodable")
-	}
-	if len(response.Data) != 1 {
-		return failureResult(start, CodeEmbeddingResponseInvalid, fmt.Sprintf("expected exactly one vector, got %d", len(response.Data)))
-	}
-	vector := response.Data[0].Embedding
-	if len(vector) == 0 {
-		return failureResult(start, CodeEmbeddingResponseInvalid, "embedding vector was empty")
-	}
-	for _, value := range vector {
-		if math.IsNaN(value) || math.IsInf(value, 0) {
-			return failureResult(start, CodeEmbeddingResponseInvalid, "embedding vector contained non-finite values")
-		}
-	}
-	return successResult(start, map[string]string{"dimension": strconv.Itoa(len(vector))})
-}
-
 // ProbeChat for the Disabled provider always reports an unconfigured failure.
 func (Disabled) ProbeChat(context.Context) ProviderProbeResult {
 	return ProviderProbeResult{Status: ProbeFailure, ErrorCode: CodeProviderURLInvalid, Message: "LLM provider is not configured"}
-}
-
-// ProbeEmbeddings for the Disabled provider reports a disabled capability.
-func (Disabled) ProbeEmbeddings(context.Context) ProviderProbeResult {
-	return ProviderProbeResult{Status: ProbeDisabled, Message: "embeddings disabled"}
 }
 
 // probeOutcome captures the result of a single HTTP probe round-trip.
@@ -303,10 +238,6 @@ func classifyHTTPStatus(start time.Time, status int, snippet, label, modelInvali
 
 func classifyChatStatus(start time.Time, status int, snippet string) ProviderProbeResult {
 	return classifyHTTPStatus(start, status, snippet, "chat", CodeChatModelInvalid, CodeChatResponseInvalid)
-}
-
-func classifyEmbeddingStatus(start time.Time, status int, snippet string) ProviderProbeResult {
-	return classifyHTTPStatus(start, status, snippet, "embedding", CodeEmbeddingModelInvalid, CodeEmbeddingResponseInvalid)
 }
 
 // sanitizeSnippet strips the API key, collapses whitespace and bounds the length

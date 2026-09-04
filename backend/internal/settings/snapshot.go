@@ -25,7 +25,7 @@ type SanitizedSnapshot struct {
 func makeSnapshot(revision uint64, resolved Resolved, running Values) SanitizedSnapshot {
 	snapshot := SanitizedSnapshot{
 		Revision:   revision,
-		Groups:     make(map[Group][]FieldSnapshot, 4),
+		Groups:     make(map[Group][]FieldSnapshot, 3),
 		Validation: append([]FieldError(nil), resolved.Errors...),
 	}
 	for _, definition := range DocumentedFields() {
@@ -114,14 +114,6 @@ func valueForField(values Values, key FieldKey) any {
 		return values.RustLSPMode
 	case FieldRustLSPPath:
 		return values.RustLSPPath
-	case FieldEnableEmbeddings:
-		return values.EnableEmbeddings
-	case FieldEmbeddingModel:
-		return values.EmbeddingModel
-	case FieldEmbeddingBaseURL:
-		return values.EmbeddingBaseURL
-	case FieldEmbeddingsAPIKey:
-		return values.EmbeddingsAPIKey
 	default:
 		return nil
 	}

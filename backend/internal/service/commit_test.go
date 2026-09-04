@@ -68,7 +68,7 @@ func setupCommit(t *testing.T) *commitFixture {
 		t.Fatal(err)
 	}
 	workspace := NewWorkspace(root)
-	preparer := NewSavePreparer(workspace, repository, codeparser.New(), nil, 1_500_000)
+	preparer := NewSavePreparer(workspace, repository, codeparser.New(), 1_500_000)
 	journalDir := filepath.Join(indexDir, "transactions")
 	coord := NewWorkspaceCommitCoordinator(preparer, workspace, repository, journalDir, indexPath)
 	return &commitFixture{coord: coord, store: repository, root: root, indexPath: indexPath, journalDir: journalDir}

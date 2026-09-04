@@ -89,7 +89,7 @@ func (httpSettingsPreparer) Prepare(context.Context, settings.Resolved, settings
 type httpSettingsPrepared struct{}
 
 func (httpSettingsPrepared) Activate() settings.ActivationResult {
-	return settings.ActivationResult{Applied: []settings.Group{settings.GroupLLM}, EmbeddingJobID: "embedding-job-1"}
+	return settings.ActivationResult{Applied: []settings.Group{settings.GroupLLM}}
 }
 func (httpSettingsPrepared) Abort(context.Context) {}
 
@@ -107,7 +107,7 @@ func newSettingsHTTPServer(t *testing.T, credentials *httpSettingsCredentialStor
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	coordinator := coordinatorInState(t, readiness.StateAwaitingConfiguration)
-	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coordinator, capabilities.NewRegistry(), logger)
+	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, coordinator, capabilities.NewRegistry(), logger)
 	api.SetSettingsManager(manager, settingsTestToken)
 	server := httptest.NewServer(api.Handler())
 	t.Cleanup(server.Close)
@@ -165,7 +165,7 @@ func TestSettingsAPIGetPutConflictAndReset(t *testing.T) {
 	for _, fields := range initial.Groups {
 		fieldCount += len(fields)
 		for _, field := range fields {
-			if field.Key == settings.FieldLLMAPIKey || field.Key == settings.FieldEmbeddingsAPIKey {
+			if field.Key == settings.FieldLLMAPIKey {
 				if field.Value != nil || field.RunningValue != nil || field.Configured == nil {
 					t.Fatalf("secret field leaked or omitted status: %+v", field)
 				}
@@ -190,7 +190,7 @@ func TestSettingsAPIGetPutConflictAndReset(t *testing.T) {
 	if err := json.Unmarshal([]byte(putResponse), &updated); err != nil {
 		t.Fatalf("decode PUT = %v", err)
 	}
-	if updated.Snapshot.Revision != 1 || updated.EmbeddingJobID != "embedding-job-1" {
+	if updated.Snapshot.Revision != 1 {
 		t.Fatalf("PUT result = %+v", updated)
 	}
 	if len(updated.RestartRequired) != 1 || updated.RestartRequired[0] != settings.FieldWorkspace {
@@ -241,7 +241,7 @@ func TestSettingsAPISecurityBoundary(t *testing.T) {
 		t.Fatalf("oversized status = %d body=%s", response.StatusCode, responseBody(t, response))
 	}
 
-	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	_, manager := newSettingsHTTPServer(t, nil)
 	api.SetSettingsManager(manager, settingsTestToken)
 	handler := api.Handler()
@@ -315,7 +315,7 @@ func TestSettingsAPIRestartInvokesHandlerAfterResponse(t *testing.T) {
 		t.Fatalf("NewManager() error = %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coordinatorInState(t, readiness.StateAwaitingConfiguration), capabilities.NewRegistry(), logger)
+	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, coordinatorInState(t, readiness.StateAwaitingConfiguration), capabilities.NewRegistry(), logger)
 	api.SetSettingsManager(manager, settingsTestToken)
 	restarted := make(chan struct{}, 1)
 	api.SetRestartHandler(func() { restarted <- struct{}{} })

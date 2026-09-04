@@ -24,6 +24,13 @@ func (w *webviewWindow) Bind(name string, function any) error {
 	return w.native.Bind(name, function)
 }
 
+// InstallQuitMenu adds the platform's Quit item, routing it to the same
+// terminate path the window's close button takes so the server still shuts
+// down cleanly.
+func (w *webviewWindow) InstallQuitMenu(applicationName string) {
+	installQuitMenuNative(applicationName, w.Terminate)
+}
+
 // PickFolder runs the platform folder chooser. Bound functions are invoked on
 // the UI thread, so the modal dialog can run synchronously here.
 func (w *webviewWindow) PickFolder(initial string) (FolderSelection, error) {

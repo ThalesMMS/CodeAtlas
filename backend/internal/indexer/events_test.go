@@ -50,7 +50,7 @@ func drainEvents(t *testing.T, channel <-chan domain.IndexEvent) []domain.IndexE
 
 func TestScanEmitsSingleAggregatedCommitEvent(t *testing.T) {
 	t.Parallel()
-	indexer, root, _ := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, _ := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	writeSource(t, root, "b.go", goSource)
 	channel, cancel := indexer.Broker().Subscribe()
@@ -83,7 +83,7 @@ func TestScanEmitsSingleAggregatedCommitEvent(t *testing.T) {
 
 func TestScanPublishesWorkspaceChangeSinkAfterCommitWithHashes(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	writeSource(t, root, "b.go", "package sample\n\nfunc Other() int { return 1 }\n")
 	if err := indexer.Scan(context.Background()); err != nil {
@@ -143,7 +143,7 @@ func TestScanPublishesWorkspaceChangeSinkAfterCommitWithHashes(t *testing.T) {
 
 func TestWorkspaceChangeSinkCompletesBeforeCommitEvent(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -193,7 +193,7 @@ func TestWorkspaceChangeSinkCompletesBeforeCommitEvent(t *testing.T) {
 
 func TestScanPublishesBecameIgnoredWorkspaceChangeKind(t *testing.T) {
 	t.Parallel()
-	indexer, root, repository := newTestIndexer(t, codeparser.New(), nil, false)
+	indexer, root, repository := newTestIndexer(t, codeparser.New())
 	writeSource(t, root, "a.go", goSource)
 	if err := indexer.Scan(context.Background()); err != nil {
 		t.Fatalf("setup Scan() error = %v", err)
@@ -222,7 +222,7 @@ func TestScanPublishesBecameIgnoredWorkspaceChangeKind(t *testing.T) {
 
 func TestScanParseFailureEmitsQuarantineNotPrepareFailure(t *testing.T) {
 	t.Parallel()
-	indexer, root, _ := newTestIndexer(t, failingParser{}, nil, false)
+	indexer, root, _ := newTestIndexer(t, failingParser{})
 	writeSource(t, root, "a.go", goSource)
 	channel, cancel := indexer.Broker().Subscribe()
 	defer cancel()

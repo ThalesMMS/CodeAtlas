@@ -16,7 +16,7 @@ import (
 func healthServer(t *testing.T, coord httpapi.ReadinessReader, registry httpapi.CapabilityReader) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coord, registry, logger).Handler()
+	handler := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, coord, registry, logger).Handler()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server

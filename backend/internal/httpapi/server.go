@@ -27,7 +27,6 @@ import (
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/parsesession"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/scheduler"
 	"github.com/ThalesMMS/CodeAtlas/internal/semantic"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
@@ -41,7 +40,6 @@ type Server struct {
 	indexer         *indexer.Indexer
 	scheduler       scheduler.ManualReconciler
 	mutations       mutation.Registry
-	retriever       *retrieval.Hybrid
 	explainer       *service.Explainer
 	navigation      *service.NavigationService
 	semanticSync    semantic.DocumentSemanticSync
@@ -62,9 +60,6 @@ type Server struct {
 	settingsManager *settings.Manager
 	settingsToken   string
 	restartHandler  func()
-	// onEmbeddingsRebuilt runs after a successful embeddings.rebuild job so the
-	// composition root can refresh the llm-embeddings capability metadata.
-	onEmbeddingsRebuilt func()
 }
 
 const documentLeaseTTL = 30 * time.Minute
@@ -102,23 +97,6 @@ func (s *Server) SetRestartHandler(handler func()) {
 	s.restartHandler = handler
 }
 
-// SetEmbeddingRebuildHook registers a callback invoked after every successful
-// embeddings.rebuild job.
-func (s *Server) SetEmbeddingRebuildHook(hook func()) {
-	s.onEmbeddingsRebuilt = hook
-}
-
-// ScheduleEmbeddingRebuild submits the same coalescing job used by the public
-// maintenance API. Runtime settings activation uses this narrow surface so
-// concurrent incompatible changes reuse the stable repository rebuild key.
-func (s *Server) ScheduleEmbeddingRebuild(ctx context.Context) (domain.JobID, error) {
-	snapshot, err := s.submitReindexJob(ctx, "embeddings.rebuild", "embeddings:repository", "")
-	if err != nil {
-		return "", err
-	}
-	return snapshot.ID, nil
-}
-
 // SetMutationRegistry exposes internal-write correlation status in diagnostics.
 func (s *Server) SetMutationRegistry(registry mutation.Registry) {
 	s.mutations = registry
@@ -149,7 +127,6 @@ func New(
 	workspace *service.Workspace,
 	store repository.Store,
 	indexer *indexer.Indexer,
-	retriever *retrieval.Hybrid,
 	explainer *service.Explainer,
 	codemaps *service.CodemapService,
 	deepWiki *service.DeepWikiService,
@@ -168,7 +145,7 @@ func New(
 	jobs := job.NewManager(job.DefaultConfig())
 	events := newSSEBroker(defaultSSEHistory)
 	server := &Server{
-		workspace: workspace, store: store, indexer: indexer, retriever: retriever,
+		workspace: workspace, store: store, indexer: indexer,
 		explainer: explainer, navigation: service.NewNavigationService(store, workspace), semanticEditor: service.NewSemanticEditorService(store, overlays, parseSessions), codemaps: codemaps, deepWiki: deepWiki, saver: saver,
 		overlays: overlays, parseSessions: parseSessions, overlayParses: newOverlayParseCache(), jobs: jobs, events: events,
 		provider: provider, readiness: readiness, capabilities: capabilities, logger: logger,
@@ -213,7 +190,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/documents/{documentId}/save", s.handleSaveDocument)
 	mux.HandleFunc("POST /api/documents/{documentId}/resolve-conflict", s.handleResolveDocumentConflict)
 	mux.HandleFunc("DELETE /api/documents/{documentId}", s.handleDeleteDocument)
-	mux.HandleFunc("GET /api/search", s.handleSearch)
 	mux.HandleFunc("POST /api/explain", s.handleExplain)
 	mux.HandleFunc("POST /api/navigation/query", s.handleNavigationQuery)
 	mux.HandleFunc("POST /api/jobs", s.handleCreateJob)
@@ -459,20 +435,6 @@ func (s *Server) handleTree(response http.ResponseWriter, _ *http.Request) {
 	writeJSON(response, http.StatusOK, s.store.FileTree())
 }
 
-func (s *Server) handleSearch(response http.ResponseWriter, request *http.Request) {
-	query := strings.TrimSpace(request.URL.Query().Get("q"))
-	if query == "" {
-		writeJSON(response, http.StatusOK, []domain.SearchHit{})
-		return
-	}
-	hits, err := s.retriever.Search(request.Context(), query, 30)
-	if err != nil {
-		s.writeAppError(response, request, err)
-		return
-	}
-	writeJSON(response, http.StatusOK, hits)
-}
-
 func (s *Server) handleExplain(response http.ResponseWriter, request *http.Request) {
 	var payload domain.ExplainRequest
 	if err := decodeJSON(response, request, &payload, 64<<10); err != nil {
@@ -668,10 +630,6 @@ func (s *Server) handleCreateJob(response http.ResponseWriter, request *http.Req
 		if err = decodeJobInput(payload.Input, &struct{}{}); err == nil {
 			snapshot, err = s.submitReindexJob(request.Context(), "repository.reindex", "repository:full", payload.ClientRequestID)
 		}
-	case "embeddings.rebuild":
-		if err = decodeJobInput(payload.Input, &struct{}{}); err == nil {
-			snapshot, err = s.submitReindexJob(request.Context(), "embeddings.rebuild", "embeddings:repository", payload.ClientRequestID)
-		}
 	case "fts.rebuild":
 		if err = decodeJobInput(payload.Input, &struct{}{}); err == nil {
 			snapshot, err = s.submitReindexJob(request.Context(), "fts.rebuild", "fts:repository", payload.ClientRequestID)
@@ -858,34 +816,6 @@ func (s *Server) submitReindexJob(ctx context.Context, jobType, key, clientReque
 				return s.store.SnapshotMetadataContext(jobCtx)
 			}
 			switch jobType {
-			case "embeddings.rebuild":
-				_ = reporter.Report("generate", "generating embeddings", domain.Progress{Indeterminate: true, Unit: "symbol"})
-				if s.retriever == nil {
-					return job.Result{}, errors.New("embedding retriever is unavailable")
-				}
-				err := s.retriever.RebuildEmbeddingsWithProgress(jobCtx, func(completed, total int) {
-					if total <= 0 {
-						return
-					}
-					percent := float64(completed) * 100 / float64(total)
-					_ = reporter.Report("generate", fmt.Sprintf("generating embeddings (%d/%d symbols)", completed, total),
-						domain.Progress{Completed: int64(completed), Total: int64(total), Unit: "symbol", Percent: &percent})
-				})
-				if err != nil {
-					return job.Result{}, err
-				}
-				metadata, err := currentMetadata()
-				if err != nil {
-					return job.Result{}, err
-				}
-				if s.onEmbeddingsRebuilt != nil {
-					s.onEmbeddingsRebuilt()
-				}
-				count := s.store.EmbeddingCount()
-				_ = reporter.Report("rebuilt", "embeddings index rebuilt", domain.Progress{Completed: int64(count), Total: int64(count), Unit: "vector"})
-				return job.Result{SnapshotID: metadata.ID, Payload: map[string]any{
-					"rebuilt": true, "index": "embeddings", "vectors": count, "snapshotId": metadata.ID,
-				}}, nil
 			case "fts.rebuild":
 				_ = reporter.Report("rebuild", "rebuilding FTS index", domain.Progress{Indeterminate: true, Unit: "symbol"})
 				rebuilder, ok := s.store.(repository.FTSRebuilder)

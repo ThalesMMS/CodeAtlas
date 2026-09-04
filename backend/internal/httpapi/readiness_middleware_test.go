@@ -16,7 +16,7 @@ func TestReadinessGateBlocksFunctionalRoutes(t *testing.T) {
 	t.Parallel()
 	server := healthServer(t, coordinatorInState(t, readiness.StateIndexing), capabilities.NewRegistry())
 
-	functional := []string{"/api/tree", "/api/file?path=x", "/api/search?q=x", "/api/deepwiki", "/api/events"}
+	functional := []string{"/api/tree", "/api/file?path=x", "/api/codemaps", "/api/deepwiki", "/api/events"}
 	for _, path := range functional {
 		response, err := http.Get(server.URL + path)
 		if err != nil {

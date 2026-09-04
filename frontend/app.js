@@ -12,6 +12,9 @@ const HOVER_POINTER_INTERVAL_MS = 75;
 const HOVER_CARD_WIDTH_PX = 420;
 const HOVER_CARD_RESERVED_HEIGHT_PX = 420;
 const HOVER_HIDE_DELAY_MS = 600;
+// The quick explanation is an explicit, paid gesture: the pointer only arms it
+// while Shift is held, and the resulting card stays until it is dismissed.
+const HOVER_PINNED_BY_DEFAULT = true;
 const DOCUMENT_LEASE_STORAGE_KEY = 'codeatlas.open-document-leases.v1';
 const DOCUMENT_LEASE_HANDOFF_STORAGE_KEY = 'codeatlas.document-lease-handoffs.v1';
 const DOCUMENT_LEASE_HANDOFF_MAX_AGE_MS = 30 * 60 * 1000;
@@ -30,14 +33,13 @@ const MERMAID_DIAGRAM_VERSION = 'mermaid/v1';
 const MERMAID_MAX_SOURCE_BYTES = 64 * 1024;
 const FIRST_FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const SHORTCUTS = Object.freeze({
-  focusSearch: { mac: '⌘K', other: 'Ctrl+K', aria: 'Control+K' },
-  save: { mac: '⌘S', other: 'Ctrl+S', aria: 'Control+S' },
-  definition: { mac: 'F12', other: 'F12', aria: 'F12' },
-  references: { mac: '⇧F12', other: 'Shift+F12', aria: 'Shift+F12' },
-  focusWorkspace: { mac: '⌘1', other: 'Alt+1', aria: 'Alt+1' },
-  focusEditor: { mac: '⌘2', other: 'Alt+2', aria: 'Alt+2' },
-  focusInspector: { mac: '⌘3', other: 'Alt+3', aria: 'Alt+3' },
-  focusJobs: { mac: '⌘4', other: 'Alt+4', aria: 'Alt+4' },
+  save: { mac: '⌘S', other: 'Ctrl+S' },
+  definition: { mac: 'F12', other: 'F12' },
+  references: { mac: '⇧F12', other: 'Shift+F12' },
+  focusWorkspace: { mac: '⌘1', other: 'Alt+1' },
+  focusEditor: { mac: '⌘2', other: 'Alt+2' },
+  focusInspector: { mac: '⌘3', other: 'Alt+3' },
+  focusJobs: { mac: '⌘4', other: 'Alt+4' },
 });
 
 const state = {
@@ -63,8 +65,9 @@ const state = {
   hoverController: null,
   hoverKey: '',
   hoverTarget: null,
+  hoverLastPointer: null,
   hoverExplanation: null,
-  hoverPinned: false,
+  hoverPinned: HOVER_PINNED_BY_DEFAULT,
   hoverStale: false,
   hoverCache: createExplainCache(80),
   seeMoreController: null,
@@ -94,11 +97,6 @@ const state = {
   // Per-panel request sequences for dropping stale overlay responses.
   hoverSeq: 0,
   seeMoreSeq: 0,
-  searchTimer: null,
-  searchController: null,
-  searchActiveIndex: -1,
-  searchHits: [],
-  searchResultItems: [],
   treeItems: [],
   explainExplanation: null,
   // Readiness state machine.
@@ -127,10 +125,7 @@ function boot() {
   Object.assign(elements, {
     appShell: document.querySelector('.app-shell'),
     workspaceLabel: $('workspace-label'),
-    searchInput: $('search-input'),
-    searchResults: $('search-results'),
     indexStatus: $('index-status'),
-    embeddingsStatus: $('embeddings-status'),
     reindexButton: $('reindex-button'),
     refreshTreeButton: $('refresh-tree-button'),
     fileTree: $('file-tree'),
@@ -466,10 +461,6 @@ function shortcutDisplayLabel(action, platform = '') {
   return String(platform).toLowerCase().includes('darwin') || String(platform).toLowerCase().includes('mac')
     ? shortcut.mac
     : shortcut.other;
-}
-
-function shortcutAriaLabel(action) {
-  return SHORTCUTS[action] ? SHORTCUTS[action].aria : '';
 }
 
 function focusFallbackSelector(context = {}) {
@@ -1136,9 +1127,11 @@ function bindUI() {
   initializeHoverScheduling();
   state.editorAdapter.onMouseMove(scheduleHover);
   state.editorAdapter.onMouseLeave(() => {
+    state.hoverLastPointer = null;
     state.hoverMoveThrottle?.cancel();
     scheduleHideHover();
   });
+  elements.editorShell.addEventListener('pointerdown', cancelInFlightHover);
   elements.hoverCard.addEventListener('mouseenter', cancelHideHover);
   elements.hoverCard.addEventListener('pointerdown', cancelHideHover);
   elements.hoverCard.addEventListener('mouseleave', scheduleHideHover);
@@ -1146,16 +1139,8 @@ function bindUI() {
     if (event.key === 'Escape') hideHover();
   });
 
-  elements.searchInput.addEventListener('input', scheduleSearch);
-  elements.searchInput.addEventListener('keydown', (event) => {
-    if (handleSearchKeydown(event)) return;
-    if (event.key === 'Escape') hideSearchResults();
-  });
-  document.addEventListener('click', (event) => {
-    if (!event.target.closest('.global-search')) hideSearchResults();
-  });
-  elements.searchResults.addEventListener('click', handleSearchResultClick);
   document.addEventListener('keydown', (event) => {
+    handleHoverModifierKey(event);
     if (handleExplainShortcut(event)) return;
     handleGlobalShortcut(event);
   });
@@ -1209,10 +1194,9 @@ function initializeAccessibility() {
   if (elements.seeMoreButton) {
     elements.seeMoreButton.setAttribute('aria-label', 'Open the expanded explanation for the current symbol');
   }
-  if (elements.searchInput) {
-    elements.searchInput.setAttribute('aria-keyshortcuts', shortcutAriaLabel('focusSearch'));
-  }
   if (elements.jobsList) elements.jobsList.setAttribute('role', 'list');
+  updateHoverPinButton();
+  updateHoverA11y();
   activateInspector('deepwiki');
 }
 
@@ -1221,13 +1205,6 @@ function handleGlobalShortcut(event) {
   const key = String(event.key || '').toLowerCase();
   const mod = event.metaKey || event.ctrlKey;
   const panelModifier = event.altKey || event.metaKey;
-  if (mod && key === 'k') {
-    event.preventDefault();
-    elements.searchInput.focus();
-    elements.searchInput.select();
-    announce('Global search focused.');
-    return true;
-  }
   if (mod && key === 's') {
     event.preventDefault();
     saveActiveFile();
@@ -3648,9 +3625,10 @@ function updateHoverPinButton() {
 
 function updateHoverA11y() {
   if (!elements.hoverCard) return;
-  elements.hoverCard.setAttribute('role', state.hoverPinned ? 'dialog' : 'tooltip');
-  if (state.hoverPinned) elements.hoverCard.setAttribute('aria-modal', 'false');
-  else elements.hoverCard.removeAttribute('aria-modal');
+  // The card owns pin, close and See more whether or not it is pinned, and ARIA
+  // forbids interactive content inside a tooltip, so the role never downgrades.
+  elements.hoverCard.setAttribute('role', 'dialog');
+  elements.hoverCard.setAttribute('aria-modal', 'false');
 }
 
 function markHoverStaleForDocument(documentId) {
@@ -3719,12 +3697,71 @@ function triggerKeyboardHover() {
   requestHover(key);
 }
 
+// Shift is read from the move that armed the request rather than from a tracked
+// modifier state, so a blurred window can never leave the gesture stuck open.
+function shouldArmHoverForPointer(event) {
+  return Boolean(event && event.shiftKey);
+}
+
+function cancelPendingHover() {
+  clearTimeout(state.hoverTimer);
+  state.hoverMoveThrottle?.cancel();
+}
+
+// Abandoning the gesture must also drop a request already in flight. The abort
+// stops the fetch, the sequence bump discards a response that resolved but has
+// not been applied yet, and the loading card has to go with it: AbortError is
+// swallowed without cleanup, so it would otherwise sit on "Generating" forever.
+function cancelInFlightHover() {
+  cancelPendingHover();
+  if (!state.hoverController) return;
+  state.hoverController.abort();
+  state.hoverController = null;
+  state.hoverSeq += 1;
+  const loading = elements.hoverCard.getAttribute('aria-busy') === 'true'
+    && !elements.hoverCard.classList.contains('hidden');
+  if (loading) hideHover();
+}
+
 function scheduleHover(event) {
   if (!state.activePath) return;
-  if (state.hoverPinned) return;
+  // Tracked on every move, armed or not: Shift often arrives as a keystroke
+  // after the pointer has already come to rest on the symbol.
+  state.hoverLastPointer = { clientX: event.clientX, clientY: event.clientY };
+  if (!shouldArmHoverForPointer(event)) {
+    // Plain pointer travel neither arms a new card nor disturbs the visible one.
+    // Deliberately not cancelInFlightHover: this runs on ordinary movement, not
+    // on gesture end, so aborting here would kill the request the user is
+    // waiting on the moment they release Shift and move toward the card.
+    cancelPendingHover();
+    return;
+  }
   cancelHideHover();
-  const pointer = { clientX: event.clientX, clientY: event.clientY };
-  state.hoverMoveThrottle?.push(pointer);
+  state.hoverMoveThrottle?.push({ ...state.hoverLastPointer });
+}
+
+// A bare Shift press is the gesture; Shift inside a chord is somebody else's
+// shortcut, and an auto-repeat is the same press arriving again.
+function shouldArmHoverForModifierKey(event) {
+  if (!event || event.key !== 'Shift') return false;
+  return !(event.repeat || event.ctrlKey || event.metaKey || event.altKey);
+}
+
+// Shift alone arms the explanation at the resting pointer. Typing a capital
+// letter also starts with Shift, so any other key inside the dwell window
+// cancels: a real gesture holds Shift and presses nothing else.
+function handleHoverModifierKey(event) {
+  // An IME candidate window owns these keystrokes; the gesture neither arms nor
+  // cancels until composition ends.
+  if (event.isComposing) return;
+  if (event.key !== 'Shift') {
+    cancelInFlightHover();
+    return;
+  }
+  if (!shouldArmHoverForModifierKey(event)) return;
+  if (!state.activePath || !state.hoverLastPointer) return;
+  cancelHideHover();
+  state.hoverMoveThrottle?.push({ ...state.hoverLastPointer });
 }
 
 function hoverAnchorForPointer(currentTarget, pointer, cardVisible, sameKey) {
@@ -3735,7 +3772,7 @@ function hoverAnchorForPointer(currentTarget, pointer, cardVisible, sameKey) {
 }
 
 function resolveHoverPointer(pointer) {
-  if (!state.activePath || state.hoverPinned) return;
+  if (!state.activePath) return;
   const tab = state.tabs.get(state.activePath);
   if (!tab || state.editorAdapter.getContent(tab.documentId).length === 0) return;
   const target = state.editorAdapter.positionFromMouseEvent(pointer);
@@ -3898,10 +3935,11 @@ function hideHover() {
   state.hoverPositionScheduler?.cancel();
   state.hoverController?.abort();
   elements.hoverCard.classList.add('hidden');
-  state.hoverPinned = false;
+  state.hoverPinned = HOVER_PINNED_BY_DEFAULT;
   state.hoverStale = false;
   state.hoverKey = '';
   state.hoverTarget = null;
+  state.hoverLastPointer = null;
   state.hoverExplanation = null;
   state.hoverCardAnchor = null;
   setSeeMoreButtonBusy(false);
@@ -3997,147 +4035,6 @@ function renderEvidence(response) {
     fragment.appendChild(card);
   });
   elements.evidenceList.appendChild(fragment);
-}
-
-function scheduleSearch() {
-  clearTimeout(state.searchTimer);
-  const query = elements.searchInput.value.trim();
-  if (query.length < 2) {
-    hideSearchResults();
-    return;
-  }
-  state.searchTimer = setTimeout(() => runSearch(query), 260);
-}
-
-async function runSearch(query) {
-  state.searchController?.abort();
-  state.searchController = new AbortController();
-  try {
-    const hits = await api(`/api/search?q=${encodeURIComponent(query)}`, { signal: state.searchController.signal });
-    renderSearchResults(hits);
-  } catch (error) {
-    if (error.name !== 'AbortError') toast(error.message, true);
-  }
-}
-
-function renderSearchResults(hits) {
-  const visibleHits = Array.isArray(hits) ? hits.slice(0, 18) : [];
-  state.searchHits = visibleHits;
-  state.searchResultItems = [];
-  if (!visibleHits.length) {
-    const empty = document.createElement('div');
-    empty.className = 'search-result';
-    empty.setAttribute('role', 'status');
-    empty.textContent = 'No results.';
-    elements.searchResults.replaceChildren(empty);
-    setSearchActiveIndex(-1);
-    announce('Search returned no results.');
-  }
-  const fragment = document.createDocumentFragment();
-  visibleHits.forEach((hit, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'search-result';
-    button.id = `search-result-${index}`;
-    button.setAttribute('role', 'option');
-    button.setAttribute('aria-selected', 'false');
-    button.tabIndex = -1;
-    // SymbolID is the logical selection; navigation always uses the current
-    // occurrence's path/range from this response (never a cached range as identity).
-    button.dataset.symbolId = hit.symbol.id || '';
-    button.dataset.occurrenceId = hit.symbol.occurrenceId || '';
-    button.dataset.searchIndex = String(index);
-    const kind = document.createElement('span');
-    kind.className = 'symbol-kind';
-    kind.textContent = hit.symbol.kind;
-    const body = document.createElement('span');
-    const name = document.createElement('strong');
-    name.textContent = hit.symbol.qualifiedName;
-    const path = document.createElement('small');
-    path.textContent = `${hit.symbol.path}:${hit.symbol.range.start.line} · ${hit.source}`;
-    body.append(name, path);
-    button.append(kind, body);
-    fragment.appendChild(button);
-    state.searchResultItems.push(button);
-  });
-  if (visibleHits.length) elements.searchResults.replaceChildren(fragment);
-  elements.searchResults.classList.remove('hidden');
-  elements.searchInput.setAttribute('aria-expanded', 'true');
-  setSearchActiveIndex(visibleHits.length ? 0 : -1);
-  if (visibleHits.length) announce(`${visibleHits.length} search result(s).`);
-}
-
-function hideSearchResults() {
-  elements.searchResults.classList.add('hidden');
-  elements.searchInput.setAttribute('aria-expanded', 'false');
-  elements.searchInput.removeAttribute('aria-activedescendant');
-  state.searchActiveIndex = -1;
-  state.searchHits = [];
-  state.searchResultItems = [];
-}
-
-function handleSearchResultClick(event) {
-  const item = delegatedItem(event, elements.searchResults, '.search-result[data-search-index]');
-  if (!item) return;
-  const hit = state.searchHits[Number(item.dataset.searchIndex)];
-  if (!hit?.symbol) return;
-  navigateToKnownLocation({
-    path: hit.symbol.path,
-    symbolId: hit.symbol.id || '',
-    occurrenceId: hit.symbol.occurrenceId || '',
-    range: hit.symbol.range,
-    snapshotId: hit.snapshotId || state.stats?.snapshotId || '',
-  });
-  hideSearchResults();
-}
-
-function handleSearchKeydown(event) {
-  if (elements.searchResults.classList.contains('hidden')) return false;
-  const options = state.searchResultItems;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    hideSearchResults();
-    return true;
-  }
-  if (!options.length) return false;
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault();
-    const delta = event.key === 'ArrowDown' ? 1 : -1;
-    setSearchActiveIndex((state.searchActiveIndex + delta + options.length) % options.length);
-    return true;
-  }
-  if (event.key === 'Home') {
-    event.preventDefault();
-    setSearchActiveIndex(0);
-    return true;
-  }
-  if (event.key === 'End') {
-    event.preventDefault();
-    setSearchActiveIndex(options.length - 1);
-    return true;
-  }
-  if (event.key === 'Enter') {
-    const active = options[state.searchActiveIndex] || options[0];
-    if (active) {
-      event.preventDefault();
-      active.click();
-      return true;
-    }
-  }
-  return false;
-}
-
-function setSearchActiveIndex(index) {
-  const options = state.searchResultItems;
-  state.searchActiveIndex = options.length ? Math.max(0, Math.min(options.length - 1, index)) : -1;
-  options.forEach((option, optionIndex) => {
-    const selected = optionIndex === state.searchActiveIndex;
-    option.setAttribute('aria-selected', selected ? 'true' : 'false');
-    if (selected) option.scrollIntoView({ block: 'nearest' });
-  });
-  const active = options[state.searchActiveIndex];
-  if (active) elements.searchInput.setAttribute('aria-activedescendant', active.id);
-  else elements.searchInput.removeAttribute('aria-activedescendant');
 }
 
 function activateInspector(panel, options = {}) {
@@ -5422,7 +5319,7 @@ function renderCodemapStore(snapshot = state.codemap.snapshot()) {
     } else if (snapshot.status === 'failed') {
       message.textContent = sanitizeMessage(snapshot.error && snapshot.error.message) || 'Failed to generate Codemap.';
     } else {
-      message.textContent = 'Describe a flow, bug, or change. The backend retrieves seeds through BM25/embeddings and expands the AST graph.';
+      message.textContent = 'Describe a flow, bug, or change. The backend retrieves seeds through BM25 lexical search and expands the AST graph.';
     }
     elements.codemapResult.appendChild(message);
     state.codemapRenderedSnapshot = snapshot;
@@ -6592,51 +6489,6 @@ function jobSummaryLabel(store) {
   return 'No jobs';
 }
 
-// embeddingRebuildStatus derives the topbar embeddings indicator from the job
-// store: the running embeddings.rebuild job wins, otherwise the most recent
-// terminal one is shown only when it failed. Null hides the indicator.
-function embeddingRebuildStatus(store) {
-  const jobs = store.order.map((id) => store.byId.get(id)).filter((job) => job && job.type === 'embeddings.rebuild');
-  const running = jobs.find((job) => !isTerminalJobState(job.state));
-  if (running) {
-    const progress = running.progress || {};
-    const determinate = typeof progress.percent === 'number' && !progress.indeterminate;
-    const percent = determinate ? Math.max(0, Math.min(100, Math.round(progress.percent))) : null;
-    const counts = determinate && progress.total ? ` ${progress.completed || 0}/${progress.total}` : '';
-    return {
-      className: '',
-      percent,
-      text: determinate ? `Embeddings ${percent}%${counts}` : 'Embeddings: preparing…',
-      valueText: determinate ? `${percent}% of symbols embedded` : 'Embeddings index rebuild in progress',
-    };
-  }
-  const latest = jobs[0];
-  if (latest && latest.state === 'failed') {
-    return { className: 'error', percent: null, text: 'Embeddings failed', valueText: 'Embeddings index rebuild failed' };
-  }
-  return null;
-}
-
-function renderEmbeddingStatus() {
-  const pill = elements.embeddingsStatus;
-  if (!pill) return;
-  const status = embeddingRebuildStatus(state.jobs);
-  if (!status) {
-    pill.hidden = true;
-    return;
-  }
-  pill.hidden = false;
-  pill.className = `status-pill progress ${status.className}`.trim();
-  const fill = pill.querySelector('.status-pill-fill');
-  const text = pill.querySelector('.status-pill-text');
-  if (fill) fill.style.transform = `scaleX(${status.percent === null ? 0 : status.percent / 100})`;
-  if (text) text.textContent = status.text;
-  if (status.percent === null) pill.removeAttribute('aria-valuenow');
-  else pill.setAttribute('aria-valuenow', String(status.percent));
-  pill.setAttribute('aria-valuetext', status.valueText);
-  pill.title = status.valueText;
-}
-
 function applyJobSnapshot(job) {
   const snapshot = applyJobSnapshotToStore(state.jobs, job);
   renderJobCenter();
@@ -6736,7 +6588,6 @@ async function cancelJob(jobId) {
 }
 
 function renderJobCenter() {
-  renderEmbeddingStatus();
   if (!elements.jobsSummary || !elements.jobsList) return;
   elements.jobsSummary.textContent = jobSummaryLabel(state.jobs);
   elements.jobsList.replaceChildren();
@@ -6830,7 +6681,6 @@ function jobTypeLabel(type) {
     case 'deepwiki.refresh': return 'DeepWiki';
     case 'codemap.generate': return 'Codemap';
     case 'repository.reindex': return 'Index verification';
-    case 'embeddings.rebuild': return 'Embeddings';
     case 'fts.rebuild': return 'FTS';
     default: return type || 'Job';
   }
@@ -7424,7 +7274,6 @@ if (typeof module !== 'undefined' && module.exports) {
     activeJobs,
     recentJobs,
     jobSummaryLabel,
-    embeddingRebuildStatus,
     jobPresentation,
     isSaveConflictCode,
     editorPosition,
@@ -7480,6 +7329,8 @@ if (typeof module !== 'undefined' && module.exports) {
 	recoverDisconnectedDocumentLease,
     readDocumentLeaseHandoffs,
     prepareDocumentLeaseHandoff,
+    shouldArmHoverForPointer,
+    shouldArmHoverForModifierKey,
     hoverAnchorForPointer,
     hoverCardPosition,
     stableHoverCardPosition,

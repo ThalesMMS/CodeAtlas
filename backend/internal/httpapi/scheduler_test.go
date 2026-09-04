@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	codeparser "github.com/ThalesMMS/CodeAtlas/internal/parser"
 	"github.com/ThalesMMS/CodeAtlas/internal/readiness"
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
-	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/service"
 )
 
@@ -54,21 +52,20 @@ func TestReindexUsesSchedulerQueueAndStatsExposeSchedulerState(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = repository.Close() })
 	provider := staticProvider{response: "ok"}
-	retriever := retrieval.NewHybrid(repository, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository)
 	if err := backgroundIndexer.Scan(context.Background()); err != nil {
 		t.Fatalf("Scan() error = %v", err)
 	}
 	workspace := service.NewWorkspace(root)
-	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, repository, filepath.Join(t.TempDir(), "tx"), "")
 	scheduler := &fakeScheduler{state: domain.SchedulerState{
 		Mode: "auto", EffectiveMode: "native", State: "idle", LastPeriodicReconcile: time.Unix(10, 0).UTC(),
 	}}
 	api := httpapi.New(
-		workspace, repository, backgroundIndexer, retriever,
+		workspace, repository, backgroundIndexer,
 		service.NewExplainer(repository, workspace, provider),
-		service.NewCodemapService(repository, retriever, provider),
+		service.NewCodemapService(repository, provider),
 		service.NewDeepWikiService(repository, provider),
 		committer, provider, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -130,10 +127,9 @@ func TestStatsExposeInternalMutationSnapshot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = repository.Close() })
 	provider := staticProvider{response: "ok"}
-	retriever := retrieval.NewHybrid(repository, provider, false)
-	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository, retriever)
+	backgroundIndexer := indexer.New(root, 1_500_000, codeparser.New(), repository)
 	workspace := service.NewWorkspace(root)
-	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), retriever, 1_500_000)
+	saver := service.NewSavePreparer(workspace, repository, codeparser.New(), 1_500_000)
 	committer := service.NewWorkspaceCommitCoordinator(saver, workspace, repository, filepath.Join(t.TempDir(), "tx"), "")
 	registry := mutation.NewMemoryRegistry(mutation.RegistryConfig{DefaultTTL: time.Minute})
 	defer registry.Close()
@@ -145,9 +141,9 @@ func TestStatsExposeInternalMutationSnapshot(t *testing.T) {
 		t.Fatalf("Stage() error = %v", err)
 	}
 	api := httpapi.New(
-		workspace, repository, backgroundIndexer, retriever,
+		workspace, repository, backgroundIndexer,
 		service.NewExplainer(repository, workspace, provider),
-		service.NewCodemapService(repository, retriever, provider),
+		service.NewCodemapService(repository, provider),
 		service.NewDeepWikiService(repository, provider),
 		committer, provider, coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -177,73 +173,5 @@ func TestStatsExposeInternalMutationSnapshot(t *testing.T) {
 	}
 	if _, exists := internal["entries"]; exists {
 		t.Fatalf("stats internalMutations exposed entries: %#v", internal)
-	}
-}
-
-type blockingSchedulerEmbeddingProvider struct {
-	calls   atomic.Int32
-	entered chan struct{}
-	release chan struct{}
-}
-
-func (p *blockingSchedulerEmbeddingProvider) Name() string    { return "embedding-test" }
-func (p *blockingSchedulerEmbeddingProvider) Available() bool { return true }
-func (p *blockingSchedulerEmbeddingProvider) Complete(context.Context, string, string, int) (string, error) {
-	return "", nil
-}
-func (p *blockingSchedulerEmbeddingProvider) Embed(context.Context, []string) ([][]float64, error) {
-	call := p.calls.Add(1)
-	if call >= 2 {
-		select {
-		case p.entered <- struct{}{}:
-		default:
-		}
-		<-p.release
-	}
-	return [][]float64{{0.1, 0.2}}, nil
-}
-
-func TestEmbeddingRuntimeRebuildUsesRepositoryDeduplicationKey(t *testing.T) {
-	root := t.TempDir()
-	store, err := repository.OpenJSON(filepath.Join(t.TempDir(), "index.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	provider := &blockingSchedulerEmbeddingProvider{entered: make(chan struct{}, 1), release: make(chan struct{})}
-	runtime := retrieval.NewEmbeddingRuntime(provider, false)
-	prepared, err := runtime.Prepare(context.Background(), retrieval.EmbeddingConfiguration{
-		Provider: provider, Enabled: true, Model: "embed", BaseURL: "https://example.test/v1",
-	}, domain.EmbeddingIndexMetadata{}, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared.Activate()
-	retriever := retrieval.NewHybridWithRuntime(store, runtime)
-	workspace := service.NewWorkspace(root)
-	api := httpapi.New(
-		workspace, store, nil, retriever, nil, nil, nil, nil, provider,
-		coordinatorInState(t, readiness.StateReady), capabilities.NewRegistry(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	)
-	t.Cleanup(func() {
-		close(provider.release)
-		_ = api.ShutdownJobs(context.Background())
-	})
-
-	first, err := api.ScheduleEmbeddingRebuild(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-provider.entered:
-	case <-time.After(2 * time.Second):
-		t.Fatal("embedding rebuild did not start")
-	}
-	second, err := api.ScheduleEmbeddingRebuild(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first == "" || first != second {
-		t.Fatalf("deduplicated job IDs = %q/%q", first, second)
 	}
 }

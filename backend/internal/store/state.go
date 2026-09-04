@@ -24,28 +24,26 @@ const symbolCollision = "SYMBOL_ID_COLLISION"
 // identity/occurrence form (identities, occurrences and their indexes); the flat
 // `symbols` map is a derived read-cache (one flat DTO per handle) rebuilt by
 // finalize, used by the lexical index and the search/graph read paths, just like
-// the lexical index itself is derived. Edges, embeddings and the lexical index
-// are keyed by the symbol handle: the v1 SymbolID for identity-bearing symbols,
+// the lexical index itself is derived. Edges and the lexical index are keyed by
+// the symbol handle: the v1 SymbolID for identity-bearing symbols,
 // or the OccurrenceID for occurrence-only symbols (imports, anonymous functions).
 type state struct {
-	version           uint64
-	nextEdgeID        uint64
-	files             map[string]domain.File
-	identities        map[domain.SymbolID]domain.SymbolIdentity
-	occurrences       map[domain.OccurrenceID]domain.SymbolOccurrence
-	occBySymbol       map[domain.SymbolID][]domain.OccurrenceID
-	occByFile         map[string][]domain.OccurrenceID
-	occDisplay        map[domain.OccurrenceID]domain.SymbolIdentity // occurrence-only display labels (no logical id)
-	symbols           map[string]domain.Symbol                      // derived: handle -> flat DTO (best occurrence)
-	symbolsByName     map[string][]string                           // derived: lookup name -> flat handles
-	knownPaths        []string                                      // derived: sorted file paths
-	edges             []domain.Edge
-	adjacency         map[string][]int // derived: handle -> edge indexes (incoming + outgoing)
-	embeddings        map[string][]float64
-	embeddingMetadata domain.EmbeddingIndexMetadata
-	wiki              map[string]domain.WikiPage
-	lexical           *lexicalIndex
-	indexedAt         time.Time
+	version       uint64
+	nextEdgeID    uint64
+	files         map[string]domain.File
+	identities    map[domain.SymbolID]domain.SymbolIdentity
+	occurrences   map[domain.OccurrenceID]domain.SymbolOccurrence
+	occBySymbol   map[domain.SymbolID][]domain.OccurrenceID
+	occByFile     map[string][]domain.OccurrenceID
+	occDisplay    map[domain.OccurrenceID]domain.SymbolIdentity // occurrence-only display labels (no logical id)
+	symbols       map[string]domain.Symbol                      // derived: handle -> flat DTO (best occurrence)
+	symbolsByName map[string][]string                           // derived: lookup name -> flat handles
+	knownPaths    []string                                      // derived: sorted file paths
+	edges         []domain.Edge
+	adjacency     map[string][]int // derived: handle -> edge indexes (incoming + outgoing)
+	wiki          map[string]domain.WikiPage
+	lexical       *lexicalIndex
+	indexedAt     time.Time
 }
 
 func newState() *state {
@@ -60,7 +58,6 @@ func newState() *state {
 		symbols:       make(map[string]domain.Symbol),
 		symbolsByName: make(map[string][]string),
 		adjacency:     make(map[string][]int),
-		embeddings:    make(map[string][]float64),
 		wiki:          make(map[string]domain.WikiPage),
 		lexical:       newLexicalIndex(),
 	}
@@ -97,19 +94,17 @@ func (st *state) allocEdgeID() int64 {
 // indexes, so the returned state shares no mutable structure with the receiver.
 func (st *state) clone() *state {
 	next := &state{
-		version:           st.version,
-		nextEdgeID:        st.nextEdgeID,
-		embeddingMetadata: st.embeddingMetadata,
-		indexedAt:         st.indexedAt,
-		files:             make(map[string]domain.File, len(st.files)),
-		identities:        make(map[domain.SymbolID]domain.SymbolIdentity, len(st.identities)),
-		occurrences:       make(map[domain.OccurrenceID]domain.SymbolOccurrence, len(st.occurrences)),
-		occBySymbol:       make(map[domain.SymbolID][]domain.OccurrenceID, len(st.occBySymbol)),
-		occByFile:         make(map[string][]domain.OccurrenceID, len(st.occByFile)),
-		occDisplay:        make(map[domain.OccurrenceID]domain.SymbolIdentity, len(st.occDisplay)),
-		embeddings:        make(map[string][]float64, len(st.embeddings)),
-		wiki:              make(map[string]domain.WikiPage, len(st.wiki)),
-		edges:             append([]domain.Edge(nil), st.edges...),
+		version:     st.version,
+		nextEdgeID:  st.nextEdgeID,
+		indexedAt:   st.indexedAt,
+		files:       make(map[string]domain.File, len(st.files)),
+		identities:  make(map[domain.SymbolID]domain.SymbolIdentity, len(st.identities)),
+		occurrences: make(map[domain.OccurrenceID]domain.SymbolOccurrence, len(st.occurrences)),
+		occBySymbol: make(map[domain.SymbolID][]domain.OccurrenceID, len(st.occBySymbol)),
+		occByFile:   make(map[string][]domain.OccurrenceID, len(st.occByFile)),
+		occDisplay:  make(map[domain.OccurrenceID]domain.SymbolIdentity, len(st.occDisplay)),
+		wiki:        make(map[string]domain.WikiPage, len(st.wiki)),
+		edges:       append([]domain.Edge(nil), st.edges...),
 	}
 	for path, file := range st.files {
 		next.files[path] = file
@@ -128,9 +123,6 @@ func (st *state) clone() *state {
 	}
 	for id, identity := range st.occDisplay {
 		next.occDisplay[id] = identity
-	}
-	for id, vector := range st.embeddings {
-		next.embeddings[id] = append([]float64(nil), vector...)
 	}
 	for slug, page := range st.wiki {
 		next.wiki[slug] = page
@@ -181,7 +173,7 @@ func (st *state) addOccurrence(resolved domain.ResolvedSymbol) {
 }
 
 // removeOccurrencesForFile deletes every occurrence in a file, removing an
-// identity (and its embedding) only when it has no occurrences left anywhere.
+// identity only when it has no occurrences left anywhere.
 func (st *state) removeOccurrencesForFile(path string) {
 	for _, occID := range st.occByFile[path] {
 		occurrence, ok := st.occurrences[occID]
@@ -202,7 +194,6 @@ func (st *state) removeOccurrencesForFile(path string) {
 		if len(remaining) == 0 {
 			delete(st.occBySymbol, occurrence.SymbolID)
 			delete(st.identities, occurrence.SymbolID)
-			delete(st.embeddings, string(occurrence.SymbolID))
 		} else {
 			st.occBySymbol[occurrence.SymbolID] = remaining
 		}
@@ -296,13 +287,6 @@ func (st *state) deleteFile(path string) {
 	st.removeOccurrencesForFile(path)
 	delete(st.files, path)
 	st.dropEdgesForFile(path)
-}
-
-// setEmbeddings stores deep copies of the provided vectors, keyed by SymbolID.
-func (st *state) setEmbeddings(vectors map[string][]float64) {
-	for id, vector := range vectors {
-		st.embeddings[id] = append([]float64(nil), vector...)
-	}
 }
 
 // finalize rebuilds the derived flat view, resolves edges, then rebuilds the

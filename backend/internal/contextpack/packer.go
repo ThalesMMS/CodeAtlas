@@ -25,7 +25,6 @@ type Candidate struct {
 	Distance       int
 	Source         string
 	LexicalRank    int // 1-based rank in the lexical list; 0 = not present
-	DenseRank      int // 1-based rank in the dense list; 0 = not present
 	PackageAPIRank int // 1-based package-export rank; 0 = not present
 	IsTarget       bool
 	Score          ScoreBreakdown
@@ -307,9 +306,6 @@ func reciprocalRankFusion(candidate Candidate) float64 {
 	score := 0.0
 	if candidate.LexicalRank > 0 {
 		score += 1.0 / (rankFusionConstant + float64(candidate.LexicalRank))
-	}
-	if candidate.DenseRank > 0 {
-		score += 1.0 / (rankFusionConstant + float64(candidate.DenseRank))
 	}
 	if candidate.PackageAPIRank > 0 {
 		score += 1.0 / (rankFusionConstant + float64(candidate.PackageAPIRank))

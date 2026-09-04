@@ -17,8 +17,6 @@ const isolatedSettingKeys = Object.freeze([
   'CODEATLAS_SWIFT_LSP', 'CODEATLAS_SWIFT_LSP_PATH',
   'CODEATLAS_PYTHON_LSP', 'CODEATLAS_PYTHON_LSP_PATH',
   'CODEATLAS_RUST_LSP', 'CODEATLAS_RUST_LSP_PATH',
-  'CODEATLAS_ENABLE_EMBEDDINGS', 'CODEATLAS_EMBEDDING_MODEL',
-  'CODEATLAS_EMBEDDING_BASE_URL', 'CODEATLAS_EMBEDDINGS_API_KEY',
 ]);
 
 export async function createIsolatedUserProfile(prefix = 'codeatlas-e2e-profile-') {
@@ -48,12 +46,8 @@ export async function startBackend({
   root,
   workspaceDir,
   providerBaseURL,
-  embeddingBaseURL = providerBaseURL,
   llmAPIKey = 'sk-live-test-key',
   llmModel = providerBaseURL ? 'fake-codeatlas' : '',
-  embeddingsAPIKey = llmAPIKey,
-  enableEmbeddings = false,
-  embeddingModel = enableEmbeddings ? 'fake-embedding' : '',
   watchMode = 'polling',
   pollInterval = '1s',
   maxFileBytes = '',
@@ -90,10 +84,6 @@ export async function startBackend({
     ...(providerBaseURL ? { CODEATLAS_LLM_BASE_URL: providerBaseURL } : {}),
     ...(llmAPIKey ? { CODEATLAS_LLM_API_KEY: llmAPIKey } : {}),
     ...(llmModel ? { CODEATLAS_LLM_MODEL: llmModel } : {}),
-    CODEATLAS_ENABLE_EMBEDDINGS: String(enableEmbeddings),
-    ...(embeddingModel ? { CODEATLAS_EMBEDDING_MODEL: embeddingModel } : {}),
-    ...(embeddingBaseURL ? { CODEATLAS_EMBEDDING_BASE_URL: embeddingBaseURL } : {}),
-    ...(embeddingsAPIKey ? { CODEATLAS_EMBEDDINGS_API_KEY: embeddingsAPIKey } : {}),
   };
   const child = spawn(binary, [
     '-workspace',

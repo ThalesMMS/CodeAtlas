@@ -47,8 +47,8 @@ type RepositoryStore interface {
 var ErrVersionConflict = errors.New("sqlite store: revision conflict")
 
 // Store is the SQLite-backed RepositoryStore. Structural reads/writes are
-// implemented over schema v1; FTS5 search (#54), dense retrieval (#55) and
-// artifacts (#56) are explicit incomplete adapters that never fake success.
+// implemented over schema v1; FTS5 search (#54) and artifacts (#56) are explicit
+// incomplete adapters that never fake success.
 type Store struct {
 	db                *DB
 	maxReadViewWindow time.Duration
@@ -124,8 +124,8 @@ func (s *Store) ensureSnapshotSchema(ctx context.Context) error {
 	}
 
 	for _, table := range []string{
-		"relation_evidence", "relations", "embeddings", "symbol_occurrences",
-		"symbol_identities", "files", "fts_symbols", "fts_symbol_rows", "fts_metadata", "embedding_index_metadata",
+		"relation_evidence", "relations", "symbol_occurrences",
+		"symbol_identities", "files", "fts_symbols", "fts_symbol_rows", "fts_metadata",
 	} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return apperror.DatabaseOpenFailed(err)

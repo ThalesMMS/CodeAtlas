@@ -36,7 +36,7 @@ const BusyTimeoutMillis = 5000
 
 // Schema is a simplified-but-representative model of the production contracts:
 // metadata/revision, files, symbol identities + occurrences, edges + provenance,
-// embeddings (metadata + BLOB), FTS5 documents, and versioned artifacts + deps.
+// FTS5 documents, and versioned artifacts + deps.
 const Schema = `
 CREATE TABLE IF NOT EXISTS metadata (
   key   TEXT PRIMARY KEY,
@@ -84,12 +84,6 @@ CREATE TABLE IF NOT EXISTS edges (
 );
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src, kind);
 CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst, kind);
-CREATE TABLE IF NOT EXISTS embeddings (
-  symbol_id TEXT PRIMARY KEY REFERENCES identities(symbol_id) ON DELETE CASCADE,
-  dim       INTEGER NOT NULL,
-  model     TEXT NOT NULL,
-  vec       BLOB NOT NULL
-);
 CREATE TABLE IF NOT EXISTS artifacts (
   id      INTEGER PRIMARY KEY,
   kind    TEXT NOT NULL,

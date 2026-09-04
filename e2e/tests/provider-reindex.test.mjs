@@ -43,7 +43,6 @@ test('structured provider compatibility and index maintenance are exercised thro
     apiPrefix: '/v1',
     authLabels: {
       'Bearer chat-e2e-key': 'chat',
-      'Bearer embeddings-e2e-key': 'embeddings',
     },
   });
   cleanup.push(provider);
@@ -59,18 +58,13 @@ test('structured provider compatibility and index maintenance are exercised thro
     root,
     workspaceDir: workspace.path,
     providerBaseURL: provider.baseURL,
-    embeddingBaseURL: provider.baseURL,
     llmAPIKey: 'chat-e2e-key',
-    embeddingsAPIKey: 'embeddings-e2e-key',
-    enableEmbeddings: true,
-    embeddingModel: 'fake-embedding',
     pollInterval: '1h',
     scenario: 'schema-keyword-compatibility',
   });
   cleanup.push(backend);
 
   assert.ok(provider.requests.some((request) => request.path === '/v1/chat/completions' && request.authorizationLabel === 'chat'));
-  assert.ok(provider.requests.some((request) => request.path === '/v1/embeddings' && request.authorizationLabel === 'embeddings'));
 
   const explanation = await backend.json('/api/explain', {
     method: 'POST',
@@ -85,7 +79,6 @@ test('structured provider compatibility and index maintenance are exercised thro
   assert.equal(explanation.body.result.schemaVersion, 'explanation/v2');
   assert.ok(explanation.body.result.summary);
 
-  const beforeNoopEmbeddings = provider.requests.filter((request) => request.path === '/v1/embeddings').length;
   const noopResponse = await backend.json('/api/reindex', { method: 'POST', body: {} });
   assert.equal(noopResponse.status, 202);
   const noop = await waitForJob(backend, noopResponse.body.job.id);
@@ -98,7 +91,6 @@ test('structured provider compatibility and index maintenance are exercised thro
     filesChanged: noopResult.body.filesChanged,
     filesRemoved: noopResult.body.filesRemoved,
   }, { committed: false, filesChanged: 0, filesRemoved: 0 });
-  assert.equal(provider.requests.filter((request) => request.path === '/v1/embeddings').length, beforeNoopEmbeddings);
 
   await fs.appendFile(path.join(workspace.path, 'internal/order/service.go'), '\n// E2E repository change\n', 'utf8');
   const changedResponse = await backend.json('/api/reindex', { method: 'POST', body: {} });
@@ -108,14 +100,6 @@ test('structured provider compatibility and index maintenance are exercised thro
   assert.notEqual(changed.inputSnapshotId, changed.resultSnapshotId);
   const changedResult = await backend.json(`/api/jobs/${encodeURIComponent(changed.id)}/result`);
   assert.equal(changedResult.body.committed, true);
-  assert.ok(provider.requests.filter((request) => request.path === '/v1/embeddings').length > beforeNoopEmbeddings);
-
-  const beforeRebuild = provider.requests.filter((request) => request.path === '/v1/embeddings').length;
-  const embeddings = await submitJob(backend, 'embeddings.rebuild');
-  assert.equal(embeddings.stage, 'rebuilt');
-  assert.equal(embeddings.message, 'embeddings index rebuilt');
-  assert.equal(embeddings.inputSnapshotId, embeddings.resultSnapshotId);
-  assert.ok(provider.requests.filter((request) => request.path === '/v1/embeddings').length > beforeRebuild);
 
   const fts = await submitJob(backend, 'fts.rebuild');
   assert.equal(fts.stage, 'rebuilt');

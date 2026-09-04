@@ -19,7 +19,7 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/repository"
 )
 
-// Scan runs a strict two-phase index update: collect → parse → embed → build
+// Scan runs a strict two-phase index update: collect → parse → build
 // ChangeSet → prepare → single atomic commit → publish events. No preparation
 // phase mutates the active store; a failure in any required file leaves the
 // store and the on-disk snapshot exactly at the previous version.
@@ -146,22 +146,9 @@ func (i *Indexer) reconcile(ctx context.Context, expectedRevision uint64, collec
 	}
 	obs.changed = len(parsed)
 
-	var embeddings map[string][]float64
-	if i.retriever != nil {
-		obs.step = "embed"
-		changedSymbols := make([]domain.Symbol, 0)
-		for _, file := range parsed {
-			changedSymbols = append(changedSymbols, file.Symbols...)
-		}
-		embeddings, err = i.retriever.GenerateEmbeddings(ctx, changedSymbols)
-		if err != nil {
-			return i.failPrepare(fmt.Errorf("embeddings: %w", err))
-		}
-	}
-
 	i.setState(ScanCommitting)
 	obs.step = "changeset"
-	change, err := buildScanChangeSet(baseVersion, parsed, batch.deletions, embeddings)
+	change, err := buildScanChangeSet(baseVersion, parsed, batch.deletions)
 	if err != nil {
 		return i.failCommit(fmt.Errorf("changeset: %w", err))
 	}
@@ -842,16 +829,13 @@ func (i *Indexer) parseBatch(ctx context.Context, candidates []candidate) ([]dom
 
 // buildScanChangeSet assembles the batch into a validated ChangeSet. Removed
 // symbols' vectors are dropped by the ChangeSet's own delete/replace semantics.
-func buildScanChangeSet(baseVersion uint64, parsed []domain.ParsedFile, deletions []string, embeddings map[string][]float64) (*changeset.ChangeSet, error) {
+func buildScanChangeSet(baseVersion uint64, parsed []domain.ParsedFile, deletions []string) (*changeset.ChangeSet, error) {
 	builder := changeset.NewBuilder().WithExpectedVersion(baseVersion).AllowEmpty()
 	for _, file := range parsed {
 		builder.Upsert(file)
 	}
 	for _, path := range deletions {
 		builder.Delete(path)
-	}
-	for id, vector := range embeddings {
-		builder.Embed(id, vector)
 	}
 	return builder.Build(time.Now().UTC())
 }

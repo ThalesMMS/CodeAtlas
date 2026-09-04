@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/aiout"
 	"github.com/ThalesMMS/CodeAtlas/internal/apperror"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
@@ -59,9 +58,6 @@ func (p *blockingProvider) Complete(_ context.Context, systemPrompt, _ string, _
 	<-p.release
 	return structuredStub(systemPrompt, p.response), nil
 }
-func (p *blockingProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, errors.New("disabled")
-}
 
 // mutatingProvider changes the index during the first Complete call, simulating a
 // concurrent index update that makes the in-flight generation obsolete.
@@ -76,9 +72,6 @@ func (p *mutatingProvider) Available() bool { return true }
 func (p *mutatingProvider) Complete(_ context.Context, systemPrompt, _ string, _ int) (string, error) {
 	p.once.Do(func() { addFile(p.store, "mutated.go") })
 	return structuredStub(systemPrompt, p.response), nil
-}
-func (p *mutatingProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, errors.New("disabled")
 }
 
 func TestDeepWikiGeneratesPagesWithProviderMetadata(t *testing.T) {
@@ -351,8 +344,4 @@ func (p *recoveringWikiProvider) Complete(_ context.Context, systemPrompt, _ str
 		}
 	}
 	return structuredStub(systemPrompt, "Grounded page"), nil
-}
-
-func (*recoveringWikiProvider) Embed(context.Context, []string) ([][]float64, error) {
-	return nil, ai.ErrUnavailable
 }

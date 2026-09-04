@@ -25,7 +25,6 @@ type ReadView interface {
 	Graph(seedIDs []string, depth, maxNodes int) ([]domain.Symbol, []domain.Edge)
 	EdgesForSymbol(id string) []domain.Edge
 	AllEdges() []domain.Edge
-	Embeddings() map[string][]float64
 }
 
 // readView pins a deep copy of the state so reads are isolated from concurrent
@@ -165,12 +164,4 @@ func (v *readView) EdgesForSymbol(id string) []domain.Edge {
 
 func (v *readView) AllEdges() []domain.Edge {
 	return append([]domain.Edge(nil), v.st.edges...)
-}
-
-func (v *readView) Embeddings() map[string][]float64 {
-	out := make(map[string][]float64, len(v.st.embeddings))
-	for id, vector := range v.st.embeddings {
-		out[id] = append([]float64(nil), vector...)
-	}
-	return out
 }

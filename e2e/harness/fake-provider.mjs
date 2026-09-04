@@ -1,7 +1,5 @@
 import http from 'node:http';
 
-const defaultVector = Object.freeze([0.11, 0.23, 0.37, 0.41, 0.53, 0.67, 0.79, 0.83]);
-
 export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '', authLabels = {} } = {}) {
   let activeScenario = scenario;
   let blockedChats = null;
@@ -34,9 +32,6 @@ export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '
       if (blockedChats) await blockedChats.promise;
       return handleChat(response, body, requestScenario);
     }
-    if (request.url === `${normalizedPrefix}/embeddings`) {
-      return handleEmbeddings(response, body, requestScenario);
-    }
     return writeJSON(response, 404, { error: { message: 'unknown fake provider path' } });
   });
 
@@ -48,9 +43,6 @@ export async function startFakeProvider({ scenario = 'happy-path', apiPrefix = '
   return {
     baseURL,
     requests,
-    setScenario(nextScenario) {
-      activeScenario = nextScenario;
-    },
     blockChats() {
       if (blockedChats) throw new Error('fake provider chats are already blocked');
       let release;
@@ -125,24 +117,6 @@ function containsJSONKeyword(value, keyword) {
   if (Array.isArray(value)) return value.some((child) => containsJSONKeyword(child, keyword));
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, child]) => key === keyword || containsJSONKeyword(child, keyword));
-}
-
-async function handleEmbeddings(response, body, scenario) {
-  if (scenario === 'embeddings-slow') {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-  }
-  if (scenario === 'embeddings-invalid') {
-    return writeJSON(response, 200, { data: [{ index: 0, embedding: [] }] });
-  }
-  const input = Array.isArray(body.input) ? body.input : [body.input ?? ''];
-  const data = input.map((value, index) => ({
-    index,
-    embedding: vectorFor(String(value)),
-  }));
-  if (scenario === 'embeddings-shuffled') {
-    data.reverse();
-  }
-  return writeJSON(response, 200, { data, model: body.model ?? 'fake-embedding' });
 }
 
 function chatContentFor(body) {
@@ -406,18 +380,6 @@ function chatResponse(content, { finishReason = 'stop' } = {}) {
       },
     ],
   };
-}
-
-function vectorFor(value) {
-  let hash = 2166136261;
-  for (const char of value) {
-    hash ^= char.codePointAt(0);
-    hash = Math.imul(hash, 16777619) >>> 0;
-  }
-  return defaultVector.map((base, index) => {
-    const byte = (hash >>> ((index % 4) * 8)) & 0xff;
-    return Number((base + byte / 1000).toFixed(6));
-  });
 }
 
 function writeJSON(response, status, body) {

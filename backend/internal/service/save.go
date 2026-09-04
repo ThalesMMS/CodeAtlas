@@ -24,7 +24,6 @@ const (
 	CodeSaveFileTooLarge        = "SAVE_FILE_TOO_LARGE"
 	CodeSaveUnsupportedLanguage = "SAVE_UNSUPPORTED_LANGUAGE"
 	CodeSourceParseFailed       = "SOURCE_PARSE_FAILED"
-	CodeEmbeddingUnavailable    = "EMBEDDING_UNAVAILABLE"
 	CodeSaveStoreConflict       = "STORE_VERSION_CONFLICT"
 	CodeSaveStoreUnavailable    = "STORE_UNAVAILABLE"
 )
@@ -47,11 +46,6 @@ func saveError(code string, status int, message string) *SaveError {
 // SaveParser parses received bytes into symbols and edges.
 type SaveParser interface {
 	Parse(path string, source []byte) ([]domain.Symbol, []domain.Edge, string, error)
-}
-
-// SaveEmbedder generates embeddings without mutating the store.
-type SaveEmbedder interface {
-	GenerateEmbeddings(ctx context.Context, symbols []domain.Symbol) (map[string][]float64, error)
 }
 
 // SaveRequest is an optimistic single-file save.
@@ -84,16 +78,15 @@ type SavePreparer struct {
 	workspace    *Workspace
 	store        repository.Store
 	parser       SaveParser
-	embedder     SaveEmbedder
 	maxFileBytes int64
 }
 
-func NewSavePreparer(workspace *Workspace, st repository.Store, parser SaveParser, embedder SaveEmbedder, maxFileBytes int64) *SavePreparer {
-	return &SavePreparer{workspace: workspace, store: st, parser: parser, embedder: embedder, maxFileBytes: maxFileBytes}
+func NewSavePreparer(workspace *Workspace, st repository.Store, parser SaveParser, maxFileBytes int64) *SavePreparer {
+	return &SavePreparer{workspace: workspace, store: st, parser: parser, maxFileBytes: maxFileBytes}
 }
 
 // Prepare validates the request, enforces optimistic concurrency, parses the
-// received bytes, generates embeddings and prepares a candidate index snapshot.
+// received bytes and prepares a candidate index snapshot.
 // It performs no writes. A returned error is a *SaveError (or a context error).
 func (s *SavePreparer) Prepare(ctx context.Context, request SaveRequest) (*PreparedSave, error) {
 	if err := ctx.Err(); err != nil {
@@ -152,14 +145,6 @@ func (s *SavePreparer) Prepare(ctx context.Context, request SaveRequest) (*Prepa
 		parsed.File.Summary = symbols[0].Summary
 	}
 
-	var embeddings map[string][]float64
-	if s.embedder != nil {
-		embeddings, err = s.embedder.GenerateEmbeddings(ctx, symbols)
-		if err != nil {
-			return nil, saveError(CodeEmbeddingUnavailable, 503, "embeddings unavailable")
-		}
-	}
-
 	metadata, err := s.store.SnapshotMetadataContext(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -168,9 +153,6 @@ func (s *SavePreparer) Prepare(ctx context.Context, request SaveRequest) (*Prepa
 		return nil, saveError(CodeSaveStoreUnavailable, 503, "the index state could not be read")
 	}
 	builder := changeset.NewBuilder().WithExpectedVersion(uint64(metadata.Revision)).Upsert(parsed)
-	for id, vector := range embeddings {
-		builder.Embed(id, vector)
-	}
 	change, err := builder.Build(now)
 	if err != nil {
 		return nil, saveError(CodeSourceParseFailed, 422, textutil.CompactMessage(err.Error(), 300))
