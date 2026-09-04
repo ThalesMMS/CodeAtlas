@@ -30,7 +30,20 @@ function fixture(t, scriptName) {
 
   const templates = scriptName.endsWith('.cmd')
     ? [path.join('packaging', 'windows', 'codeatlas-server.cmd')]
-    : [path.join('packaging', 'macos', 'CodeAtlas.Info.plist'), path.join('packaging', 'macos', 'codeatlas-server')];
+    : [
+      path.join('packaging', 'macos', 'CodeAtlas.Info.plist'),
+      path.join('packaging', 'macos', 'CodeAtlas.icns'),
+      path.join('packaging', 'macos', 'codeatlas-server'),
+      path.join('packaging', 'licenses', 'gopls-LICENSE'),
+      path.join('packaging', 'licenses', 'pyright-LICENSE'),
+      path.join('packaging', 'licenses', 'typescript-LICENSE'),
+      path.join('packaging', 'licenses', 'typescript-language-server-LICENSE'),
+      path.join('packaging', 'macos', 'lsp-bin', 'pyright'),
+      path.join('packaging', 'macos', 'lsp-bin', 'pyright-langserver'),
+      path.join('packaging', 'macos', 'lsp-bin', 'typescript-language-server'),
+      path.join('packaging', 'lsp', 'package.json'),
+      path.join('packaging', 'lsp', 'package-lock.json'),
+    ];
   for (const relative of templates) {
     const templateSource = path.join(repoRoot, relative);
     assert.ok(fs.existsSync(templateSource), `${relative} must be source controlled`);
@@ -253,16 +266,46 @@ if [[ "$1" == run && "$2" == build ]]; then
   mkdir -p ../backend/internal/webui/dist
   printf embedded > ../backend/internal/webui/dist/index.html
 fi
+if [[ "$1" == ci && "$PWD" == */packaging/lsp ]]; then
+  mkdir -p node_modules/pyright node_modules/typescript-language-server/lib node_modules/typescript/lib
+  printf stub > node_modules/pyright/index.js
+  printf stub > node_modules/pyright/langserver.index.js
+  printf stub > node_modules/typescript-language-server/lib/cli.mjs
+  printf stub > node_modules/typescript/lib/tsserver.js
+fi
 `);
   fs.writeFileSync(path.join(f.bin, 'go'), `#!/usr/bin/env bash
 if [[ "$1" == version ]]; then printf 'go version go1.26.4 darwin/arm64\\n'; exit 0; fi
 printf 'go|cwd=%s|cgo=%s|cc=%s|cxx=%s|args=%s\\n' "$PWD" "$CGO_ENABLED" "$CC" "$CXX" "$*" >> "$CODEATLAS_TEST_LOG"
+if [[ "$1" == install && -n "$GOBIN" ]]; then cp "$CODEATLAS_TEST_HELPER" "$GOBIN/gopls"; chmod +x "$GOBIN/gopls"; exit 0; fi
 output=''
 while (($#)); do
   if [[ "$1" == -o ]]; then output="$2"; shift; fi
   shift
 done
 if [[ -n "$output" ]]; then cp "$CODEATLAS_TEST_HELPER" "$output"; chmod +x "$output"; fi
+`);
+  fs.writeFileSync(path.join(f.bin, 'curl'), `#!/usr/bin/env bash
+set -Eeuo pipefail
+out=''
+while (($#)); do
+  if [[ "$1" == -o ]]; then out="$2"; shift; fi
+  url="$1"; shift
+done
+printf 'curl|url=%s\\n' "$url" >> "$CODEATLAS_TEST_LOG"
+dist="\${url##*/}"
+work="$(mktemp -d)"
+if [[ "$dist" == SHASUMS256.txt ]]; then
+  : > "$out"
+  exit 0
+fi
+name="\${dist%.tar.gz}"
+mkdir -p "$work/$name/bin"
+cp "$CODEATLAS_TEST_HELPER" "$work/$name/bin/node"
+printf 'node license' > "$work/$name/LICENSE"
+tar -czf "$out" -C "$work" "$name"
+version="$(basename "$(dirname "$url")")"
+printf '%s  %s\\n' "$(shasum -a 256 "$out" | awk '{ print $1 }')" "$dist" > "$(dirname "$out")/SHASUMS256-$version.txt"
 `);
   fs.writeFileSync(path.join(f.bin, 'cc'), '#!/usr/bin/env bash\nexit 0\n');
   fs.writeFileSync(path.join(f.bin, 'c++'), '#!/usr/bin/env bash\nexit 0\n');
@@ -275,7 +318,7 @@ shift 2
 shift
 exec "$bundle/Contents/MacOS/codeatlas" "$@"
 `);
-  for (const executable of ['npm', 'go', 'cc', 'c++', 'open']) fs.chmodSync(path.join(f.bin, executable), 0o755);
+  for (const executable of ['npm', 'go', 'curl', 'cc', 'c++', 'open']) fs.chmodSync(path.join(f.bin, executable), 0o755);
 
   const result = spawnSync(bash, [f.script, '-listen', '127.0.0.1:19090'], {
     cwd: f.outside,
@@ -294,9 +337,28 @@ exec "$bundle/Contents/MacOS/codeatlas" "$@"
   assert.equal(fs.existsSync(dotenvMarker), false, '.env values must never execute shell commands');
   const app = path.join(f.root, 'dist', 'CodeAtlas.app');
   assert.ok(fs.existsSync(path.join(app, 'Contents', 'MacOS', 'codeatlas')));
-  assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources')));
+  assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources', 'CodeAtlas.icns')));
+  assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources', 'bin', 'gopls')));
+  assert.ok(fs.existsSync(path.join(app, 'Contents', 'Resources', 'gopls-LICENSE')));
+  const resources = path.join(app, 'Contents', 'Resources');
+  assert.ok(fs.existsSync(path.join(resources, 'bin', 'node')));
+  assert.ok(fs.statSync(path.join(resources, 'bin', 'node')).mode & 0o111, 'bundled node must be executable');
+  assert.equal(fs.readFileSync(path.join(resources, 'node-LICENSE'), 'utf8'), 'node license');
+  for (const launcher of ['pyright', 'pyright-langserver', 'typescript-language-server']) {
+    const launcherPath = path.join(resources, 'bin', launcher);
+    assert.ok(fs.existsSync(launcherPath), `${launcher} launcher must be bundled`);
+    assert.ok(fs.statSync(launcherPath).mode & 0o111, `${launcher} launcher must be executable`);
+  }
+  assert.ok(fs.existsSync(path.join(resources, 'lsp', 'node_modules', 'pyright', 'langserver.index.js')));
+  assert.ok(fs.existsSync(path.join(resources, 'lsp', 'node_modules', 'typescript-language-server', 'lib', 'cli.mjs')));
+  assert.ok(fs.existsSync(path.join(resources, 'lsp', 'node_modules', 'typescript', 'lib', 'tsserver.js')));
+  assert.ok(fs.existsSync(path.join(resources, 'lsp', 'package-lock.json')));
+  for (const notice of ['node-LICENSE', 'pyright-LICENSE', 'typescript-LICENSE', 'typescript-language-server-LICENSE']) {
+    assert.ok(fs.existsSync(path.join(resources, notice)), `${notice} must be bundled`);
+  }
   assert.equal(fs.existsSync(path.join(app, 'Contents', 'Resources', 'stale-secret.txt')), false);
-  assert.match(fs.readFileSync(path.join(app, 'Contents', 'Info.plist'), 'utf8'), /<string>CodeAtlas<\/string>/);
+  const infoPlist = fs.readFileSync(path.join(app, 'Contents', 'Info.plist'), 'utf8');
+  assert.match(infoPlist, /<key>CFBundleIconFile<\/key>\s*<string>CodeAtlas\.icns<\/string>/);
   const serverLauncher = path.join(f.root, 'dist', 'codeatlas-server');
   assert.ok(fs.existsSync(serverLauncher));
   const serverResult = spawnSync(bash, [serverLauncher, '-listen', '127.0.0.1:19092'], {
@@ -309,8 +371,23 @@ exec "$bundle/Contents/MacOS/codeatlas" "$@"
   assert.match(log, /npm\|cwd=.*\/frontend\|args=ci/);
   assert.match(log, /npm\|cwd=.*\/frontend\|args=run build/);
   assert.match(log, /go\|cwd=.*\/backend\|cgo=1\|cc=cc\|cxx=c\+\+\|args=build -tags fts5 desktop -trimpath -o .*\/dist\.staging\/CodeAtlas\.app\/Contents\/MacOS\/codeatlas \.\/cmd\/codeatlas/);
+  assert.match(log, /go\|cwd=.*\/backend\|cgo=\|cc=cc\|cxx=c\+\+\|args=install golang\.org\/x\/tools\/gopls@v0\.23\.0/);
+  assert.match(log, /npm\|cwd=.*\/packaging\/lsp\|args=ci --ignore-scripts --no-audit --no-fund/);
+  assert.match(log, /curl\|url=https:\/\/nodejs\.org\/dist\/v24\.20\.0\/SHASUMS256\.txt/);
+  assert.match(log, /curl\|url=https:\/\/nodejs\.org\/dist\/v24\.20\.0\/node-v24\.20\.0-darwin-(arm64|x64)\.tar\.gz/);
   assert.match(log, /run\|cwd=.*codeatlas-package-[^/]+\|dotenv=\$\(touch "\$CODEATLAS_TEST_MARKER"\)\|workspace=.*\/examples\/tinycommerce\|args=-listen 127\.0\.0\.1:19090/);
   assert.match(log, /run\|cwd=.*codeatlas-cwd-[^/]+\|dotenv=\|workspace=\|args=-desktop=false -listen 127\.0\.0\.1:19092/);
+});
+
+test('macOS just-build script packages without reaching the launch step', () => {
+  const buildOnly = fs.readFileSync(path.join(repoRoot, 'just-build.sh'), 'utf8');
+  const buildAndRun = fs.readFileSync(path.join(repoRoot, 'build_package_and_run.sh'), 'utf8');
+  assert.match(buildOnly, /_CODEATLAS_BUILD_ONLY=1 exec "\$ROOT\/build_package_and_run\.sh"/);
+  assert.match(
+    buildAndRun,
+    /printf 'Built %s\\n'[\s\S]*if \[\[ "\$\{_CODEATLAS_BUILD_ONLY:-0\}" == 1 \]\]; then\s+exit 0\s+fi\s+printf 'Starting CodeAtlas/,
+  );
+  assert.doesNotMatch(buildOnly, /\bopen\s+-W\b/);
 });
 
 test('macOS script rejects unsupported build-tool versions before installation', { skip: process.platform === 'win32' && !findBash() }, async (t) => {
@@ -453,7 +530,7 @@ test('third-party notices pin bundled WebView native snapshots exactly', () => {
 });
 
 function writeDarwinUname(bin) {
-  fs.writeFileSync(path.join(bin, 'uname'), '#!/usr/bin/env bash\nprintf "Darwin\\n"\n');
+  fs.writeFileSync(path.join(bin, 'uname'), '#!/usr/bin/env bash\nif [[ "$1" == -m ]]; then printf "arm64\\n"; else printf "Darwin\\n"; fi\n');
   fs.chmodSync(path.join(bin, 'uname'), 0o755);
 }
 

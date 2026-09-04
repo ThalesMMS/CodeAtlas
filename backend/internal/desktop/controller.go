@@ -40,18 +40,18 @@ func (c Controller) Run(parent context.Context) error {
 	window.SetTitle("CodeAtlas")
 	window.SetSize(1280, 800, SizeDefault)
 	window.SetSize(900, 600, SizeMinimum)
+	bindFolderPicker(window)
 
 	runCtx, cancel := context.WithCancel(parent)
 	defer cancel()
+	// Each server run reports its listener once; runs are sequential, so a
+	// single buffered slot never blocks a shutting-down server.
 	listening := make(chan net.Addr, 1)
 	serverFinished := make(chan struct{})
 	state := &serverState{}
-	var notifyOnce sync.Once
 	go func() {
-		state.set(c.Server(runCtx, func(addr net.Addr) {
-			notifyOnce.Do(func() { listening <- addr })
-		}))
-		close(serverFinished)
+		defer close(serverFinished)
+		state.set(c.serve(runCtx, window, listening))
 	}()
 
 	select {
@@ -80,22 +80,37 @@ func (c Controller) Run(parent context.Context) error {
 	serverMonitorDone := make(chan struct{})
 	go func() {
 		defer close(serverMonitorDone)
-		select {
-		case <-serverFinished:
-			if parent.Err() != nil {
-				return
-			}
+		for {
 			select {
+			case addr := <-listening:
+				// A restarted server bound a (possibly new) listener: point the
+				// existing window at it.
+				navigationURL, navigationErr := NavigationURL(addr)
+				window.Dispatch(func() {
+					if navigationErr != nil {
+						window.SetHTML(FatalHTML("CodeAtlas could not restart", navigationErr))
+						return
+					}
+					window.Navigate(navigationURL)
+				})
+			case <-serverFinished:
+				if parent.Err() != nil {
+					return
+				}
+				select {
+				case <-windowClosed:
+					return
+				default:
+				}
+				if serverErr := state.get(); serverErr != nil {
+					window.Dispatch(func() {
+						window.SetHTML(FatalHTML("CodeAtlas stopped", serverErr))
+					})
+				}
+				return
 			case <-windowClosed:
 				return
-			default:
 			}
-			if serverErr := state.get(); serverErr != nil {
-				window.Dispatch(func() {
-					window.SetHTML(FatalHTML("CodeAtlas stopped", serverErr))
-				})
-			}
-		case <-windowClosed:
 		}
 	}()
 	parentMonitorDone := make(chan struct{})
@@ -118,6 +133,36 @@ func (c Controller) Run(parent context.Context) error {
 		return parent.Err()
 	}
 	return state.get()
+}
+
+// serve runs the server until it stops for a reason other than a restart
+// request. A restart tears the composition down and starts it again in the
+// same process, so saved restart-only settings (such as the workspace) take
+// effect without relaunching the application.
+func (c Controller) serve(ctx context.Context, window Window, listening chan<- net.Addr) error {
+	for {
+		var notifyOnce sync.Once
+		err := c.Server(ctx, func(addr net.Addr) {
+			notifyOnce.Do(func() { listening <- addr })
+		})
+		if !errors.Is(err, ErrRestartRequested) || ctx.Err() != nil {
+			return err
+		}
+		window.Dispatch(func() { window.SetHTML(RestartingHTML()) })
+	}
+}
+
+// bindFolderPicker exposes the native folder chooser to the page when the
+// window supports one. Pages detect availability by the presence of the
+// binding, so a window without a chooser simply leaves it undefined.
+func bindFolderPicker(window Window) {
+	picker, ok := window.(FolderPicker)
+	if !ok {
+		return
+	}
+	_ = window.Bind(FolderPickerBinding, func(initial string) (FolderSelection, error) {
+		return picker.PickFolder(initial)
+	})
 }
 
 func (c Controller) runFatalWindow(parent context.Context, window Window, serverFinished <-chan struct{}, original error) error {

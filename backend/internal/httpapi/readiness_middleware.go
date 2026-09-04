@@ -19,6 +19,7 @@ var diagnosticAPIPaths = map[string]struct{}{
 	"/api/stats":              {},
 	"/api/settings":           {},
 	"/api/settings/overrides": {},
+	"/api/settings/restart":   {},
 }
 
 // allowedBeforeReady reports whether a request path may be served before READY.

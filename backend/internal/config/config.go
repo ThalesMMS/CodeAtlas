@@ -74,7 +74,7 @@ func LoadArgsWithSettings(args []string, values settings.Values) (Config, error)
 
 func load(args []string, saved *settings.Values) (Config, error) {
 	workspaceDefault := envOr("CODEATLAS_WORKSPACE", ".")
-	listenDefault := envOr("CODEATLAS_LISTEN", "127.0.0.1:8080")
+	listenDefault := envOr("CODEATLAS_LISTEN", settings.DefaultListenAddress)
 	if saved != nil {
 		workspaceDefault = saved.Workspace
 		listenDefault = saved.ListenAddress

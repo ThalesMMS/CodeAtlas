@@ -30,7 +30,7 @@ export CODEATLAS_RUST_LSP_PATH
 
 ROOT := $(abspath .)
 WORKSPACE ?= $(if $(strip $(CODEATLAS_WORKSPACE)),$(abspath $(CODEATLAS_WORKSPACE)),$(ROOT)/examples/tinycommerce)
-LISTEN ?= $(if $(strip $(CODEATLAS_LISTEN)),$(CODEATLAS_LISTEN),127.0.0.1:8080)
+LISTEN ?= $(if $(strip $(CODEATLAS_LISTEN)),$(CODEATLAS_LISTEN),127.0.0.1:43127)
 BINARY_EXT := $(if $(filter Windows_NT,$(OS)),.exe,)
 BINARY := $(ROOT)/dist/codeatlas$(BINARY_EXT)
 FRONTEND_NODE_MODULES := $(ROOT)/frontend/node_modules

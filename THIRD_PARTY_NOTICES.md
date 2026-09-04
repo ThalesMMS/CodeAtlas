@@ -41,3 +41,34 @@ licenses. The complete runtime headers/sources and grammar sources are under
 These packages are installed deterministically from their npm lockfiles. The
 production Monaco dependency graph passes `npm audit` with zero findings at the
 time of integration; Playwright is not embedded in the CodeAtlas binary.
+
+## Bundled language servers
+
+The macOS application bundle includes `golang.org/x/tools/gopls` v0.23.0 under
+the Go project's BSD-3-Clause license. The required binary-distribution notice
+is copied into the application as `Contents/Resources/gopls-LICENSE` from
+`packaging/licenses/gopls-LICENSE`.
+
+The bundle also ships a private Node.js runtime (copied from the build
+machine's Node.js 26 installation, MIT and bundled third-party licenses in
+`Contents/Resources/node-LICENSE`) together with the npm packages pinned in
+`packaging/lsp/package-lock.json`:
+
+| Package | Version | License | Notice in bundle |
+|---|---:|---|---|
+| `pyright` | 1.1.413 | MIT | `Contents/Resources/pyright-LICENSE` |
+| `typescript-language-server` | 6.0.0 | Apache-2.0 | `Contents/Resources/typescript-language-server-LICENSE` |
+| `typescript` | 5.9.3 | Apache-2.0 | `Contents/Resources/typescript-LICENSE` |
+
+The packages are installed with `npm ci --ignore-scripts` and copied verbatim
+into `Contents/Resources/lsp/node_modules/`. Source notices live under
+`packaging/licenses/`.
+
+## Adaptation sources
+
+| Component | Source revision | License | Usage |
+|---|---:|---|---|
+| `AsyncFuncAI/deepwiki-open` | commit [`ff543868829b8e422fdc18817d7c7db15a68dfdd`](https://github.com/AsyncFuncAI/deepwiki-open/commit/ff543868829b8e422fdc18817d7c7db15a68dfdd) | MIT | Visual and interaction patterns adapted for the CodeAtlas DeepWiki/Codemap knowledge workspace; notice in `frontend/DEEPWIKI_OPEN_LICENSE` |
+
+DeepWiki-Open is an adaptation source, not an installed npm package or runtime
+dependency. The adaptation introduces no second application server.

@@ -73,6 +73,8 @@ func (c Config) withDefaults() Config {
 	if c.Path == "" {
 		c.Path = "typescript-language-server"
 	}
+	c.Path = resolveBundledExecutable(c.Path)
+	c.SDKPath = resolveBundledSDKPath(c.SDKPath)
 	if c.StartTimeout <= 0 {
 		c.StartTimeout = 25 * time.Second
 	}

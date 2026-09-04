@@ -149,6 +149,20 @@ func upsertPaths(files []domain.ParsedFile) []string {
 	return paths
 }
 
+// impactRelationsQuery lists the relations touched by one file path: those with
+// evidence in the file, plus those whose subject or object symbol occurs in it.
+// Every branch is served by an index (idx_evidence_file, idx_occ_file_range,
+// idx_relations_subject, idx_relations_object); it must never scan relations.
+const impactRelationsQuery = `SELECT r.relation_id, r.canonical_key
+	FROM relation_evidence e JOIN relations r ON r.relation_id = e.relation_id
+	WHERE e.file_path = ?
+UNION SELECT r.relation_id, r.canonical_key
+	FROM symbol_occurrences o JOIN relations r ON r.subject_symbol_id = o.symbol_id
+	WHERE o.file_path = ?
+UNION SELECT r.relation_id, r.canonical_key
+	FROM symbol_occurrences o JOIN relations r ON r.object_symbol_id = o.symbol_id
+	WHERE o.file_path = ?`
+
 func collectCommitImpact(ctx context.Context, tx *sql.Tx, paths []string) (commitImpact, error) {
 	impact := newCommitImpact(paths)
 	for _, path := range paths {
@@ -168,12 +182,11 @@ func collectCommitImpact(ctx context.Context, tx *sql.Tx, paths []string) (commi
 		if err := rows.Close(); err != nil {
 			return impact, err
 		}
-		relations, err := tx.QueryContext(ctx, `SELECT DISTINCT r.relation_id, r.canonical_key
-			FROM relations r
-			LEFT JOIN relation_evidence e ON e.relation_id = r.relation_id
-			WHERE e.file_path = ?
-			   OR r.subject_symbol_id IN (SELECT symbol_id FROM symbol_occurrences WHERE file_path = ?)
-			   OR r.object_symbol_id IN (SELECT symbol_id FROM symbol_occurrences WHERE file_path = ?)`, path, path, path)
+		// Three index-driven lookups joined by UNION. The equivalent single query
+		// with OR across the evidence join and two IN subqueries made SQLite scan
+		// the whole relations table once per touched path, which turned a large
+		// initial commit into hours of CPU (see impactRelationsQuery plan test).
+		relations, err := tx.QueryContext(ctx, impactRelationsQuery, path, path, path)
 		if err != nil {
 			return impact, err
 		}

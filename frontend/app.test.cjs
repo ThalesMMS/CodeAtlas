@@ -1649,3 +1649,63 @@ function edge(id, source, target, type, confidence = 0.85) {
     snippet: `${source} ${type} ${target}`,
   };
 }
+
+test('waitForRestartedBackend reloads after the backend goes down and answers again', async () => {
+  const responses = [
+    async () => fakeResponse(200, { state: 'READY' }),
+    async () => { throw new Error('connection refused'); },
+    async () => fakeResponse(503, { state: 'BOOTING' }),
+    async () => fakeResponse(503, { state: 'AWAITING_CONFIGURATION' }),
+    async () => fakeResponse(200, { state: 'READY' }),
+  ];
+  let index = 0;
+  let reloaded = 0;
+  const fetchFn = () => responses[Math.min(index++, responses.length - 1)]();
+  const result = await app.waitForRestartedBackend(fetchFn, () => { reloaded += 1; }, 0, {
+    sleep: async () => {},
+    intervalMs: 1,
+    graceMs: 60000,
+  });
+  assert.equal(result, true);
+  assert.equal(reloaded, 1);
+  assert.equal(index, 4, 'reload as soon as the restarted backend answers, even before READY');
+});
+
+test('waitForRestartedBackend reloads after the grace period when the restart was too quick to observe', async () => {
+  let clock = 0;
+  let reloaded = 0;
+  const fetchFn = async () => fakeResponse(200, { state: 'READY' });
+  const result = await app.waitForRestartedBackend(fetchFn, () => { reloaded += 1; }, 0, {
+    sleep: async () => { clock += 1000; },
+    now: () => clock,
+    graceMs: 3000,
+    timeoutMs: 90000,
+  });
+  assert.equal(result, true);
+  assert.equal(reloaded, 1);
+  assert.ok(clock >= 3000);
+});
+
+test('embedding rebuild status surfaces running progress and failures only', () => {
+  const store = app.createJobStore(4);
+  assert.strictEqual(app.embeddingRebuildStatus(store), null);
+
+  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'running', revision: 1, progress: { indeterminate: true, unit: 'symbol' } } });
+  let status = app.embeddingRebuildStatus(store);
+  assert.strictEqual(status.percent, null);
+  assert.strictEqual(status.text, 'Embeddings: preparing…');
+
+  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'running', revision: 2, progress: { completed: 320, total: 1280, percent: 25, unit: 'symbol' } } });
+  status = app.embeddingRebuildStatus(store);
+  assert.strictEqual(status.percent, 25);
+  assert.strictEqual(status.text, 'Embeddings 25% 320/1280');
+
+  app.applyJobEvent(store, { job: { id: 'e1', type: 'embeddings.rebuild', state: 'succeeded', revision: 3, progress: { completed: 1280, total: 1280, percent: 100 } } });
+  assert.strictEqual(app.embeddingRebuildStatus(store), null, 'a finished rebuild hides the indicator');
+
+  app.applyJobEvent(store, { job: { id: 'e2', type: 'embeddings.rebuild', state: 'failed', revision: 1, error: { code: 'EMBEDDINGS_UNAVAILABLE' } } });
+  assert.strictEqual(app.embeddingRebuildStatus(store).className, 'error');
+
+  app.applyJobEvent(store, { job: { id: 'r1', type: 'repository.reindex', state: 'running', revision: 1, progress: { percent: 10 } } });
+  assert.strictEqual(app.embeddingRebuildStatus(store).className, 'error', 'other job types never drive the embeddings indicator');
+});

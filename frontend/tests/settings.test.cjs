@@ -41,6 +41,7 @@ function sampleSnapshot() {
 
 test('Settings controls are discreet, accessible, and available during bootstrap', () => {
   const html = fs.readFileSync(path.join(frontendRoot, 'index.html'), 'utf8');
+  const styles = fs.readFileSync(path.join(frontendRoot, 'styles.css'), 'utf8');
   const reindex = html.indexOf('id="reindex-button"');
   const gear = html.indexOf('id="settings-button"');
   assert.ok(reindex >= 0 && gear > reindex, 'Settings button must follow reindex');
@@ -50,6 +51,8 @@ test('Settings controls are discreet, accessible, and available during bootstrap
   for (const group of ['general', 'llm', 'embeddings', 'languageServers']) {
     assert.match(html, new RegExp(`data-settings-group="${group}"`));
   }
+  assert.match(styles, /\.bootstrap-overlay\s*\{[^}]*overflow:\s*auto;/s, 'a short window must scroll the startup overlay');
+  assert.match(styles, /\.bootstrap-card\s*\{[^}]*margin-block:\s*auto;/s, 'the startup card should remain centered when it fits');
 });
 
 test('Settings inventory matches every .env.example key exactly once', () => {
@@ -325,6 +328,103 @@ test('controller reset is confirmed and revisioned', async () => {
   assert.equal(request[0], '/api/settings/overrides');
   assert.equal(request[1].method, 'DELETE');
   assert.deepEqual(JSON.parse(request[1].body), { revision: 7 });
+});
+
+test('workspace field declares a directory picker and the desktop binding is wired', () => {
+  const workspace = settings.settingsFieldInventory.find((field) => field.key === 'CODEATLAS_WORKSPACE');
+  assert.equal(workspace.picker, 'directory');
+  assert.equal(settings.settingsFieldInventory.filter((field) => field.picker).length, 1);
+  const source = fs.readFileSync(path.join(frontendRoot, 'settings.js'), 'utf8');
+  assert.match(source, /Choose folder…/);
+  assert.match(source, /data-settings-picker|dataset\.settingsPicker/);
+  const app = fs.readFileSync(path.join(frontendRoot, 'app.js'), 'utf8');
+  assert.match(app, /codeatlasPickWorkspaceFolder/);
+  assert.match(app, /pickDirectory: nativeDirectoryPicker\(\)/);
+  const styles = fs.readFileSync(path.join(frontendRoot, 'styles.css'), 'utf8');
+  assert.match(styles, /\.settings-field-controls\.has-picker/);
+});
+
+test('controller restarts only when supported, with the loaded revision, and reports the outcome', async () => {
+  const statuses = [];
+  const calls = [];
+  let confirmations = 0;
+  let restarted = 0;
+  const view = {
+    bind() {}, open() {}, close() {}, render() {}, clearSecrets() {}, setBusy() {}, setFieldErrors() {},
+    setStatus(message, tone) { statuses.push([message, tone]); },
+    readEdits() { return {}; },
+  };
+  const controller = settings.createSettingsController({
+    token: 'token', view,
+    confirmRestart: async () => { confirmations += 1; return true; },
+    onRestart: () => { restarted += 1; },
+    api: async (path, options) => {
+      calls.push([path, options]);
+      if (path === '/api/settings/restart') return { restarting: true, revision: 7 };
+      return { ...sampleSnapshot(), restartRequired: ['CODEATLAS_WORKSPACE'] };
+    },
+  });
+
+  controller.setSnapshot({ ...sampleSnapshot(), restartRequired: ['CODEATLAS_WORKSPACE'] });
+  assert.equal(controller.restartSupported(), false);
+  await controller.restart();
+  assert.equal(confirmations, 0);
+  assert.equal(restarted, 0);
+  assert.match(statuses.at(-1)[0], /cannot restart itself/i);
+  assert.equal(calls.length, 0, 'unsupported restart must not hit the API');
+
+  controller.setSnapshot({ ...sampleSnapshot(), restartRequired: ['CODEATLAS_WORKSPACE'], restartSupported: true });
+  assert.equal(controller.restartSupported(), true);
+  assert.equal(controller.snapshot().restartSupported, true);
+  await controller.restart();
+  assert.equal(confirmations, 1);
+  assert.equal(restarted, 1);
+  const [restartPath, restartOptions] = calls.at(-1);
+  assert.equal(restartPath, '/api/settings/restart');
+  assert.equal(restartOptions.method, 'POST');
+  assert.equal(restartOptions.headers['X-CodeAtlas-Settings-Token'], 'token');
+  assert.deepEqual(JSON.parse(restartOptions.body), { revision: 7 });
+  assert.equal(statuses.at(-1)[1], 'success');
+
+  // restartSupported is remembered when a later snapshot (for example from an
+  // error envelope) omits it.
+  controller.setSnapshot({ ...sampleSnapshot(), revision: 8 });
+  assert.equal(controller.snapshot().restartSupported, true);
+});
+
+test('controller restart surfaces a revision conflict by reloading the latest snapshot', async () => {
+  const rendered = [];
+  const statuses = [];
+  const view = {
+    bind() {}, open() {}, close() {}, clearSecrets() {}, setBusy() {}, setFieldErrors() {}, restoreEdits() {},
+    render(value) { rendered.push(value); },
+    setStatus(message, tone) { statuses.push([message, tone]); },
+    readEdits() { return {}; },
+  };
+  const fresh = { ...sampleSnapshot(), revision: 9, restartSupported: true };
+  let onRestartCalls = 0;
+  const controller = settings.createSettingsController({
+    token: 'token', view, onRestart: () => { onRestartCalls += 1; },
+    api: async () => {
+      const error = new Error('conflict');
+      error.code = 'SETTINGS_REVISION_CONFLICT';
+      error.details = { snapshot: fresh };
+      throw error;
+    },
+  });
+  controller.setSnapshot({ ...sampleSnapshot(), restartSupported: true });
+  await controller.restart();
+  assert.equal(onRestartCalls, 0);
+  assert.equal(rendered.at(-1).revision, 9);
+  assert.match(statuses.at(-1)[0], /changed/i);
+});
+
+test('the restart banner is rendered from settings.js with an explicit restart control', () => {
+  const source = fs.readFileSync(path.join(frontendRoot, 'settings.js'), 'utf8');
+  assert.match(source, /id = 'settings-restart-button'/);
+  assert.match(source, /Restart CodeAtlas/);
+  const html = fs.readFileSync(path.join(frontendRoot, 'index.html'), 'utf8');
+  assert.match(html, /id="settings-restart-banner"/);
 });
 
 test('settings module is imported before the application', () => {

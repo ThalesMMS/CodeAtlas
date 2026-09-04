@@ -14,10 +14,21 @@
     "isolatedModules": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src/main.ts", "src/mermaid-lite.ts", "src/monaco-editor-adapter.ts", "src/monaco-editor-contract.ts", "src/style.d.ts", "app.js", "vite.config.ts"],
-  "exclude": [
-    "node_modules",
-    "spikes",
-    "../backend/internal/webui/dist"
-  ]
+  "include": [
+    "src/main.ts",
+    "src/knowledge-api.ts",
+    "src/knowledge-links.ts",
+    "src/knowledge-markdown.ts",
+    "src/knowledge-model.ts",
+    "src/knowledge-types.ts",
+    "src/knowledge-view.ts",
+    "src/knowledge-workspace.ts",
+    "src/mermaid-lite.ts",
+    "src/monaco-editor-adapter.ts",
+    "src/monaco-editor-contract.ts",
+    "src/style.d.ts",
+    "app.js",
+    "vite.config.ts"
+  ],
+  "exclude": ["node_modules", "spikes", "../backend/internal/webui/dist"]
 }

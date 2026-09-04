@@ -355,8 +355,18 @@ func TestReconcileEmbeddingsInvalidatesWhenEmbeddingBaseURLChanges(t *testing.T)
 		LLMBaseURL:       "http://chat.invalid/v1",
 		EmbeddingBaseURL: "http://embed-a.invalid/v1",
 	}
-	if err := reconcileEmbeddings(retriever, store, registry, first)(context.Background()); err != nil {
+	needsRebuild, err := reconcileEmbeddings(retriever, store, registry, first)(context.Background())
+	if err != nil {
 		t.Fatalf("first reconcile: %v", err)
+	}
+	if !needsRebuild {
+		t.Fatal("an empty dense index must request a background rebuild")
+	}
+	if state := embeddingCapabilityState(registry); state != "rebuilding" {
+		t.Fatalf("capability state = %q, want rebuilding", state)
+	}
+	if err := retriever.RebuildEmbeddings(context.Background()); err != nil {
+		t.Fatalf("first rebuild: %v", err)
 	}
 	firstProvider := store.EmbeddingMetadata().Provider
 	if strings.Contains(firstProvider, "embed-a.invalid") {
@@ -366,8 +376,15 @@ func TestReconcileEmbeddingsInvalidatesWhenEmbeddingBaseURLChanges(t *testing.T)
 	provider.resetCalls()
 	second := first
 	second.EmbeddingBaseURL = "http://embed-b.invalid/v1"
-	if err := reconcileEmbeddings(retriever, store, registry, second)(context.Background()); err != nil {
+	needsRebuild, err = reconcileEmbeddings(retriever, store, registry, second)(context.Background())
+	if err != nil {
 		t.Fatalf("second reconcile: %v", err)
+	}
+	if !needsRebuild {
+		t.Fatal("an endpoint change must request a background rebuild")
+	}
+	if err := retriever.RebuildEmbeddings(context.Background()); err != nil {
+		t.Fatalf("second rebuild: %v", err)
 	}
 	if provider.callCount() <= 1 {
 		t.Fatalf("Embed calls after endpoint change = %d, want probe plus rebuild", provider.callCount())
@@ -379,4 +396,13 @@ func TestReconcileEmbeddingsInvalidatesWhenEmbeddingBaseURLChanges(t *testing.T)
 	if strings.Contains(secondProvider, "embed-b.invalid") {
 		t.Fatalf("metadata provider %q leaked the embedding endpoint", secondProvider)
 	}
+}
+
+func embeddingCapabilityState(registry *capabilities.Registry) string {
+	for _, result := range registry.Results() {
+		if result.ID == "llm-embeddings" {
+			return result.Metadata["state"]
+		}
+	}
+	return ""
 }

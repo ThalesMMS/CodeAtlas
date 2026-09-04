@@ -21,22 +21,27 @@ const (
 
 // bootstrapDeps are the seams the startup sequence depends on.
 type bootstrapDeps struct {
-	logger              *slog.Logger
-	coordinator         *readiness.Coordinator
-	registry            *capabilities.Registry
-	probes              []capabilities.Probe
-	providerProbe       ai.CapabilityProbe
-	enableEmbeddings    bool
-	migrateStore        func(context.Context) error
-	initialIndex        func(context.Context) error
-	runIndexer          func(context.Context)
-	reconcileEmbeddings func(context.Context) error
-	recoveryError       error
+	logger           *slog.Logger
+	coordinator      *readiness.Coordinator
+	registry         *capabilities.Registry
+	probes           []capabilities.Probe
+	providerProbe    ai.CapabilityProbe
+	enableEmbeddings bool
+	migrateStore     func(context.Context) error
+	initialIndex     func(context.Context) error
+	runIndexer       func(context.Context)
+	// reconcileEmbeddings validates the dense index against the configuration
+	// without generating vectors; it reports whether a background rebuild is
+	// required once the process is READY.
+	reconcileEmbeddings func(context.Context) (bool, error)
+	// scheduleEmbeddingRebuild submits the coalescing embeddings.rebuild job.
+	scheduleEmbeddingRebuild func(context.Context)
+	recoveryError            error
 }
 
 // runBootstrap drives the readiness lifecycle:
 //
-//	BOOTING -> PROBING_CAPABILITIES -> INDEXING -> READY
+//	BOOTING -> PROBING_CAPABILITIES -> MIGRATING_STORE -> INDEXING -> READY
 //
 // A mandatory local probe or initial-index failure transitions to FAILED. A
 // provider-only failure enters AWAITING_CONFIGURATION and blocks on an explicit,
@@ -66,6 +71,29 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		return
 	}
 
+	// Open the repository before waiting for provider configuration. Settings can
+	// enable embeddings while the process is in AWAITING_CONFIGURATION, and that
+	// live preparation needs access to the persisted embedding metadata. Delaying
+	// store migration until after the provider probe made first-run configuration
+	// fail with EMBEDDING_STORE_UNAVAILABLE even when the endpoint probe passed.
+	if deps.migrateStore != nil {
+		deps.coordinator.SetStep("migrating store")
+		if err := deps.coordinator.Transition(readiness.StateMigratingStore, "migrating store"); err != nil {
+			return
+		}
+		if err := deps.migrateStore(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			_ = deps.coordinator.Fail("STORE_MIGRATION_FAILED", "store backend migration failed")
+			deps.logger.Error("store migration failed", "error", err)
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
+
 	for {
 		failure, failed = probeProviderMandatory(ctx, deps)
 		if ctx.Err() != nil {
@@ -90,22 +118,27 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		}
 	}
 
-	if deps.migrateStore != nil {
-		deps.coordinator.SetStep("migrating store")
-		if err := deps.coordinator.Transition(readiness.StateMigratingStore, "migrating store"); err != nil {
-			return
-		}
-		if err := deps.migrateStore(ctx); err != nil {
+	// Reconcile the dense index before indexing: a compatible index stays live
+	// and incremental scans keep embedding their deltas, while a legacy or
+	// incompatible index puts the runtime into the rebuilding state so the
+	// initial scan commits without vectors and READY is never blocked on the
+	// embedding provider. The actual rebuild runs as a background job.
+	needsEmbeddingRebuild := false
+	if deps.reconcileEmbeddings != nil {
+		deps.coordinator.SetStep("reconciling embeddings")
+		rebuild, err := deps.reconcileEmbeddings(ctx)
+		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
-			_ = deps.coordinator.Fail("STORE_MIGRATION_FAILED", "store backend migration failed")
-			deps.logger.Error("store migration failed", "error", err)
+			_ = deps.coordinator.Fail("EMBEDDING_REBUILD_FAILED", "embeddings reconciliation failed")
+			deps.logger.Error("embeddings reconciliation failed", "error", err)
 			return
 		}
-		if ctx.Err() != nil {
-			return
-		}
+		needsEmbeddingRebuild = rebuild
+	}
+	if ctx.Err() != nil {
+		return
 	}
 
 	deps.coordinator.SetStep("indexing workspace")
@@ -124,28 +157,16 @@ func runBootstrap(ctx context.Context, deps bootstrapDeps) {
 		return
 	}
 
-	// Reconcile the dense index (rebuild on incompatible/legacy embeddings) before
-	// READY, so dense retrieval is never promised over a mismatched index.
-	if deps.reconcileEmbeddings != nil {
-		deps.coordinator.SetStep("reconciling embeddings")
-		if err := deps.reconcileEmbeddings(ctx); err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			_ = deps.coordinator.Fail("EMBEDDING_REBUILD_FAILED", "embeddings rebuild failed")
-			deps.logger.Error("embeddings reconciliation failed", "error", err)
-			return
-		}
-	}
-	if ctx.Err() != nil {
-		return
-	}
-
 	deps.coordinator.SetStep("ready")
 	if err := deps.coordinator.Transition(readiness.StateReady, "startup complete"); err != nil {
 		return
 	}
 	deps.logger.Info("CodeAtlas READY")
+
+	if needsEmbeddingRebuild && deps.scheduleEmbeddingRebuild != nil {
+		deps.logger.Info("scheduling background embeddings rebuild")
+		deps.scheduleEmbeddingRebuild(ctx)
+	}
 
 	if deps.runIndexer != nil {
 		deps.runIndexer(ctx) // blocks until ctx is cancelled

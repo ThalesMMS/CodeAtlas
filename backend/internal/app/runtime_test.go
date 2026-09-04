@@ -367,18 +367,18 @@ func TestRunNotifiesActualListenerBeforeServing(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- app.Run(ctx, app.RuntimeDeps{
-			Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Coordinator:       readiness.NewCoordinator(),
-			Registry:          capabilities.NewRegistry(),
-			Probes:            []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
-			ProviderProbe:     fakeProviderProbe{chat: okChat(), emb: okEmb()},
-			MigrateStore:      func(context.Context) error { return nil },
-			InitialIndex:      func(context.Context) error { return nil },
-			RunIndexer:        func(runCtx context.Context) { <-runCtx.Done() },
-			Server:            server,
-			Listen:            func() (net.Listener, error) { return listener, nil },
-			OnListening:       func(addr net.Addr) { notified <- addr },
-			ShutdownTimeout:   3 * time.Second,
+			Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Coordinator:     readiness.NewCoordinator(),
+			Registry:        capabilities.NewRegistry(),
+			Probes:          []capabilities.Probe{availableProbe(capabilities.CapabilityWorkspace)},
+			ProviderProbe:   fakeProviderProbe{chat: okChat(), emb: okEmb()},
+			MigrateStore:    func(context.Context) error { return nil },
+			InitialIndex:    func(context.Context) error { return nil },
+			RunIndexer:      func(runCtx context.Context) { <-runCtx.Done() },
+			Server:          server,
+			Listen:          func() (net.Listener, error) { return listener, nil },
+			OnListening:     func(addr net.Addr) { notified <- addr },
+			ShutdownTimeout: 3 * time.Second,
 		})
 	}()
 
@@ -529,9 +529,9 @@ func TestStartupReconcileFailureIsFatal(t *testing.T) {
 		},
 		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
 		InitialIndex:  func(context.Context) error { return nil },
-		ReconcileEmbeddings: func(context.Context) error {
+		ReconcileEmbeddings: func(context.Context) (bool, error) {
 			atomic.StoreInt32(&reconciled, 1)
-			return errors.New("incompatible dense index")
+			return false, errors.New("incompatible dense index")
 		},
 	}, false)
 	defer h.stop(t)
@@ -545,30 +545,71 @@ func TestStartupReconcileFailureIsFatal(t *testing.T) {
 	}
 }
 
-// A successful reconciliation runs after indexing and before READY.
+// A successful reconciliation runs before the initial index so the scan can
+// skip embeddings when a rebuild is pending, and READY never waits for vectors.
 func TestStartupReconcileSuccessReachesReady(t *testing.T) {
 	t.Parallel()
-	var indexed, reconciled int32
+	var indexed, reconciled, scheduled int32
 	h := newHarness(t, app.RuntimeDeps{
 		Probes: []capabilities.Probe{
 			availableProbe(capabilities.CapabilityWorkspace),
 			availableProbe(capabilities.CapabilityStore),
 		},
 		ProviderProbe: fakeProviderProbe{chat: okChat(), emb: okEmb()},
-		InitialIndex:  func(context.Context) error { atomic.StoreInt32(&indexed, 1); return nil },
-		ReconcileEmbeddings: func(context.Context) error {
-			if atomic.LoadInt32(&indexed) != 1 {
-				t.Error("reconcile ran before the initial index")
+		InitialIndex: func(context.Context) error {
+			if atomic.LoadInt32(&reconciled) != 1 {
+				t.Error("initial index ran before the embedding reconciliation")
 			}
-			atomic.StoreInt32(&reconciled, 1)
+			atomic.StoreInt32(&indexed, 1)
 			return nil
+		},
+		ReconcileEmbeddings: func(context.Context) (bool, error) {
+			atomic.StoreInt32(&reconciled, 1)
+			return false, nil
+		},
+		ScheduleEmbeddingRebuild: func(context.Context) { atomic.StoreInt32(&scheduled, 1) },
+	}, false)
+	defer h.stop(t)
+
+	h.waitForState(t, readiness.StateReady)
+	if atomic.LoadInt32(&reconciled) != 1 || atomic.LoadInt32(&indexed) != 1 {
+		t.Fatal("reached READY without reconciling embeddings and indexing")
+	}
+	if atomic.LoadInt32(&scheduled) != 0 {
+		t.Fatal("a compatible dense index must not schedule a rebuild")
+	}
+}
+
+// A pending rebuild is scheduled as a background job only after READY, so a slow
+// embedding provider can never keep the workspace on the bootstrap screen.
+func TestStartupSchedulesEmbeddingRebuildAfterReady(t *testing.T) {
+	t.Parallel()
+	var scheduledState atomic.Value
+	scheduled := make(chan struct{})
+	var h *harness
+	h = newHarness(t, app.RuntimeDeps{
+		Probes: []capabilities.Probe{
+			availableProbe(capabilities.CapabilityWorkspace),
+			availableProbe(capabilities.CapabilityStore),
+		},
+		ProviderProbe:       fakeProviderProbe{chat: okChat(), emb: okEmb()},
+		InitialIndex:        func(context.Context) error { return nil },
+		ReconcileEmbeddings: func(context.Context) (bool, error) { return true, nil },
+		ScheduleEmbeddingRebuild: func(context.Context) {
+			scheduledState.Store(h.coordinator.CurrentState())
+			close(scheduled)
 		},
 	}, false)
 	defer h.stop(t)
 
 	h.waitForState(t, readiness.StateReady)
-	if atomic.LoadInt32(&reconciled) != 1 {
-		t.Fatal("reached READY without running the embedding reconciliation")
+	select {
+	case <-scheduled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("embeddings rebuild was not scheduled after READY")
+	}
+	if got := scheduledState.Load(); got != readiness.StateReady {
+		t.Fatalf("rebuild scheduled in state %v, want READY", got)
 	}
 }
 

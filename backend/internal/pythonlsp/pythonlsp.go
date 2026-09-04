@@ -70,6 +70,7 @@ func (c Config) withDefaults() Config {
 	if c.Path == "" {
 		c.Path = "pyright-langserver"
 	}
+	c.Path = resolveBundledExecutable(c.Path)
 	if c.StartTimeout <= 0 {
 		c.StartTimeout = 25 * time.Second
 	}

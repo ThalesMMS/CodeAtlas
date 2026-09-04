@@ -22,6 +22,7 @@ type fakeWindow struct {
 	runOnce     sync.Once
 	htmlOnce    sync.Once
 	destroys    int
+	bindings    map[string]any
 }
 
 func newFakeWindow() *fakeWindow {
@@ -73,6 +74,16 @@ func (w *fakeWindow) Destroy() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.destroys++
+}
+func (w *fakeWindow) Bind(name string, function any) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.bindings == nil {
+		w.bindings = map[string]any{}
+	}
+	w.bindings[name] = function
+	w.events = append(w.events, "bind:"+name)
+	return nil
 }
 func (w *fakeWindow) close() { w.closeOnce.Do(func() { close(w.closeWindow) }) }
 
@@ -291,4 +302,174 @@ func containsEvent(events []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// pickerWindow is a fake window that also offers a native folder chooser.
+type pickerWindow struct {
+	*fakeWindow
+	selection FolderSelection
+	requests  []string
+}
+
+func (w *pickerWindow) PickFolder(initial string) (FolderSelection, error) {
+	w.requests = append(w.requests, initial)
+	return w.selection, nil
+}
+
+func TestControllerBindsFolderPickerBeforeNavigation(t *testing.T) {
+	window := &pickerWindow{fakeWindow: newFakeWindow(), selection: FolderSelection{Path: "/repos/demo"}}
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		listening(staticAddr("127.0.0.1:43130"))
+		<-ctx.Done()
+		return nil
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	window.close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	events, _, _ := window.snapshot()
+	bind, navigate := -1, -1
+	for i, event := range events {
+		if event == "bind:"+FolderPickerBinding {
+			bind = i
+		}
+		if strings.HasPrefix(event, "navigate:") {
+			navigate = i
+		}
+	}
+	if bind < 0 || navigate < 0 || bind >= navigate {
+		t.Fatalf("events = %v, want the folder picker bound before navigation", events)
+	}
+	picker, ok := window.bindings[FolderPickerBinding].(func(string) (FolderSelection, error))
+	if !ok {
+		t.Fatalf("binding type = %T", window.bindings[FolderPickerBinding])
+	}
+	selection, err := picker("/initial")
+	if err != nil || selection.Path != "/repos/demo" || selection.Canceled {
+		t.Fatalf("selection = %+v err = %v", selection, err)
+	}
+	if len(window.requests) != 1 || window.requests[0] != "/initial" {
+		t.Fatalf("picker requests = %v", window.requests)
+	}
+}
+
+func TestControllerSkipsFolderPickerBindingWithoutNativeChooser(t *testing.T) {
+	window := newFakeWindow()
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		listening(staticAddr("127.0.0.1:43131"))
+		<-ctx.Done()
+		return nil
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	window.close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, bound := window.bindings[FolderPickerBinding]; bound {
+		t.Fatal("folder picker was bound on a window without a native chooser")
+	}
+}
+
+func TestControllerRestartRerunsServerAndNavigatesToNewListener(t *testing.T) {
+	window := newFakeWindow()
+	restart := make(chan struct{})
+	var runs int
+	var mu sync.Mutex
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		mu.Lock()
+		runs++
+		run := runs
+		mu.Unlock()
+		if run == 1 {
+			listening(staticAddr("127.0.0.1:43132"))
+			<-restart
+			return ErrRestartRequested
+		}
+		listening(staticAddr("127.0.0.1:43133"))
+		<-ctx.Done()
+		return nil
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	close(restart)
+	deadline := time.After(3 * time.Second)
+	for {
+		events, _, _ := window.snapshot()
+		if containsEvent(events, "navigate:http://127.0.0.1:43133") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("events = %v, want navigation to the restarted listener", events)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	window.close()
+	if err := <-done; err != nil {
+		t.Fatalf("Run error = %v, want nil after restart", err)
+	}
+	events, html, _ := window.snapshot()
+	first, restarting, second := -1, -1, -1
+	for i, event := range events {
+		switch event {
+		case "navigate:http://127.0.0.1:43132":
+			first = i
+		case "html":
+			if restarting < 0 {
+				restarting = i
+			}
+		case "navigate:http://127.0.0.1:43133":
+			second = i
+		}
+	}
+	if first < 0 || restarting < 0 || second < 0 || !(first < restarting && restarting < second) {
+		t.Fatalf("events = %v, want first navigation, restarting page, then second navigation", events)
+	}
+	if !strings.Contains(html, "Restarting") {
+		t.Fatalf("placeholder HTML = %q", html)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if runs != 2 {
+		t.Fatalf("server runs = %d, want 2", runs)
+	}
+}
+
+func TestControllerRestartFailureShowsFatalPage(t *testing.T) {
+	window := newFakeWindow()
+	wantErr := errors.New("workspace is not a directory")
+	var runs int
+	var mu sync.Mutex
+	server := func(ctx context.Context, listening func(net.Addr)) error {
+		mu.Lock()
+		runs++
+		run := runs
+		mu.Unlock()
+		if run == 1 {
+			listening(staticAddr("127.0.0.1:43134"))
+			return ErrRestartRequested
+		}
+		return wantErr
+	}
+	done := runController(Controller{Factory: &fakeFactory{window: window}, Server: server})
+	waitFor(t, window.runStarted, "window Run did not start")
+	deadline := time.After(3 * time.Second)
+	for {
+		_, html, _ := window.snapshot()
+		if strings.Contains(html, "CodeAtlas stopped") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("fatal page after failed restart was not shown; html=%q", html)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	window.close()
+	if err := <-done; !errors.Is(err, wantErr) {
+		t.Fatalf("Run error = %v, want %v", err, wantErr)
+	}
 }

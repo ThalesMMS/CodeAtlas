@@ -332,6 +332,31 @@ func TestApplyEditIsDenied(t *testing.T) {
 	}
 }
 
+func TestResolveBundledExecutablePrefersPackagedGoplsForDefault(t *testing.T) {
+	root := t.TempDir()
+	executable := filepath.Join(root, "CodeAtlas.app", "Contents", "MacOS", "codeatlas")
+	bundled := filepath.Join(root, "CodeAtlas.app", "Contents", "Resources", "bin", "gopls")
+	if err := os.MkdirAll(filepath.Dir(bundled), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundled, []byte("gopls"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveBundledExecutableAt("gopls", executable, "darwin"); got != bundled {
+		t.Fatalf("resolved path = %q, want %q", got, bundled)
+	}
+	if got := resolveBundledExecutableAt("/opt/custom/gopls", executable, "darwin"); got != "/opt/custom/gopls" {
+		t.Fatalf("explicit path changed to %q", got)
+	}
+}
+
+func TestResolveBundledExecutableFallsBackWhenBundleIsMissing(t *testing.T) {
+	executable := filepath.Join(t.TempDir(), "CodeAtlas.app", "Contents", "MacOS", "codeatlas")
+	if got := resolveBundledExecutableAt("gopls", executable, "darwin"); got != "gopls" {
+		t.Fatalf("missing bundled path resolved to %q", got)
+	}
+}
+
 // TestRealGopls is an opt-in integration test against the real binary, skipped
 // when gopls is not installed so a developer without it is never blocked.
 func TestRealGopls(t *testing.T) {

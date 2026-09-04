@@ -302,17 +302,21 @@ func validateSecretOperations(operations map[FieldKey]SecretOperation) (map[Fiel
 			continue
 		}
 		seen[definition.Key] = true
-		touched[definition.Key] = struct{}{}
 		switch operation.Operation {
 		case "", SecretPreserve:
+			// Preserving a credential changes nothing, so it must not mark the
+			// field as touched: otherwise every unrelated edit (for example the
+			// workspace) would count as a provider change and be re-probed.
 			if operation.Value != "" {
 				issues = append(issues, invalidOperationIssue(definition.Key))
 			}
 		case SecretInherit:
+			touched[definition.Key] = struct{}{}
 			if operation.Value != "" {
 				issues = append(issues, invalidOperationIssue(definition.Key))
 			}
 		case SecretReplace:
+			touched[definition.Key] = struct{}{}
 			if operation.Value == "" {
 				issues = append(issues, FieldError{Field: definition.Key, Code: "SETTINGS_VALUE_INVALID", Message: "replacement credential cannot be empty"})
 			}

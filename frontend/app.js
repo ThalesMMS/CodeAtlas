@@ -130,6 +130,7 @@ function boot() {
     searchInput: $('search-input'),
     searchResults: $('search-results'),
     indexStatus: $('index-status'),
+    embeddingsStatus: $('embeddings-status'),
     reindexButton: $('reindex-button'),
     refreshTreeButton: $('refresh-tree-button'),
     fileTree: $('file-tree'),
@@ -209,10 +210,94 @@ function boot() {
       focusManager: FocusManager,
       announce,
       onApplied: retryReadiness,
+      onRestart: beginRestartWait,
       confirmReset: confirmSettingsReset,
+      confirmRestart: confirmSettingsRestart,
+      pickDirectory: nativeDirectoryPicker(),
     }).bind();
   }
   startReadinessLoop();
+}
+
+// nativeDirectoryPicker returns the folder chooser injected by the desktop
+// shell (window.codeatlasPickWorkspaceFolder), or null in a plain browser where
+// no native dialog can report an absolute path.
+function nativeDirectoryPicker() {
+  const picker = typeof globalThis !== 'undefined' ? globalThis.codeatlasPickWorkspaceFolder : undefined;
+  if (typeof picker !== 'function') return null;
+  return (initial) => picker(String(initial || ''));
+}
+
+async function confirmSettingsRestart() {
+  const drawer = document.getElementById('settings-drawer');
+  const dirty = [...state.tabs.values()].some((tab) => tab.dirty);
+  drawer?.setAttribute('aria-hidden', 'true');
+  const confirmed = await showAppDialog({
+    title: 'Restart CodeAtlas?',
+    description: dirty
+      ? 'Unsaved editor changes will be lost. The saved workspace and other restart-only settings become active after the restart.'
+      : 'CodeAtlas reloads the saved configuration and reopens the selected workspace. Running jobs are interrupted.',
+    actions: [
+      { label: 'Cancel', value: false, variant: 'secondary' },
+      { label: 'Restart', value: true, variant: 'primary' },
+    ],
+  });
+  drawer?.removeAttribute('aria-hidden');
+  FocusManager.trapFocus(drawer);
+  FocusManager.moveFocus(document.getElementById('settings-restart-button') || document.getElementById('settings-close-button'));
+  return confirmed;
+}
+
+// beginRestartWait shows the startup overlay while the process reloads its
+// configuration, then reloads the page once the backend answers again so the
+// interface reflects the new workspace. The desktop shell also navigates the
+// window itself as soon as the restarted server binds.
+function beginRestartWait() {
+  state.settingsController?.close();
+  clearTimeout(state.pollTimer);
+  state.pollGeneration += 1;
+  state.appReady = false;
+  state.phase = 'restarting';
+  showOverlay();
+  if (elements.overlayPhase) elements.overlayPhase.textContent = 'Restarting CodeAtlas…';
+  if (elements.overlayStage) elements.overlayStage.textContent = 'Applying the saved settings and reopening the workspace.';
+  if (elements.overlayError) elements.overlayError.classList.add('hidden');
+  if (elements.overlayInstruction) elements.overlayInstruction.textContent = '';
+  if (elements.overlayRetry) elements.overlayRetry.classList.add('hidden');
+  if (elements.overlayCapabilities) elements.overlayCapabilities.replaceChildren();
+  waitForRestartedBackend((path) => fetch(path, { cache: 'no-store' }), () => window.location.reload(), state.pollGeneration);
+}
+
+// waitForRestartedBackend polls readiness while the process reloads its
+// configuration. It reloads (onBack) once the backend answers again after being
+// observed down or booting, or after a short grace period when the restart was
+// too quick to observe; the regular readiness loop then finishes the bootstrap
+// against whichever server answers. It gives up at the deadline so a failed
+// restart shows the diagnostic screen instead of spinning forever.
+async function waitForRestartedBackend(fetchFn, onBack, generation, options = {}) {
+  const interval = options.intervalMs || 500;
+  const grace = options.graceMs == null ? 3000 : options.graceMs;
+  const started = options.now ? options.now() : Date.now();
+  const now = options.now || (() => Date.now());
+  const deadline = started + (options.timeoutMs || 90000);
+  const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let sawRestart = false;
+  while (now() < deadline) {
+    if (generation !== state.pollGeneration) return false;
+    const result = await fetchReadiness(fetchFn);
+    const transitional = !result.reachable || result.phase === 'booting' || result.phase === 'probing';
+    if (transitional) {
+      sawRestart = true;
+    } else if (sawRestart || now() - started >= grace) {
+      onBack();
+      return true;
+    }
+    await sleep(interval);
+  }
+  if (generation !== state.pollGeneration) return false;
+  applyPhase('unreachable', {});
+  startReadinessLoop();
+  return false;
 }
 
 async function confirmSettingsReset() {
@@ -920,7 +1005,7 @@ function renderDiagnostic(phase, body, capabilities) {
   } else {
     elements.overlayError.classList.add('hidden');
     elements.overlayInstruction.textContent = phase === 'configuration'
-      ? 'Open Settings to configure the LLM endpoint and model. CodeAtlas will continue automatically after a valid configuration.'
+      ? 'Open Settings to configure the LLM endpoint and model, and to choose the workspace folder to analyze. CodeAtlas will continue automatically after a valid configuration.'
       : '';
   }
 
@@ -6507,6 +6592,51 @@ function jobSummaryLabel(store) {
   return 'No jobs';
 }
 
+// embeddingRebuildStatus derives the topbar embeddings indicator from the job
+// store: the running embeddings.rebuild job wins, otherwise the most recent
+// terminal one is shown only when it failed. Null hides the indicator.
+function embeddingRebuildStatus(store) {
+  const jobs = store.order.map((id) => store.byId.get(id)).filter((job) => job && job.type === 'embeddings.rebuild');
+  const running = jobs.find((job) => !isTerminalJobState(job.state));
+  if (running) {
+    const progress = running.progress || {};
+    const determinate = typeof progress.percent === 'number' && !progress.indeterminate;
+    const percent = determinate ? Math.max(0, Math.min(100, Math.round(progress.percent))) : null;
+    const counts = determinate && progress.total ? ` ${progress.completed || 0}/${progress.total}` : '';
+    return {
+      className: '',
+      percent,
+      text: determinate ? `Embeddings ${percent}%${counts}` : 'Embeddings: preparing…',
+      valueText: determinate ? `${percent}% of symbols embedded` : 'Embeddings index rebuild in progress',
+    };
+  }
+  const latest = jobs[0];
+  if (latest && latest.state === 'failed') {
+    return { className: 'error', percent: null, text: 'Embeddings failed', valueText: 'Embeddings index rebuild failed' };
+  }
+  return null;
+}
+
+function renderEmbeddingStatus() {
+  const pill = elements.embeddingsStatus;
+  if (!pill) return;
+  const status = embeddingRebuildStatus(state.jobs);
+  if (!status) {
+    pill.hidden = true;
+    return;
+  }
+  pill.hidden = false;
+  pill.className = `status-pill progress ${status.className}`.trim();
+  const fill = pill.querySelector('.status-pill-fill');
+  const text = pill.querySelector('.status-pill-text');
+  if (fill) fill.style.transform = `scaleX(${status.percent === null ? 0 : status.percent / 100})`;
+  if (text) text.textContent = status.text;
+  if (status.percent === null) pill.removeAttribute('aria-valuenow');
+  else pill.setAttribute('aria-valuenow', String(status.percent));
+  pill.setAttribute('aria-valuetext', status.valueText);
+  pill.title = status.valueText;
+}
+
 function applyJobSnapshot(job) {
   const snapshot = applyJobSnapshotToStore(state.jobs, job);
   renderJobCenter();
@@ -6606,6 +6736,7 @@ async function cancelJob(jobId) {
 }
 
 function renderJobCenter() {
+  renderEmbeddingStatus();
   if (!elements.jobsSummary || !elements.jobsList) return;
   elements.jobsSummary.textContent = jobSummaryLabel(state.jobs);
   elements.jobsList.replaceChildren();
@@ -7256,6 +7387,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldApplyOverlayResponse,
     fetchReadiness,
     loadMandatoryResources,
+    waitForRestartedBackend,
     phaseLabel,
     capabilityStateLabel,
     sanitizeMessage,
@@ -7292,6 +7424,7 @@ if (typeof module !== 'undefined' && module.exports) {
     activeJobs,
     recentJobs,
     jobSummaryLabel,
+    embeddingRebuildStatus,
     jobPresentation,
     isSaveConflictCode,
     editorPosition,

@@ -384,3 +384,82 @@ func TestReconcileRebuildFailureLeavesStoreUntouched(t *testing.T) {
 		t.Fatal("metadata was published despite a failed rebuild")
 	}
 }
+
+func TestPrepareStartupDefersRebuildAndSkipsScanEmbeddings(t *testing.T) {
+	t.Parallel()
+	repository := reconcileStore(t)
+	provider := &reconcileProvider{available: true, dimension: 4}
+	retriever := NewHybrid(repository, provider, true)
+
+	needsRebuild, err := retriever.PrepareStartup(context.Background(), "openai-compatible", "default")
+	if err != nil {
+		t.Fatalf("PrepareStartup() error = %v", err)
+	}
+	if !needsRebuild {
+		t.Fatal("an empty dense index must request a rebuild")
+	}
+	if got := retriever.EmbeddingSnapshot().State; got != EmbeddingRebuilding {
+		t.Fatalf("state = %q, want %q", got, EmbeddingRebuilding)
+	}
+	if provider.calls() != 1 {
+		t.Fatalf("Embed calls = %d, want only the dimension probe", provider.calls())
+	}
+	// Index scans must commit without vectors while a rebuild is pending so
+	// readiness never waits on the provider.
+	vectors, err := retriever.GenerateEmbeddings(context.Background(), repository.AllSymbols())
+	if err != nil {
+		t.Fatalf("GenerateEmbeddings() error = %v", err)
+	}
+	if len(vectors) != 0 || provider.calls() != 1 {
+		t.Fatalf("scan embedded %d symbols with %d provider calls during a pending rebuild", len(vectors), provider.calls())
+	}
+
+	var reports [][2]int
+	if err := retriever.RebuildEmbeddingsWithProgress(context.Background(), func(completed, total int) {
+		reports = append(reports, [2]int{completed, total})
+	}); err != nil {
+		t.Fatalf("RebuildEmbeddingsWithProgress() error = %v", err)
+	}
+	want := nonFileSymbolCount(repository)
+	if repository.EmbeddingCount() != want {
+		t.Fatalf("EmbeddingCount = %d, want %d", repository.EmbeddingCount(), want)
+	}
+	if len(reports) < 2 || reports[0] != [2]int{0, want} || reports[len(reports)-1] != [2]int{want, want} {
+		t.Fatalf("progress reports = %v, want 0/%d first and %d/%d last", reports, want, want, want)
+	}
+	if got := retriever.EmbeddingSnapshot().State; got != EmbeddingAvailable {
+		t.Fatalf("state after rebuild = %q, want %q", got, EmbeddingAvailable)
+	}
+	md := repository.EmbeddingMetadata()
+	if md.Provider != "openai-compatible" || md.Model != "default" || md.Dimension != 4 {
+		t.Fatalf("metadata after rebuild = %+v", md)
+	}
+}
+
+func TestPrepareStartupKeepsCompatibleIndexAvailable(t *testing.T) {
+	t.Parallel()
+	repository := reconcileStore(t)
+	provider := &reconcileProvider{available: true, dimension: 4}
+	retriever := NewHybrid(repository, provider, true)
+	if err := retriever.Reconcile(context.Background(), "openai-compatible", "default"); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	needsRebuild, err := retriever.PrepareStartup(context.Background(), "openai-compatible", "default")
+	if err != nil {
+		t.Fatalf("PrepareStartup() error = %v", err)
+	}
+	if needsRebuild {
+		t.Fatal("a compatible dense index must not request a rebuild")
+	}
+	if got := retriever.EmbeddingSnapshot().State; got != EmbeddingAvailable {
+		t.Fatalf("state = %q, want %q", got, EmbeddingAvailable)
+	}
+	needsRebuild, err = retriever.PrepareStartup(context.Background(), "openai-compatible", "other-model")
+	if err != nil {
+		t.Fatalf("PrepareStartup(other-model) error = %v", err)
+	}
+	if !needsRebuild || retriever.EmbeddingSnapshot().State != EmbeddingRebuilding {
+		t.Fatal("a model change must request a rebuild")
+	}
+}

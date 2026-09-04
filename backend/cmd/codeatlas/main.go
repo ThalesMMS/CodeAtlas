@@ -53,7 +53,7 @@ func main() {
 // runComposition constructs the concrete runtime after mode selection and
 // configuration resolution. The caller owns signals, the native UI thread, and
 // the final process exit code.
-func runComposition(ctx context.Context, cfg config.Config, onListening func(net.Addr), logger *slog.Logger) error {
+func runComposition(ctx context.Context, cfg config.Config, settingsEnvironment settings.Environment, onListening func(net.Addr), requestRestart func(), logger *slog.Logger) error {
 	settingsPath, err := settings.DefaultPath()
 	if err != nil {
 		logger.Error("could not resolve per-user settings path", "error", err)
@@ -61,7 +61,6 @@ func runComposition(ctx context.Context, cfg config.Config, onListening func(net
 	}
 	settingsStore := settings.NewFileStore(settingsPath)
 	credentialStore := settings.NewKeyringCredentialStore()
-	settingsEnvironment := settings.EnvironmentFromLookup(os.LookupEnv)
 
 	journalDir := filepath.Join(filepath.Dir(cfg.DatabasePath), "transactions")
 	legacyJSONPath := filepath.Join(filepath.Dir(cfg.DatabasePath), "index.json")
@@ -191,7 +190,11 @@ func runComposition(ctx context.Context, cfg config.Config, onListening func(net
 	api.SetScheduler(indexScheduler)
 	api.SetMutationRegistry(internalMutations)
 	api.SetSettingsManager(settingsManager, settingsToken)
+	if requestRestart != nil {
+		api.SetRestartHandler(requestRestart)
+	}
 	settingsRuntime.SetEmbeddingScheduler(api.ScheduleEmbeddingRebuild)
+	api.SetEmbeddingRebuildHook(func() { publishEmbeddingCapability(storeRef, registry, "valid") })
 	httpServer := &http.Server{
 		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -239,10 +242,18 @@ func runComposition(ctx context.Context, cfg config.Config, onListening func(net
 		InitialIndex:        backgroundIndexer.Scan,
 		RunIndexer:          indexScheduler.Run,
 		ReconcileEmbeddings: reconcileEmbeddings(retriever, storeRef, registry, cfg),
-		Server:              httpServer,
-		Listen:              func() (net.Listener, error) { return net.Listen("tcp", cfg.ListenAddress) },
-		OnListening:         onListening,
-		Persist:             nil,
+		ScheduleEmbeddingRebuild: func(ctx context.Context) {
+			jobID, err := api.ScheduleEmbeddingRebuild(ctx)
+			if err != nil {
+				logger.Error("failed to schedule embeddings rebuild", "error", err)
+				return
+			}
+			logger.Info("embeddings rebuild scheduled", "jobId", string(jobID))
+		},
+		Server:      httpServer,
+		Listen:      func() (net.Listener, error) { return net.Listen("tcp", cfg.ListenAddress) },
+		OnListening: onListening,
+		Persist:     nil,
 	})
 	if err != nil {
 		logger.Error("runtime stopped with an error", "error", err)
@@ -732,32 +743,47 @@ func rustLSPCapability(manager *rustlsp.Manager, duration time.Duration) capabil
 // reconcileEmbeddings returns the startup dense-index reconciliation step. It is
 // a no-op when embeddings are disabled; otherwise it rebuilds incompatible/legacy
 // vectors and publishes the resulting metadata to the capability registry.
-func reconcileEmbeddings(retriever *retrieval.Hybrid, repository repository.Store, registry *capabilities.Registry, cfg config.Config) func(context.Context) error {
-	return func(ctx context.Context) error {
+// reconcileEmbeddings validates the dense index before the initial scan. It
+// never generates vectors: an incompatible or empty index is reported as
+// needing a rebuild, which the runtime schedules as a background job after
+// READY so startup is never blocked on the embedding provider.
+func reconcileEmbeddings(retriever *retrieval.Hybrid, repository repository.Store, registry *capabilities.Registry, cfg config.Config) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
 		if !cfg.EnableEmbeddings {
-			return nil
+			return false, nil
 		}
-		if err := retriever.Reconcile(ctx, embeddingProviderID(cfg), cfg.EmbeddingModel); err != nil {
-			return err
+		needsRebuild, err := retriever.PrepareStartup(ctx, embeddingProviderID(cfg), cfg.EmbeddingModel)
+		if err != nil {
+			return false, err
 		}
-		metadata := repository.EmbeddingMetadata()
-		registry.UpdateCapability(capabilities.Result{
-			ID:          "llm-embeddings",
-			Requirement: capabilities.Required,
-			State:       capabilities.CapabilityAvailable,
-			CheckedAt:   time.Now().UTC(),
-			Metadata: map[string]string{
-				"dimension":       strconv.Itoa(metadata.Dimension),
-				"model":           metadata.Model,
-				"provider":        metadata.Provider,
-				"templateVersion": metadata.TemplateVersion,
-				"distance":        metadata.Distance,
-				"vectorCount":     strconv.Itoa(repository.EmbeddingCount()),
-				"state":           "valid",
-			},
-		})
-		return nil
+		state := "valid"
+		if needsRebuild {
+			state = "rebuilding"
+		}
+		publishEmbeddingCapability(repository, registry, state)
+		return needsRebuild, nil
 	}
+}
+
+// publishEmbeddingCapability refreshes the llm-embeddings capability metadata
+// from the persisted dense index.
+func publishEmbeddingCapability(repository repository.Store, registry *capabilities.Registry, state string) {
+	metadata := repository.EmbeddingMetadata()
+	registry.UpdateCapability(capabilities.Result{
+		ID:          "llm-embeddings",
+		Requirement: capabilities.Required,
+		State:       capabilities.CapabilityAvailable,
+		CheckedAt:   time.Now().UTC(),
+		Metadata: map[string]string{
+			"dimension":       strconv.Itoa(metadata.Dimension),
+			"model":           metadata.Model,
+			"provider":        metadata.Provider,
+			"templateVersion": metadata.TemplateVersion,
+			"distance":        metadata.Distance,
+			"vectorCount":     strconv.Itoa(repository.EmbeddingCount()),
+			"state":           state,
+		},
+	})
 }
 
 func embeddingProviderID(cfg config.Config) string {

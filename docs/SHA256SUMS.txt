@@ -1,5 +1,6 @@
-82a41781a9d0a5aee6e40a8384d9b9ffd03ca0773c0cdd2f943995575cd6c5a3  ./MANIFEST.txt
+289fba8521436bc15ec0a54ad0a4878649e78e96e349ac64cb44cb3c3901c8d0  ./MANIFEST.txt
 e9505814ae79ce657bebd2b93ae808c25bbf71fe5f27cbcaae53a1c7a2142f85  ./assets/codeatlas-overview.png
+eeff4117cadec7ea310a9d2291f58f96777e6a6ffdcddabf495126a6e2dc1a06  ./deepwiki-experience.md
 2e2a01f2461cc67c06e5af4cd08a79259c16e49e536dec00cf8fa388943dc8e9  ./schemas/context-pack-v1.schema.json
 7f4c8dddb92ce2ab4b58ad0535092c33400494e0f0be15735a904c5ea6f05dc9  ./superpowers/plans/2026-08-16-deepwiki-planner-reliability.md
 5146a449be1cead94caef33728f11aec0cfb40e8cb928a5eb4b463550d1333db  ./superpowers/plans/2026-08-16-integrated-live-verification.md

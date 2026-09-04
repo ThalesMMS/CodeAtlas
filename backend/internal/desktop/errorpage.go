@@ -49,3 +49,10 @@ func truncateUTF8(value string, limit int) string {
 	}
 	return value
 }
+
+// RestartingHTML is the placeholder shown in the native window while the
+// composition is torn down and started again after a settings restart. The
+// controller navigates to the new listener as soon as it is bound.
+func RestartingHTML() string {
+	return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Restarting CodeAtlas</title><style>html{color-scheme:dark;background:#111827;color:#e5e7eb;font:16px system-ui,sans-serif}body{margin:0;min-height:100vh;display:grid;place-items:center}.card{width:min(42rem,calc(100% - 3rem));padding:2rem;border:1px solid #374151;border-radius:.75rem;background:#1f2937;text-align:center}h1{margin-top:0;font-size:1.35rem}p{color:#d1d5db}</style></head><body><main class=\"card\"><h1>Restarting CodeAtlas…</h1><p>Applying the saved settings and reopening the workspace.</p></main></body></html>"
+}

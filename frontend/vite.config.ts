@@ -10,7 +10,7 @@ const editor = 'monaco';
 const editorVersion = JSON.parse(
   readFileSync(resolve(configDir, 'node_modules/monaco-editor/package.json'), 'utf8'),
 ).version as string;
-const backendDevURL = process.env.CODEATLAS_BACKEND_URL ?? 'http://127.0.0.1:8080';
+const backendDevURL = process.env.CODEATLAS_BACKEND_URL ?? 'http://127.0.0.1:43127';
 
 export default defineConfig({
   root: configDir,

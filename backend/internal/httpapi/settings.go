@@ -21,12 +21,37 @@ type resetSettingsRequest struct {
 	Revision uint64 `json:"revision"`
 }
 
+type restartSettingsRequest struct {
+	Revision uint64 `json:"revision"`
+}
+
+// settingsSnapshotResponse adds process capabilities to the manager snapshot
+// without touching the settings package: restartSupported tells the page
+// whether the composition root can apply restart-only values in place.
+type settingsSnapshotResponse struct {
+	settings.SanitizedSnapshot
+	RestartSupported bool `json:"restartSupported"`
+}
+
+type settingsUpdateResponse struct {
+	settings.UpdateResult
+	Snapshot settingsSnapshotResponse `json:"snapshot"`
+}
+
+func (s *Server) settingsSnapshotResponse(snapshot settings.SanitizedSnapshot) settingsSnapshotResponse {
+	return settingsSnapshotResponse{SanitizedSnapshot: snapshot, RestartSupported: s.restartHandler != nil}
+}
+
+func (s *Server) settingsUpdateResponse(result settings.UpdateResult) settingsUpdateResponse {
+	return settingsUpdateResponse{UpdateResult: result, Snapshot: s.settingsSnapshotResponse(result.Snapshot)}
+}
+
 func (s *Server) handleGetSettings(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Cache-Control", "no-store")
 	if !s.authorizeSettings(response, request, false) {
 		return
 	}
-	writeJSON(response, http.StatusOK, s.settingsManager.Snapshot())
+	writeJSON(response, http.StatusOK, s.settingsSnapshotResponse(s.settingsManager.Snapshot()))
 }
 
 func (s *Server) handlePutSettings(response http.ResponseWriter, request *http.Request) {
@@ -44,7 +69,7 @@ func (s *Server) handlePutSettings(response http.ResponseWriter, request *http.R
 		s.writeSettingsManagerError(response, request, err, result.Snapshot)
 		return
 	}
-	writeJSON(response, http.StatusOK, result)
+	writeJSON(response, http.StatusOK, s.settingsUpdateResponse(result))
 }
 
 func (s *Server) handleResetSettings(response http.ResponseWriter, request *http.Request) {
@@ -62,7 +87,39 @@ func (s *Server) handleResetSettings(response http.ResponseWriter, request *http
 		s.writeSettingsManagerError(response, request, err, result.Snapshot)
 		return
 	}
-	writeJSON(response, http.StatusOK, result)
+	writeJSON(response, http.StatusOK, s.settingsUpdateResponse(result))
+}
+
+// handleRestartSettings restarts the runtime in place so saved restart-only
+// settings become the running values. The request carries the revision the
+// page last saw so a stale window cannot restart on top of unseen changes.
+func (s *Server) handleRestartSettings(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	if !s.authorizeSettings(response, request, true) || !s.requireSettingsJSON(response, request) {
+		return
+	}
+	var payload restartSettingsRequest
+	if err := decodeJSON(response, request, &payload, settingsBodyLimit); err != nil {
+		s.writeAppError(response, request, err)
+		return
+	}
+	if s.restartHandler == nil {
+		writeErrorEnvelope(response, http.StatusServiceUnavailable, "SETTINGS_RESTART_UNAVAILABLE", "This CodeAtlas process cannot restart itself; restart it manually.", false, nil, requestIDFrom(request.Context()))
+		return
+	}
+	snapshot := s.settingsManager.Snapshot()
+	if payload.Revision != snapshot.Revision {
+		details := map[string]any{"snapshot": s.settingsSnapshotResponse(snapshot)}
+		writeErrorEnvelope(response, http.StatusConflict, settings.SettingsRevisionConflict, "Settings changed since they were loaded.", false, details, requestIDFrom(request.Context()))
+		return
+	}
+	writeJSON(response, http.StatusAccepted, map[string]any{"restarting": true, "revision": snapshot.Revision})
+	if flusher, ok := response.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	// The handler cancels the runtime context; run it off the request goroutine
+	// so this response is fully written before the server begins shutting down.
+	go s.restartHandler()
 }
 
 func (s *Server) authorizeSettings(response http.ResponseWriter, request *http.Request, mutation bool) bool {

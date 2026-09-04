@@ -38,3 +38,4 @@ eval/report.md
 /docs
 /examples/codemap-template-reference
 VISION.md
+/packaging/lsp/node_modules

@@ -62,8 +62,8 @@ test('production build does not emit sourcemaps', () => {
 test('production bundle does not contain secrets, private dev URLs, or local absolute paths', () => {
   const forbidden = [
     /sk-[A-Za-z0-9]{20,}/,
-    /http:\/\/127\.0\.0\.1:8080/,
-    /http:\/\/localhost:8080/,
+    /http:\/\/127\.0\.0\.1:43127/,
+    /http:\/\/localhost:43127/,
     /100\.98\.1\.45/,
     new RegExp(escapeRegExp(repoRoot)),
     new RegExp(escapeRegExp(process.env.HOME || '/Users/')),
@@ -88,6 +88,13 @@ test('production entrypoint and tests target one application implementation', ()
     .sort();
   assert.deepEqual(runtimeModules, [
     'codemap-presentation-editor.ts',
+    'knowledge-api.ts',
+    'knowledge-links.ts',
+    'knowledge-markdown.ts',
+    'knowledge-model.ts',
+    'knowledge-types.ts',
+    'knowledge-view.ts',
+    'knowledge-workspace.ts',
     'main.ts',
     'mermaid-lite.ts',
     'monaco-editor-adapter.ts',

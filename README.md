@@ -61,7 +61,7 @@ make frontend-install
 make run
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). By default, CodeAtlas loads the included `examples/tinycommerce` workspace.
+Open [http://127.0.0.1:43127](http://127.0.0.1:43127). By default, CodeAtlas loads the included `examples/tinycommerce` workspace.
 
 To analyze another repository:
 
@@ -69,7 +69,7 @@ To analyze another repository:
 make run WORKSPACE=/absolute/path/to/your/repository
 ```
 
-The server listens on `127.0.0.1:8080` by default. Override it with `LISTEN=host:port` or `CODEATLAS_LISTEN`.
+The server listens on `127.0.0.1:43127` by default. Override it with `LISTEN=host:port` or `CODEATLAS_LISTEN`.
 
 ### Build a native executable
 
@@ -100,10 +100,20 @@ xcode-select --install
 bash ./build_package_and_run.sh
 ```
 
+To create the same packaged application without launching it, run:
+
+```bash
+bash ./just-build.sh
+```
+
 This creates:
 
 - `dist/CodeAtlas.app` — the unsigned local macOS application bundle using the
-  system WebKit runtime;
+  system WebKit runtime. It ships everything the optional Go, Python and
+  JavaScript/TypeScript semantic features need: a pinned `gopls`, a private
+  Node.js runtime copied from the build machine, and the pinned `pyright` and
+  `typescript-language-server` packages from `packaging/lsp/package-lock.json`,
+  exposed as launchers in `Contents/Resources/bin/`;
 - `dist/codeatlas-server` — foreground server mode with terminal logs and
   `Ctrl+C` shutdown.
 
@@ -114,6 +124,20 @@ arguments to CodeAtlas. Persisted in-app Settings override `.env` independently
 per field. A packaged first run without a provider remains open and offers the
 **Settings** action; applying a valid endpoint and model continues startup in
 the same process.
+
+When the macOS app is opened directly from Finder without a configured
+workspace, it uses a private writable workspace under the user’s CodeAtlas
+application data directory until a different workspace is selected in Settings.
+
+To analyze any repository from the app itself, open **Settings → General →
+Workspace**, use **Choose folder…** to pick the folder with a native dialog
+(macOS and Windows desktop builds; the browser UI accepts a typed absolute
+path), click **Test and apply**, and then **Restart CodeAtlas** in the restart
+banner. The process tears the runtime down and starts it again in place with
+the saved configuration, and the window reopens on the new workspace without
+relaunching the application. The workspace can be chosen before the LLM
+provider is configured: changes that do not touch the provider are saved even
+while CodeAtlas is still waiting for a valid endpoint.
 
 For example:
 
@@ -141,7 +165,8 @@ Packaging stages a clean deliverable before replacing `dist` and never copies
 `.env`, settings JSON, API keys, credentials, or frontend source; the production
 frontend remains embedded in the binary.
 This version intentionally excludes an installer, DMG, updater, code signing,
-notarization, and a custom application icon. The local macOS bundle is unsigned.
+and notarization. The local macOS bundle is unsigned and includes the CodeAtlas
+application icon.
 
 ## Configuration
 
@@ -167,7 +192,7 @@ Settings shows both the saved and running values.
 | Group | Variable | Type / default | Apply | Purpose |
 |---|---|---|---|---|
 | General | `CODEATLAS_WORKSPACE` | string / `.` | Restart | Workspace to analyze. |
-| General | `CODEATLAS_LISTEN` | address / `127.0.0.1:8080` | Restart | HTTP listen address. |
+| General | `CODEATLAS_LISTEN` | address / `127.0.0.1:43127` | Restart | HTTP listen address. |
 | General | `CODEATLAS_MAX_FILE_BYTES` | integer / `1500000` | Restart | Maximum source-file size accepted by the indexer. |
 | LLM | `CODEATLAS_LLM_BASE_URL` | HTTP(S) URL | Live | OpenAI-compatible chat API base URL, commonly ending in `/v1`. |
 | LLM | `CODEATLAS_LLM_API_KEY` | secret / empty | Live | Credential sent to the chat provider. |
@@ -196,7 +221,15 @@ are prepared and probed before an atomic runtime swap. Existing in-flight LLM
 requests and working language-server sessions finish on their old runtime.
 Changing embeddings schedules a linked rebuild while lexical retrieval remains
 available. Workspace, listen address, and maximum file size are saved
-immediately but become running values on the next launch.
+immediately and become running values after a restart. The restart banner
+offers **Restart CodeAtlas**, which calls `POST /api/settings/restart` to stop
+the runtime and start it again in the same process with the saved values; the
+desktop window and the browser page reconnect automatically once the new
+listener is bound (a changed listen address in browser mode still requires
+opening the new URL). Explicit `-workspace` and `-listen` flags keep winning
+over saved values across in-process restarts. The **Workspace** field also
+offers **Choose folder…** in the desktop builds, which opens the native folder
+dialog and fills in the selected path.
 
 ### Persistence and API keys
 

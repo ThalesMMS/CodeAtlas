@@ -55,7 +55,7 @@ var validTransitions = map[State][]State{
 	StateBooting:               {StateProbingCapabilities, StateFailed, StateShuttingDown},
 	StateProbingCapabilities:   {StateAwaitingConfiguration, StateMigratingStore, StateIndexing, StateFailed, StateShuttingDown},
 	StateAwaitingConfiguration: {StateProbingCapabilities, StateFailed, StateShuttingDown},
-	StateMigratingStore:        {StateIndexing, StateFailed, StateShuttingDown},
+	StateMigratingStore:        {StateAwaitingConfiguration, StateIndexing, StateFailed, StateShuttingDown},
 	StateIndexing:              {StateGeneratingArtifacts, StateReady, StateFailed, StateShuttingDown},
 	StateGeneratingArtifacts:   {StateReady, StateFailed, StateShuttingDown},
 	StateReady:                 {StateFailed, StateShuttingDown},

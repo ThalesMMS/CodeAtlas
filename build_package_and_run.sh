@@ -103,33 +103,99 @@ if [[ -z "${CODEATLAS_WORKSPACE:-}" ]]; then
   export CODEATLAS_WORKSPACE="$ROOT/examples/tinycommerce"
 fi
 
-printf '[1/3] Installing locked frontend dependencies...\n'
+printf '[1/5] Installing locked frontend dependencies...\n'
 (
   cd frontend
   npm ci
 )
 
-printf '[2/3] Building the embedded frontend...\n'
+printf '[2/5] Building the embedded frontend...\n'
 (
   cd frontend
   npm run build
 )
 
-printf '[3/3] Building the native application...\n'
+printf '[3/5] Building the native application...\n'
 STAGING="$ROOT/dist.staging"
 rm -rf -- "$STAGING"
-mkdir -p "$STAGING/CodeAtlas.app/Contents/MacOS" "$STAGING/CodeAtlas.app/Contents/Resources"
+mkdir -p "$STAGING/CodeAtlas.app/Contents/MacOS" "$STAGING/CodeAtlas.app/Contents/Resources/bin"
 cp packaging/macos/CodeAtlas.Info.plist "$STAGING/CodeAtlas.app/Contents/Info.plist"
+cp packaging/macos/CodeAtlas.icns "$STAGING/CodeAtlas.app/Contents/Resources/CodeAtlas.icns"
 (
   cd backend
   CGO_ENABLED=1 CC="$CC" CXX="$CXX" go build -tags 'fts5 desktop' -trimpath \
     -o "$STAGING/CodeAtlas.app/Contents/MacOS/codeatlas" ./cmd/codeatlas
 )
+printf '[4/5] Installing bundled gopls v0.23.0...\n'
+(
+  cd backend
+  GOBIN="$STAGING/CodeAtlas.app/Contents/Resources/bin" GOTOOLCHAIN=auto go install golang.org/x/tools/gopls@v0.23.0
+)
+printf '[5/5] Installing bundled Node.js v24.20.0 runtime, pyright and typescript-language-server...\n'
+(
+  cd packaging/lsp
+  npm ci --ignore-scripts --no-audit --no-fund
+)
+RESOURCES="$STAGING/CodeAtlas.app/Contents/Resources"
+NODE_VERSION='v24.20.0'
+case "$(uname -m)" in
+  arm64) node_arch='arm64' ;;
+  x86_64) node_arch='x64' ;;
+  *) fail "Unsupported macOS architecture for the bundled Node.js runtime: $(uname -m)" ;;
+esac
+node_dist="node-$NODE_VERSION-darwin-$node_arch"
+node_cache="$ROOT/.cache/node"
+mkdir -p "$node_cache"
+node_tarball="$node_cache/$node_dist.tar.gz"
+node_shasums="$node_cache/SHASUMS256-$NODE_VERSION.txt"
+node_base_url="${CODEATLAS_NODE_DIST_URL:-https://nodejs.org/dist}/$NODE_VERSION"
+if [[ ! -f "$node_tarball" || ! -f "$node_shasums" ]]; then
+  command -v curl >/dev/null 2>&1 || fail 'curl is required to download the pinned Node.js runtime.'
+  curl -fsSL -o "$node_shasums" "$node_base_url/SHASUMS256.txt" || fail "Could not download $node_base_url/SHASUMS256.txt"
+  curl -fsSL -o "$node_tarball" "$node_base_url/$node_dist.tar.gz" || fail "Could not download $node_base_url/$node_dist.tar.gz"
+fi
+expected_sha="$(awk -v name="$node_dist.tar.gz" '$2 == name { print $1 }' "$node_shasums")"
+[[ -n "$expected_sha" ]] || fail "SHASUMS256.txt does not list $node_dist.tar.gz"
+actual_sha="$(shasum -a 256 "$node_tarball" | awk '{ print $1 }')"
+if [[ "$actual_sha" != "$expected_sha" ]]; then
+  rm -f -- "$node_tarball" "$node_shasums"
+  fail "Checksum mismatch for $node_dist.tar.gz (expected $expected_sha, got $actual_sha). The cached download was removed; rerun the build."
+fi
+node_extract="$STAGING/node-extract"
+mkdir -p "$node_extract"
+tar -xzf "$node_tarball" -C "$node_extract" "$node_dist/bin/node" "$node_dist/LICENSE"
+cp "$node_extract/$node_dist/bin/node" "$RESOURCES/bin/node"
+cp "$node_extract/$node_dist/LICENSE" "$RESOURCES/node-LICENSE"
+rm -rf -- "$node_extract"
+mkdir -p "$RESOURCES/lsp"
+cp -R packaging/lsp/node_modules "$RESOURCES/lsp/node_modules"
+cp packaging/lsp/package.json packaging/lsp/package-lock.json "$RESOURCES/lsp/"
+for entry in pyright:pyright/index.js pyright-langserver:pyright/langserver.index.js typescript-language-server:typescript-language-server/lib/cli.mjs; do
+  launcher="${entry%%:*}"
+  script="${entry#*:}"
+  [[ -f "$RESOURCES/lsp/node_modules/$script" ]] || fail "Bundled language server entry point for $launcher is missing: packaging/lsp/node_modules/$script"
+  cp "packaging/macos/lsp-bin/$launcher" "$RESOURCES/bin/$launcher"
+done
+[[ -f "$RESOURCES/lsp/node_modules/typescript/lib/tsserver.js" ]] || fail 'Bundled TypeScript SDK is missing: packaging/lsp/node_modules/typescript/lib/tsserver.js'
+for license in pyright typescript typescript-language-server; do
+  cp "packaging/licenses/$license-LICENSE" "$RESOURCES/$license-LICENSE"
+done
 cp packaging/macos/codeatlas-server "$STAGING/codeatlas-server"
-chmod +x "$STAGING/CodeAtlas.app/Contents/MacOS/codeatlas" "$STAGING/codeatlas-server"
-rm -rf -- "$ROOT/dist"
+cp packaging/licenses/gopls-LICENSE "$RESOURCES/gopls-LICENSE"
+chmod +x "$STAGING/CodeAtlas.app/Contents/MacOS/codeatlas" "$RESOURCES/bin/"* "$STAGING/codeatlas-server"
+# Finder may drop a .DS_Store into dist/ while it is being removed, which makes a
+# single rm -rf fail with "Directory not empty". Move the old package aside first
+# so the fresh bundle always lands at dist/, then clean up the stale copy.
+if [[ -e "$ROOT/dist" ]]; then
+  stale="$ROOT/dist.stale.$$"
+  mv -- "$ROOT/dist" "$stale"
+  rm -rf -- "$stale" || rm -rf -- "$stale" || printf 'Warning: could not remove %s\n' "$stale" >&2
+fi
 mv -- "$STAGING" "$ROOT/dist"
 
 printf 'Built %s\n' "$ROOT/dist/CodeAtlas.app"
+if [[ "${_CODEATLAS_BUILD_ONLY:-0}" == 1 ]]; then
+  exit 0
+fi
 printf 'Starting CodeAtlas...\n'
 open -W "$ROOT/dist/CodeAtlas.app" --args "$@"

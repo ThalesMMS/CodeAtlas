@@ -20,6 +20,20 @@ func (w *webviewWindow) Run()                  { w.native.Run() }
 func (w *webviewWindow) Terminate()            { w.native.Terminate() }
 func (w *webviewWindow) Destroy()              { w.native.Destroy() }
 
+func (w *webviewWindow) Bind(name string, function any) error {
+	return w.native.Bind(name, function)
+}
+
+// PickFolder runs the platform folder chooser. Bound functions are invoked on
+// the UI thread, so the modal dialog can run synchronously here.
+func (w *webviewWindow) PickFolder(initial string) (FolderSelection, error) {
+	path, canceled, err := pickFolderNative(uintptr(w.native.Window()), initial)
+	if err != nil {
+		return FolderSelection{}, err
+	}
+	return FolderSelection{Path: path, Canceled: canceled}, nil
+}
+
 func (w *webviewWindow) SetSize(width, height int, hint SizeHint) {
 	nativeHint := webview.Hint(webview.HintNone)
 	if hint == SizeMinimum {

@@ -49,18 +49,20 @@ func TestBootstrapAwaitingConfigurationRetriesWithoutPolling(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var indexed atomic.Int32
+	var migrated atomic.Int32
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		runBootstrap(ctx, bootstrapDeps{
 			logger: slog.New(slog.NewTextHandler(io.Discard, nil)), coordinator: coordinator,
 			registry: capabilities.NewRegistry(), providerProbe: probe,
+			migrateStore: func(context.Context) error { migrated.Add(1); return nil },
 			initialIndex: func(context.Context) error { indexed.Add(1); return nil },
 		})
 	}()
 	waitReadinessState(t, coordinator, readiness.StateAwaitingConfiguration)
-	if indexed.Load() != 0 || probe.callCount() != 1 {
-		t.Fatalf("awaiting indexed/probes = %d/%d", indexed.Load(), probe.callCount())
+	if indexed.Load() != 0 || migrated.Load() != 1 || probe.callCount() != 1 {
+		t.Fatalf("awaiting indexed/migrations/probes = %d/%d/%d", indexed.Load(), migrated.Load(), probe.callCount())
 	}
 	select {
 	case <-done:
@@ -85,7 +87,7 @@ func TestBootstrapAwaitingConfigurationRetriesWithoutPolling(t *testing.T) {
 	}
 	history := coordinator.Snapshot().TransitionHistory
 	want := []readiness.State{
-		readiness.StateBooting, readiness.StateProbingCapabilities, readiness.StateAwaitingConfiguration,
+		readiness.StateBooting, readiness.StateProbingCapabilities, readiness.StateMigratingStore, readiness.StateAwaitingConfiguration,
 		readiness.StateProbingCapabilities, readiness.StateIndexing, readiness.StateReady,
 	}
 	if len(history) < len(want) {

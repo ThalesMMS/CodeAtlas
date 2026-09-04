@@ -1,0 +1,6 @@
+#!/bin/sh
+# Launches the bundled typescript-language-server with the Node.js runtime shipped inside
+# CodeAtlas.app, so Finder launches work without any user-installed toolchain.
+set -eu
+dir="$(cd -- "$(dirname -- "$0")" && pwd -P)"
+exec "$dir/node" "$dir/../lsp/node_modules/typescript-language-server/lib/cli.mjs" "$@"

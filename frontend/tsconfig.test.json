@@ -10,11 +10,19 @@
     "types": ["node"],
     "noEmit": false
   },
-  "include": ["src/mermaid-lite.ts", "src/monaco-editor-contract.ts", "tests/mermaid-lite.test.ts", "tests/monaco-editor-contract.test.ts"],
-  "exclude": [
-    "node_modules",
-    "spikes",
-    ".test-dist",
-    "../backend/internal/webui/dist"
-  ]
+  "include": [
+    "src/knowledge-api.ts",
+    "src/knowledge-links.ts",
+    "src/knowledge-markdown.ts",
+    "src/knowledge-model.ts",
+    "src/knowledge-types.ts",
+    "src/knowledge-view.ts",
+    "src/knowledge-workspace.ts",
+    "src/mermaid-lite.ts",
+    "src/monaco-editor-contract.ts",
+    "tests/knowledge-model.test.ts",
+    "tests/mermaid-lite.test.ts",
+    "tests/monaco-editor-contract.test.ts"
+  ],
+  "exclude": ["node_modules", "spikes", ".test-dist", "../backend/internal/webui/dist"]
 }

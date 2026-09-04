@@ -63,7 +63,7 @@ func TestResolveAppliesDefaultEnvironmentAndSettingsPrecedence(t *testing.T) {
 	if resolved.Values.Workspace != `C:\settings-workspace` || resolved.Source(FieldWorkspace) != SourceSettings {
 		t.Fatalf("workspace = %q/%q", resolved.Values.Workspace, resolved.Source(FieldWorkspace))
 	}
-	if resolved.Values.ListenAddress != "127.0.0.1:8080" || resolved.Source(FieldListen) != SourceDefault {
+	if resolved.Values.ListenAddress != DefaultListenAddress || resolved.Source(FieldListen) != SourceDefault {
 		t.Fatalf("listen = %q/%q", resolved.Values.ListenAddress, resolved.Source(FieldListen))
 	}
 	if resolved.Values.MaxFileBytes != 3000 || resolved.Values.LLMTimeout != 90*time.Second || resolved.Values.EnableEmbeddings {

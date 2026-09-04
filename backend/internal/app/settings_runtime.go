@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
 	"github.com/ThalesMMS/CodeAtlas/internal/lspruntime"
 	"github.com/ThalesMMS/CodeAtlas/internal/observability"
+	"github.com/ThalesMMS/CodeAtlas/internal/repository"
 	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 )
@@ -142,7 +144,15 @@ func (r *SettingsRuntime) Prepare(ctx context.Context, resolved settings.Resolve
 		}
 		if chatChanged || !r.aiRuntime.Available() {
 			if result := aiCandidate.Probe.ProbeChat(ctx); result.Status != ai.ProbeSuccess {
-				return nil, probePreparationError(result, false)
+				if chatChanged || embeddingsChanged {
+					return nil, probePreparationError(result, false)
+				}
+				// The provider is still unconfigured and this change does not
+				// touch it (for example choosing a workspace before the LLM
+				// endpoint). Save the change and keep waiting for a valid
+				// provider instead of rejecting unrelated settings.
+				needsAI = false
+				aiCandidate = ai.RuntimeCandidate{}
 			}
 		}
 		if resolved.Values.EnableEmbeddings && embeddingsChanged {
@@ -165,6 +175,13 @@ func (r *SettingsRuntime) Prepare(ctx context.Context, resolved settings.Resolve
 			}
 			var err error
 			metadata, count, err = r.embeddingMetadata(ctx)
+			// While the app waits in AWAITING_CONFIGURATION the store has not been
+			// opened yet, and settings activation is the only way out of that state.
+			// Treat the missing backend as an empty index instead of rejecting the
+			// change, mirroring how a database without a metadata row is handled.
+			if errors.Is(err, repository.ErrStoreUnavailable) {
+				metadata, count, err = domain.EmbeddingIndexMetadata{}, 0, nil
+			}
 			if err != nil {
 				return nil, runtimePreparationError(settings.FieldEnableEmbeddings, "EMBEDDING_STORE_UNAVAILABLE", "embedding metadata is unavailable")
 			}

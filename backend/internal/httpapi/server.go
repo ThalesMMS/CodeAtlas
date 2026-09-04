@@ -61,6 +61,10 @@ type Server struct {
 	events          *sseBroker
 	settingsManager *settings.Manager
 	settingsToken   string
+	restartHandler  func()
+	// onEmbeddingsRebuilt runs after a successful embeddings.rebuild job so the
+	// composition root can refresh the llm-embeddings capability metadata.
+	onEmbeddingsRebuilt func()
 }
 
 const documentLeaseTTL = 30 * time.Minute
@@ -88,6 +92,20 @@ func (s *Server) SetScheduler(reconciler scheduler.ManualReconciler) {
 func (s *Server) SetSettingsManager(manager *settings.Manager, token string) {
 	s.settingsManager = manager
 	s.settingsToken = token
+}
+
+// SetRestartHandler enables POST /api/settings/restart. The handler asks the
+// composition root to stop the running runtime and start it again in the same
+// process with the latest saved settings, so restart-only values such as the
+// workspace take effect without relaunching CodeAtlas.
+func (s *Server) SetRestartHandler(handler func()) {
+	s.restartHandler = handler
+}
+
+// SetEmbeddingRebuildHook registers a callback invoked after every successful
+// embeddings.rebuild job.
+func (s *Server) SetEmbeddingRebuildHook(hook func()) {
+	s.onEmbeddingsRebuilt = hook
 }
 
 // ScheduleEmbeddingRebuild submits the same coalescing job used by the public
@@ -181,6 +199,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("DELETE /api/settings/overrides", s.handleResetSettings)
+	mux.HandleFunc("POST /api/settings/restart", s.handleRestartSettings)
 	mux.HandleFunc("GET /api/tree", s.handleTree)
 	mux.HandleFunc("GET /api/file", s.handleGetFile)
 	mux.HandleFunc("PUT /api/file", s.handlePutFile)
@@ -840,16 +859,27 @@ func (s *Server) submitReindexJob(ctx context.Context, jobType, key, clientReque
 			}
 			switch jobType {
 			case "embeddings.rebuild":
-				_ = reporter.Report("generate", "regenerando embeddings", domain.Progress{Indeterminate: true, Unit: "symbol"})
+				_ = reporter.Report("generate", "generating embeddings", domain.Progress{Indeterminate: true, Unit: "symbol"})
 				if s.retriever == nil {
 					return job.Result{}, errors.New("embedding retriever is unavailable")
 				}
-				if err := s.retriever.RebuildEmbeddings(jobCtx); err != nil {
+				err := s.retriever.RebuildEmbeddingsWithProgress(jobCtx, func(completed, total int) {
+					if total <= 0 {
+						return
+					}
+					percent := float64(completed) * 100 / float64(total)
+					_ = reporter.Report("generate", fmt.Sprintf("generating embeddings (%d/%d symbols)", completed, total),
+						domain.Progress{Completed: int64(completed), Total: int64(total), Unit: "symbol", Percent: &percent})
+				})
+				if err != nil {
 					return job.Result{}, err
 				}
 				metadata, err := currentMetadata()
 				if err != nil {
 					return job.Result{}, err
+				}
+				if s.onEmbeddingsRebuilt != nil {
+					s.onEmbeddingsRebuilt()
 				}
 				count := s.store.EmbeddingCount()
 				_ = reporter.Report("rebuilt", "embeddings index rebuilt", domain.Progress{Completed: int64(count), Total: int64(count), Unit: "vector"})

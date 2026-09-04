@@ -21,6 +21,10 @@ type Window interface {
 	Run()
 	Terminate()
 	Destroy()
+	// Bind exposes a Go function to the page as window.<name>(...): a function
+	// returning a Promise. Bindings must be registered before the first
+	// navigation so every document sees them.
+	Bind(name string, function any) error
 }
 
 type WindowFactory interface {
@@ -29,3 +33,20 @@ type WindowFactory interface {
 }
 
 type ServerFunc func(context.Context, func(net.Addr)) error
+
+// FolderPickerBinding is the page-visible function name through which the
+// embedded frontend opens the native folder chooser:
+// window.codeatlasPickWorkspaceFolder(initialPath) resolves to a FolderSelection.
+const FolderPickerBinding = "codeatlasPickWorkspaceFolder"
+
+// FolderSelection is the JSON result of the native folder chooser.
+type FolderSelection struct {
+	Path     string `json:"path"`
+	Canceled bool   `json:"canceled"`
+}
+
+// FolderPicker is implemented by windows that can show a native folder
+// chooser modal to themselves. The initial path is a hint only.
+type FolderPicker interface {
+	PickFolder(initial string) (FolderSelection, error)
+}

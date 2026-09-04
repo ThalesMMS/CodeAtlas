@@ -6,6 +6,8 @@
   <string>CodeAtlas</string>
   <key>CFBundleExecutable</key>
   <string>codeatlas</string>
+  <key>CFBundleIconFile</key>
+  <string>CodeAtlas.icns</string>
   <key>CFBundleIdentifier</key>
   <string>com.codeatlas.desktop</string>
   <key>CFBundleName</key>

@@ -1,8 +1,9 @@
 // Package gopls integrates a single gopls instance per workspace: it probes the
 // binary, negotiates capabilities via the LSP initialize handshake, answers
 // workspace/configuration conservatively, and keeps open Go documents synced to
-// the OverlayStore's DocumentVersion. It never installs/updates gopls, runs no
-// workspace commands, and accepts no workspace edits.
+// the OverlayStore's DocumentVersion. It never installs/updates gopls at
+// runtime, runs no workspace commands, and accepts no workspace edits. Packaged
+// desktop builds may provide a pinned gopls executable alongside CodeAtlas.
 package gopls
 
 import (
@@ -66,6 +67,7 @@ func (c Config) withDefaults() Config {
 	if c.Path == "" {
 		c.Path = "gopls"
 	}
+	c.Path = resolveBundledExecutable(c.Path)
 	if c.StartTimeout <= 0 {
 		c.StartTimeout = 20 * time.Second
 	}

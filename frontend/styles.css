@@ -89,6 +89,13 @@ button { color: inherit; }
 .status-pill.active { color: var(--warning); border-color: rgba(245, 198, 106, 0.35); background: rgba(245, 198, 106, 0.08); }
 .status-pill.ok { color: var(--success); border-color: rgba(96, 211, 148, 0.28); }
 .status-pill.error { color: var(--danger); border-color: rgba(255, 122, 138, 0.3); }
+.status-pill.progress { position: relative; overflow: hidden; color: var(--warning); border-color: rgba(245, 198, 106, 0.35); }
+.status-pill.progress .status-pill-fill { position: absolute; inset: 0; background: rgba(245, 198, 106, 0.16); transform-origin: left center; transition: transform 240ms ease; }
+.status-pill.progress .status-pill-text { position: relative; }
+.status-pill.progress.ok { color: var(--success); border-color: rgba(96, 211, 148, 0.28); }
+.status-pill.progress.ok .status-pill-fill { background: rgba(96, 211, 148, 0.12); }
+.status-pill.progress.error { color: var(--danger); border-color: rgba(255, 122, 138, 0.3); }
+.status-pill.progress.error .status-pill-fill { background: rgba(255, 122, 138, 0.12); }
 
 .button, .icon-button {
   border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: 120ms ease;
@@ -433,7 +440,9 @@ button { color: inherit; }
 .settings-header h2 { margin: 3px 0 6px; font-size: 20px; }
 .settings-header p { max-width: 430px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .settings-header code { color: var(--accent); font-family: var(--mono); }
-.settings-banner { margin: 12px 20px 0; padding: 9px 11px; border: 1px solid rgba(245, 198, 106, 0.4); border-radius: 8px; color: var(--warning); background: rgba(245, 198, 106, 0.08); font-size: 12px; }
+.settings-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 12px 20px 0; padding: 9px 11px; border: 1px solid rgba(245, 198, 106, 0.4); border-radius: 8px; color: var(--warning); background: rgba(245, 198, 106, 0.08); font-size: 12px; }
+.settings-banner-message { flex: 1 1 200px; }
+.settings-banner .settings-restart { flex: 0 0 auto; min-height: 30px; padding: 0 10px; font-size: 12px; }
 .settings-status { min-height: 24px; margin: 8px 20px 0; color: var(--muted); font-size: 12px; }
 .settings-status[data-tone="success"] { color: var(--success); }
 .settings-status[data-tone="warning"] { color: var(--warning); }
@@ -449,6 +458,8 @@ button { color: inherit; }
 .settings-field-heading label { color: var(--text); font-size: 12px; font-weight: 650; }
 .settings-field-heading code { overflow: hidden; color: var(--subtle); font: 9px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .settings-field-controls { display: grid; grid-template-columns: minmax(0, 1fr) 126px; gap: 7px; }
+.settings-field-controls.has-picker { grid-template-columns: minmax(0, 1fr) auto 126px; }
+.settings-picker { height: 34px; padding: 0 10px; white-space: nowrap; font-size: 12px; }
 .settings-input, .settings-mode {
   min-width: 0; height: 34px; padding: 0 9px; color: var(--text); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 8px; outline: none;
@@ -469,6 +480,7 @@ button { color: inherit; }
   .settings-actions { flex-wrap: wrap; padding: 12px 14px; }
   .settings-reset { width: 100%; margin-right: 0; }
   .settings-field-controls { grid-template-columns: minmax(0, 1fr) 118px; }
+  .settings-field-controls.has-picker { grid-template-columns: minmax(0, 1fr) auto 118px; }
 }
 
 .toast-region { position: fixed; right: 16px; bottom: 16px; z-index: 80; display: grid; gap: 8px; pointer-events: none; }
@@ -490,14 +502,18 @@ button { color: inherit; }
   position: fixed;
   inset: 0;
   z-index: 1000;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 24px;
   background: radial-gradient(circle at 50% 30%, rgba(20, 28, 42, 0.96), rgba(8, 11, 18, 0.98));
   backdrop-filter: blur(6px);
 }
 .bootstrap-card {
   width: min(520px, 100%);
+  margin-block: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;

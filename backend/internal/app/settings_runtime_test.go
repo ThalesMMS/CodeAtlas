@@ -8,6 +8,7 @@ import (
 
 	"github.com/ThalesMMS/CodeAtlas/internal/ai"
 	"github.com/ThalesMMS/CodeAtlas/internal/domain"
+	"github.com/ThalesMMS/CodeAtlas/internal/repository"
 	"github.com/ThalesMMS/CodeAtlas/internal/retrieval"
 	"github.com/ThalesMMS/CodeAtlas/internal/settings"
 )
@@ -173,4 +174,80 @@ func containsGroup(groups []settings.Group, group settings.Group) bool {
 		}
 	}
 	return false
+}
+
+func TestSettingsRuntimePreparesEmbeddingsBeforeTheStoreIsOpen(t *testing.T) {
+	events := []string{}
+	provider := &settingsRuntimeProvider{id: "new", events: &events}
+	aiRuntime := ai.NewRuntime()
+	var (
+		gotMetadata domain.EmbeddingIndexMetadata
+		gotCount    = -1
+	)
+	preparer := NewSettingsRuntime(SettingsRuntimeOptions{
+		AIRuntime: aiRuntime,
+		BuildAI: func(settings.Values) ai.RuntimeCandidate {
+			return ai.RuntimeCandidate{Provider: provider, Probe: provider}
+		},
+		PrepareEmbeddings: func(_ context.Context, _ retrieval.EmbeddingConfiguration, metadata domain.EmbeddingIndexMetadata, count int) (EmbeddingPreparation, error) {
+			gotMetadata, gotCount = metadata, count
+			return &settingsRuntimeEmbeddingCandidate{events: &events}, nil
+		},
+		EmbeddingMetadata: func(context.Context) (domain.EmbeddingIndexMetadata, int, error) {
+			return domain.EmbeddingIndexMetadata{
+				Enabled: true, Provider: "stale-provider", Model: "stale-model", Dimension: 1536,
+			}, 42, repository.ErrStoreUnavailable
+		},
+	})
+
+	// AWAITING_CONFIGURATION: the store only opens after a successful activation,
+	// so the missing backend must not block the change that unblocks bootstrap.
+	if _, err := preparer.Prepare(context.Background(), settings.Resolved{Values: settings.Values{
+		LLMBaseURL: "https://example.test/v1", LLMModel: "new", LLMTimeout: 1,
+		EnableEmbeddings: true, EmbeddingModel: "embed", EmbeddingBaseURL: "https://embed.test/v1",
+	}}, settings.ChangeSet{Fields: []settings.FieldKey{settings.FieldEnableEmbeddings, settings.FieldEmbeddingBaseURL}}); err != nil {
+		t.Fatalf("prepare with unavailable store = %v", err)
+	}
+	if gotCount != 0 || gotMetadata != (domain.EmbeddingIndexMetadata{}) {
+		t.Fatalf("embedding preparation saw metadata=%#v count=%d, want empty index", gotMetadata, gotCount)
+	}
+}
+
+type failingProbeProvider struct {
+	settingsRuntimeProvider
+}
+
+func (p *failingProbeProvider) ProbeChat(context.Context) ai.ProviderProbeResult {
+	*p.events = append(*p.events, "probe:chat")
+	return ai.ProviderProbeResult{Status: ai.ProbeFailure}
+}
+
+func TestSettingsRuntimeAllowsUnrelatedChangesWhileProviderIsUnconfigured(t *testing.T) {
+	events := []string{}
+	provider := &failingProbeProvider{settingsRuntimeProvider{id: "candidate", events: &events}}
+	aiRuntime := ai.NewRuntime()
+	preparer := NewSettingsRuntime(SettingsRuntimeOptions{
+		AIRuntime: aiRuntime,
+		BuildAI: func(settings.Values) ai.RuntimeCandidate {
+			events = append(events, "build:ai")
+			return ai.RuntimeCandidate{Provider: provider, Probe: provider}
+		},
+	})
+	values := settings.Values{LLMBaseURL: "https://unreachable.test/v1", LLMModel: "model", LLMTimeout: 1, Workspace: "/repos/demo"}
+
+	// A workspace-only change must be saved even though the provider probe
+	// still fails: the app keeps waiting in AWAITING_CONFIGURATION.
+	prepared, err := preparer.Prepare(context.Background(), settings.Resolved{Values: values}, settings.ChangeSet{Fields: []settings.FieldKey{settings.FieldWorkspace}})
+	if err != nil {
+		t.Fatalf("workspace-only prepare with an unreachable provider = %v", err)
+	}
+	prepared.Activate()
+	if aiRuntime.Available() {
+		t.Fatal("an unreachable provider candidate was activated")
+	}
+
+	// A chat change with the same failing probe is still rejected.
+	if _, err := preparer.Prepare(context.Background(), settings.Resolved{Values: values}, settings.ChangeSet{Fields: []settings.FieldKey{settings.FieldLLMModel}}); err == nil {
+		t.Fatal("chat change with an unreachable provider was accepted")
+	}
 }

@@ -1,7 +1,7 @@
 'use strict';
 
 const settingsFieldInventory = Object.freeze([
-  Object.freeze({ key: 'CODEATLAS_WORKSPACE', label: 'Workspace', group: 'general', kind: 'string', prefill: true }),
+  Object.freeze({ key: 'CODEATLAS_WORKSPACE', label: 'Workspace', group: 'general', kind: 'string', prefill: true, picker: 'directory' }),
   Object.freeze({ key: 'CODEATLAS_LISTEN', label: 'Listen address', group: 'general', kind: 'string', prefill: true }),
   Object.freeze({ key: 'CODEATLAS_MAX_FILE_BYTES', label: 'Maximum file bytes', group: 'general', kind: 'integer', prefill: true }),
 
@@ -118,6 +118,7 @@ function createSettingsController(options = {}) {
   const token = String(options.token || '');
   const view = options.view || createDOMSettingsView(options);
   let snapshot = null;
+  let restartSupported = false;
 
   const request = (path, requestOptions = {}) => requestAPI(path, {
     cache: 'no-store',
@@ -139,7 +140,10 @@ function createSettingsController(options = {}) {
 
   const setSnapshot = (next) => {
     if (!isSnapshot(next)) return false;
-    snapshot = next;
+    // Only responses from the settings routes carry restartSupported; error
+    // envelopes may omit it, so keep the last explicit value.
+    if (typeof next.restartSupported === 'boolean') restartSupported = next.restartSupported;
+    snapshot = { ...next, restartSupported };
     view.render(snapshot);
     return true;
   };
@@ -202,6 +206,7 @@ function createSettingsController(options = {}) {
         close: () => controller.close(),
         apply: () => controller.apply(),
         reset: () => controller.reset(),
+        restart: () => controller.restart(),
       });
       return controller;
     },
@@ -283,9 +288,39 @@ function createSettingsController(options = {}) {
         view.setBusy(false);
       }
     },
+    // restart asks the running process to reload the saved configuration in
+    // place so restart-only values (workspace, listen address, file size limit)
+    // become the running values without relaunching CodeAtlas.
+    async restart() {
+      if (!snapshot) return controller.open();
+      if (!restartSupported) {
+        view.setStatus('This CodeAtlas process cannot restart itself. Restart it manually to apply these settings.', 'warning');
+        return;
+      }
+      const confirmed = options.confirmRestart ? await options.confirmRestart() : true;
+      if (!confirmed) return;
+      view.setBusy(true);
+      view.setFieldErrors({});
+      view.setStatus('Restarting CodeAtlas…', 'neutral');
+      try {
+        const result = await request('/api/settings/restart', {
+          method: 'POST',
+          body: JSON.stringify({ revision: snapshot.revision }),
+        });
+        view.clearSecrets();
+        view.setStatus('Restarting CodeAtlas… the workspace will reopen shortly.', 'success');
+        options.announce?.('CodeAtlas is restarting.', 'assertive');
+        options.onRestart?.(result);
+      } catch (error) {
+        await showFailure(error);
+      } finally {
+        view.setBusy(false);
+      }
+    },
     setSnapshot,
     setAPI(nextAPI) { requestAPI = nextAPI; },
     snapshot() { return snapshot; },
+    restartSupported() { return restartSupported; },
   };
   return controller;
 }
@@ -301,7 +336,39 @@ function createDOMSettingsView(options = {}) {
   const status = byID('settings-status');
   const restartBanner = byID('settings-restart-banner');
   const background = [doc.querySelector('.app-shell'), byID('bootstrap-overlay')].filter(Boolean);
+  const pickDirectory = typeof options.pickDirectory === 'function' ? options.pickDirectory : null;
   let previousAria = [];
+
+  // pickerForField adds a native "Choose folder…" control next to path fields
+  // when the host (the desktop app) exposes a folder chooser.
+  const pickerForField = (descriptor, input, mode, row) => {
+    if (descriptor.picker !== 'directory' || !pickDirectory) return null;
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = 'button secondary settings-picker';
+    button.dataset.settingsPicker = descriptor.key;
+    button.textContent = 'Choose folder…';
+    button.setAttribute('aria-label', `Choose a folder for ${descriptor.label}`);
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      const errorNode = row.querySelector(`[data-settings-error="${descriptor.key}"]`);
+      try {
+        const selection = await pickDirectory(input.value || '');
+        const path = selection && typeof selection === 'object' ? selection.path : selection;
+        if (!selection || selection.canceled || typeof path !== 'string' || !path) return;
+        input.value = path;
+        mode.value = 'set';
+        input.disabled = false;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        if (errorNode) errorNode.textContent = '';
+      } catch (error) {
+        if (errorNode) errorNode.textContent = (error && error.message) || 'The folder chooser could not be opened.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+    return button;
+  };
 
   const inputForField = (descriptor, field) => {
     const input = doc.createElement('input');
@@ -356,6 +423,12 @@ function createDOMSettingsView(options = {}) {
       byID('settings-close-button')?.addEventListener('click', actions.close);
       byID('settings-cancel-button')?.addEventListener('click', actions.close);
       byID('settings-reset-button')?.addEventListener('click', actions.reset);
+      restartBanner?.addEventListener('click', (event) => {
+        if (event.target && event.target.closest && event.target.closest('#settings-restart-button')) {
+          event.preventDefault();
+          actions.restart();
+        }
+      });
       form?.addEventListener('submit', (event) => {
         event.preventDefault();
         actions.apply();
@@ -414,7 +487,13 @@ function createDOMSettingsView(options = {}) {
           const input = inputForField(descriptor, field);
           label.htmlFor = input.id;
           const mode = modeForField(descriptor, input);
-          controls.append(input, mode);
+          const picker = pickerForField(descriptor, input, mode, row);
+          if (picker) {
+            controls.classList.add('has-picker');
+            controls.append(input, picker, mode);
+          } else {
+            controls.append(input, mode);
+          }
           const fieldStatus = renderFieldStatus(field);
           const metadata = doc.createElement('div');
           metadata.className = 'settings-field-metadata';
@@ -433,9 +512,25 @@ function createDOMSettingsView(options = {}) {
       }
       const restart = Array.isArray(snapshot.restartRequired) ? snapshot.restartRequired : [];
       restartBanner?.classList.toggle('hidden', restart.length === 0);
-      if (restartBanner) restartBanner.textContent = restart.length
-        ? `Restart required for: ${restart.join(', ')}`
-        : '';
+      if (restartBanner) {
+        restartBanner.replaceChildren();
+        if (restart.length) {
+          const message = doc.createElement('span');
+          message.className = 'settings-banner-message';
+          message.textContent = snapshot.restartSupported
+            ? `Restart required for: ${restart.join(', ')}. Restart CodeAtlas to apply them now.`
+            : `Restart required for: ${restart.join(', ')}`;
+          restartBanner.appendChild(message);
+          if (snapshot.restartSupported) {
+            const button = doc.createElement('button');
+            button.type = 'button';
+            button.id = 'settings-restart-button';
+            button.className = 'button primary settings-restart';
+            button.textContent = 'Restart CodeAtlas';
+            restartBanner.appendChild(button);
+          }
+        }
+      }
     },
     readEdits() {
       const edits = {};

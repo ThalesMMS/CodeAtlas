@@ -4,6 +4,10 @@ package settings
 // HTTP DTOs, validation errors, and the browser field inventory.
 type FieldKey string
 
+// DefaultListenAddress uses a high, non-standard port to avoid colliding with
+// common local development servers and bundled services such as whisper.cpp.
+const DefaultListenAddress = "127.0.0.1:43127"
+
 const (
 	FieldWorkspace          FieldKey = "CODEATLAS_WORKSPACE"
 	FieldListen             FieldKey = "CODEATLAS_LISTEN"
@@ -68,7 +72,7 @@ type FieldDefinition struct {
 
 var documentedFields = []FieldDefinition{
 	{Key: FieldWorkspace, Group: GroupGeneral, ApplyMode: ApplyRestart, Default: ".", Kind: KindString},
-	{Key: FieldListen, Group: GroupGeneral, ApplyMode: ApplyRestart, Default: "127.0.0.1:8080", Kind: KindString},
+	{Key: FieldListen, Group: GroupGeneral, ApplyMode: ApplyRestart, Default: DefaultListenAddress, Kind: KindString},
 	{Key: FieldMaxFileBytes, Group: GroupGeneral, ApplyMode: ApplyRestart, Default: "1500000", Kind: KindInteger},
 	{Key: FieldLLMBaseURL, Group: GroupLLM, ApplyMode: ApplyLive, Kind: KindString},
 	{Key: FieldLLMAPIKey, Group: GroupLLM, Secret: true, ApplyMode: ApplyLive, Kind: KindSecret, AllowEmpty: true},

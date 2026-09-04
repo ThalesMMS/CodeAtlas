@@ -143,6 +143,21 @@ func (r *EmbeddingRuntime) MarkFailed(fingerprint EmbeddingFingerprint) bool {
 	}
 }
 
+// setStartupState publishes the state decided by startup reconciliation while
+// keeping the configured provider. A disabled runtime is never re-enabled here.
+func (r *EmbeddingRuntime) setStartupState(state EmbeddingState, fingerprint EmbeddingFingerprint) {
+	for {
+		current := r.load()
+		if current.State == EmbeddingDisabled {
+			return
+		}
+		next := &EmbeddingSnapshot{State: state, Fingerprint: fingerprint, provider: current.provider}
+		if r.current.CompareAndSwap(current, next) {
+			return
+		}
+	}
+}
+
 func (r *EmbeddingRuntime) forceAvailableForCompatibility() {
 	for {
 		current := r.load()

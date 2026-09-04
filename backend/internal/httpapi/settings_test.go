@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ThalesMMS/CodeAtlas/internal/capabilities"
 	"github.com/ThalesMMS/CodeAtlas/internal/httpapi"
@@ -282,3 +284,84 @@ func TestSettingsAPIMutationRequiresASingleJSONObject(t *testing.T) {
 		t.Fatalf("trailing JSON status = %d body=%s", response.StatusCode, responseBody(t, response))
 	}
 }
+
+func TestSettingsAPIRestartRequiresHandlerAndMatchingRevision(t *testing.T) {
+	server, _ := newSettingsHTTPServer(t, nil)
+
+	get := doSettingsRequest(t, settingsRequest(t, server, http.MethodGet, "/api/settings", ""))
+	var withoutHandler struct {
+		Revision         uint64 `json:"revision"`
+		RestartSupported bool   `json:"restartSupported"`
+	}
+	if err := json.NewDecoder(get.Body).Decode(&withoutHandler); err != nil {
+		t.Fatalf("decode GET = %v", err)
+	}
+	if withoutHandler.RestartSupported {
+		t.Fatal("restartSupported = true without a restart handler")
+	}
+	unavailable := doSettingsRequest(t, settingsRequest(t, server, http.MethodPost, "/api/settings/restart", `{"revision":0}`))
+	if unavailable.StatusCode != http.StatusServiceUnavailable || !strings.Contains(responseBody(t, unavailable), "SETTINGS_RESTART_UNAVAILABLE") {
+		t.Fatalf("restart without handler status = %d", unavailable.StatusCode)
+	}
+}
+
+func TestSettingsAPIRestartInvokesHandlerAfterResponse(t *testing.T) {
+	credentials := &httpSettingsCredentialStore{values: map[string]string{}}
+	manager, err := settings.NewManager(context.Background(), settings.Environment{
+		settings.FieldLLMBaseURL: "http://127.0.0.1:11434/v1",
+		settings.FieldLLMModel:   "test-model",
+	}, &httpSettingsDocumentStore{}, credentials, httpSettingsPreparer{})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	api := httpapi.New(nil, nil, nil, nil, nil, nil, nil, nil, nil, coordinatorInState(t, readiness.StateAwaitingConfiguration), capabilities.NewRegistry(), logger)
+	api.SetSettingsManager(manager, settingsTestToken)
+	restarted := make(chan struct{}, 1)
+	api.SetRestartHandler(func() { restarted <- struct{}{} })
+	server := httptest.NewServer(api.Handler())
+	t.Cleanup(server.Close)
+
+	get := doSettingsRequest(t, settingsRequest(t, server, http.MethodGet, "/api/settings", ""))
+	var snapshot struct {
+		Revision         uint64 `json:"revision"`
+		RestartSupported bool   `json:"restartSupported"`
+	}
+	if err := json.NewDecoder(get.Body).Decode(&snapshot); err != nil {
+		t.Fatalf("decode GET = %v", err)
+	}
+	if !snapshot.RestartSupported {
+		t.Fatal("restartSupported = false with a restart handler")
+	}
+
+	unauthenticated, err := http.NewRequest(http.MethodPost, server.URL+"/api/settings/restart", strings.NewReader(`{"revision":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unauthenticated.Header.Set("Content-Type", "application/json")
+	if response := doSettingsRequest(t, unauthenticated); response.StatusCode != http.StatusForbidden {
+		t.Fatalf("restart without token status = %d", response.StatusCode)
+	}
+	stale := doSettingsRequest(t, settingsRequest(t, server, http.MethodPost, "/api/settings/restart", `{"revision":41}`))
+	if stale.StatusCode != http.StatusConflict {
+		t.Fatalf("stale restart status = %d body=%s", stale.StatusCode, responseBody(t, stale))
+	}
+	select {
+	case <-restarted:
+		t.Fatal("restart handler ran for a rejected request")
+	default:
+	}
+
+	accepted := doSettingsRequest(t, settingsRequest(t, server, http.MethodPost, "/api/settings/restart", `{"revision":`+strconvUint(snapshot.Revision)+`}`))
+	body := responseBody(t, accepted)
+	if accepted.StatusCode != http.StatusAccepted || !strings.Contains(body, `"restarting":true`) {
+		t.Fatalf("restart status = %d body=%s", accepted.StatusCode, body)
+	}
+	select {
+	case <-restarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("restart handler was not invoked")
+	}
+}
+
+func strconvUint(value uint64) string { return strconv.FormatUint(value, 10) }

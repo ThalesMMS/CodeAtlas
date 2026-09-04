@@ -1,0 +1,11 @@
+{
+  "name": "codeatlas-bundled-language-servers",
+  "private": true,
+  "description": "Pinned Node.js language servers copied into the packaged CodeAtlas application.",
+  "license": "MIT",
+  "dependencies": {
+    "pyright": "1.1.413",
+    "typescript": "5.9.3",
+    "typescript-language-server": "6.0.0"
+  }
+}

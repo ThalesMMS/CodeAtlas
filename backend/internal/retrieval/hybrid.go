@@ -173,7 +173,7 @@ func (h *Hybrid) RefreshEmbeddings(ctx context.Context, symbols []domain.Symbol)
 			pending = append(pending, symbol)
 		}
 	}
-	vectors, err := h.generateEmbeddings(ctx, pending, embeddingSnapshot)
+	vectors, err := h.generateEmbeddings(ctx, pending, embeddingSnapshot, nil)
 	if err != nil {
 		return err
 	}
@@ -251,10 +251,10 @@ func (h *Hybrid) searchDense(ctx context.Context, queryVector []float64, limit i
 // ChangeSet rather than mutating the store during preparation.
 func (h *Hybrid) GenerateEmbeddings(ctx context.Context, symbols []domain.Symbol) (map[string][]float64, error) {
 	embeddingSnapshot := h.embeddings.load()
-	return h.generateEmbeddings(ctx, symbols, embeddingSnapshot)
+	return h.generateEmbeddings(ctx, symbols, embeddingSnapshot, nil)
 }
 
-func (h *Hybrid) generateEmbeddings(ctx context.Context, symbols []domain.Symbol, embeddingSnapshot *EmbeddingSnapshot) (map[string][]float64, error) {
+func (h *Hybrid) generateEmbeddings(ctx context.Context, symbols []domain.Symbol, embeddingSnapshot *EmbeddingSnapshot, progress EmbeddingProgress) (map[string][]float64, error) {
 	if embeddingSnapshot.State != EmbeddingAvailable {
 		return nil, nil
 	}
@@ -268,6 +268,9 @@ func (h *Hybrid) generateEmbeddings(ctx context.Context, symbols []domain.Symbol
 		}
 	}
 	result := make(map[string][]float64, len(targets))
+	if progress != nil {
+		progress(0, len(targets))
+	}
 	const batchSize = 16
 	for start := 0; start < len(targets); start += batchSize {
 		end := start + batchSize
@@ -287,6 +290,9 @@ func (h *Hybrid) generateEmbeddings(ctx context.Context, symbols []domain.Symbol
 		}
 		for i, vector := range vectors {
 			result[targets[start+i].ID] = vector
+		}
+		if progress != nil {
+			progress(end, len(targets))
 		}
 	}
 	return result, nil

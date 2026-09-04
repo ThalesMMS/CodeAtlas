@@ -80,6 +80,68 @@ func validateIncrementalVectors(vectors map[string][]float64, dimension int) err
 	return nil
 }
 
+// EmbeddingProgress reports rebuild progress as symbols are embedded. It is
+// called after every provider batch with the number of symbols done so far and
+// the total scheduled for this rebuild.
+type EmbeddingProgress func(completed, total int)
+
+// PrepareStartup decides how the dense index is used for this process without
+// generating any vectors. When embeddings are disabled it is a no-op. Otherwise
+// it probes the provider dimension and compares the persisted metadata: a
+// compatible, non-empty index becomes available immediately; anything else
+// leaves the runtime in the rebuilding state so index scans skip embeddings and
+// the caller schedules a background rebuild (see RebuildEmbeddingsWithProgress).
+// It returns whether that rebuild is required.
+func (h *Hybrid) PrepareStartup(ctx context.Context, providerID, model string) (bool, error) {
+	embeddingSnapshot := h.embeddings.load()
+	if embeddingSnapshot.State == EmbeddingDisabled {
+		return false, nil
+	}
+	if !embeddingSnapshot.provider.Available() {
+		return false, ai.ErrUnavailable
+	}
+	dimension, err := h.probeDimension(ctx, embeddingSnapshot.provider)
+	if err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
+		return false, err
+	}
+	desired := DesiredMetadata(providerID, model, dimension)
+	// A fingerprint prepared by live settings activation carries the credential
+	// generation; keep it only while it still describes this configuration.
+	fingerprint := embeddingSnapshot.Fingerprint
+	if fingerprint == (EmbeddingFingerprint{}) || !MetadataCompatible(fingerprint.Metadata(), desired) {
+		fingerprint = fingerprintFromMetadata(desired)
+	}
+	metadata, err := h.store.EmbeddingMetadataContext(ctx)
+	if err != nil {
+		h.markEmbeddingFailed(embeddingSnapshot)
+		return false, err
+	}
+	if MetadataCompatible(metadata, desired) && h.store.EmbeddingCount() > 0 {
+		h.embeddings.setStartupState(EmbeddingAvailable, fingerprint)
+		return false, nil
+	}
+	h.embeddings.setStartupState(EmbeddingRebuilding, fingerprint)
+	return true, nil
+}
+
+// EmbeddingSnapshot exposes the current dense-index runtime state.
+func (h *Hybrid) EmbeddingSnapshot() EmbeddingSnapshot {
+	return h.embeddings.Snapshot()
+}
+
+// fingerprintFromMetadata derives the runtime fingerprint for a configuration
+// resolved at startup, where no credential generation is tracked yet.
+func fingerprintFromMetadata(metadata domain.EmbeddingIndexMetadata) EmbeddingFingerprint {
+	return EmbeddingFingerprint{
+		Provider:        metadata.Provider,
+		Model:           metadata.Model,
+		Dimension:       metadata.Dimension,
+		TemplateVersion: metadata.TemplateVersion,
+		Distance:        metadata.Distance,
+	}
+}
+
 // Reconcile validates the persisted dense index against the current
 // configuration. When embeddings are disabled it is a no-op (old vectors are
 // preserved but never used). When enabled it probes the dimension and, on any
@@ -116,7 +178,7 @@ func (h *Hybrid) Reconcile(ctx context.Context, providerID, model string) error 
 		h.markEmbeddingAvailable(embeddingSnapshot)
 		return nil
 	}
-	if err := h.rebuildAll(ctx, desired, embeddingSnapshot); err != nil {
+	if err := h.rebuildAll(ctx, desired, embeddingSnapshot, nil); err != nil {
 		h.markEmbeddingFailed(embeddingSnapshot)
 		return err
 	}
@@ -129,6 +191,12 @@ func (h *Hybrid) Reconcile(ctx context.Context, providerID, model string) error 
 // metadata established by startup reconciliation, so this is an explicit
 // maintenance operation rather than another incremental repository scan.
 func (h *Hybrid) RebuildEmbeddings(ctx context.Context) error {
+	return h.RebuildEmbeddingsWithProgress(ctx, nil)
+}
+
+// RebuildEmbeddingsWithProgress is RebuildEmbeddings with an optional progress
+// callback so long-running rebuilds can be surfaced as job progress.
+func (h *Hybrid) RebuildEmbeddingsWithProgress(ctx context.Context, progress EmbeddingProgress) error {
 	embeddingSnapshot := h.embeddings.load()
 	if embeddingSnapshot.State == EmbeddingDisabled {
 		return fmt.Errorf("embeddings are disabled")
@@ -157,7 +225,7 @@ func (h *Hybrid) RebuildEmbeddings(ctx context.Context) error {
 		return fmt.Errorf("embedding dimension changed after preparation")
 	}
 	desired.Dimension = dimension
-	if err := h.rebuildAll(ctx, desired, embeddingSnapshot); err != nil {
+	if err := h.rebuildAll(ctx, desired, embeddingSnapshot, progress); err != nil {
 		h.markEmbeddingFailed(embeddingSnapshot)
 		return err
 	}
@@ -176,7 +244,7 @@ func (h *Hybrid) probeDimension(ctx context.Context, provider ai.Provider) (int,
 	return len(vectors[0]), nil
 }
 
-func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMetadata, embeddingSnapshot *EmbeddingSnapshot) error {
+func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMetadata, embeddingSnapshot *EmbeddingSnapshot, progress EmbeddingProgress) error {
 	view, err := h.store.SnapshotContext(ctx)
 	if err != nil {
 		return err
@@ -184,7 +252,7 @@ func (h *Hybrid) rebuildAll(ctx context.Context, desired domain.EmbeddingIndexMe
 	symbols := view.AllSymbols()
 	_ = view.Close()
 	availableSnapshot := &EmbeddingSnapshot{State: EmbeddingAvailable, Fingerprint: embeddingSnapshot.Fingerprint, provider: embeddingSnapshot.provider}
-	vectors, err := h.generateEmbeddings(ctx, symbols, availableSnapshot)
+	vectors, err := h.generateEmbeddings(ctx, symbols, availableSnapshot, progress)
 	if err != nil {
 		return err
 	}
